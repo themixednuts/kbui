@@ -10,11 +10,12 @@
     /** Inline color for the leading dot. Pass a CSS color or a CSS var like `var(--color-teal)`. */
     dot?: string;
     title?: string;
+    style?: string;
     class?: string;
     children?: Snippet;
   };
 
-  let { tone = "neutral", dot, title, class: extra = "", children }: Props = $props();
+  let { tone = "neutral", dot, title, style, class: extra = "", children }: Props = $props();
 
   const toneClass = $derived(
     tone === "success"
@@ -30,6 +31,7 @@
 <Badge
   variant="outline"
   {title}
+  {style}
   class={cn(
     "inline-flex min-h-[26px] items-center gap-[6px] overflow-hidden rounded-pill px-[10px] py-0.5 font-mono text-[11px] tracking-[0.04em] text-ellipsis whitespace-nowrap",
     toneClass,

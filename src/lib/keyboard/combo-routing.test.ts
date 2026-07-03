@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { profileFromCatalog } from "./catalog";
 import { routeComboConnectors } from "./combo-routing";
 import type { Combo, KeyboardKey } from "./schema";

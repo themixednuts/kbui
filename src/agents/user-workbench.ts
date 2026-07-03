@@ -36,7 +36,7 @@ export class UserWorkbenchAgent extends Agent<Cloudflare.Env, UserWorkbenchState
   }
 
   private ensureTables() {
-    this.sql`
+    void this.sql`
       CREATE TABLE IF NOT EXISTS keyboard_profiles (
         id TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -44,7 +44,7 @@ export class UserWorkbenchAgent extends Agent<Cloudflare.Env, UserWorkbenchState
       )
     `;
 
-    this.sql`
+    void this.sql`
       CREATE TABLE IF NOT EXISTS change_sets (
         id TEXT PRIMARY KEY,
         profile_id TEXT NOT NULL,
@@ -61,9 +61,7 @@ export class UserWorkbenchAgent extends Agent<Cloudflare.Env, UserWorkbenchState
     // method call when the request hits a freshly-vivified DO. Calling
     // `ensureTables` here keeps the schema CREATE-IF-NOT-EXISTS idempotent
     // while making sure we never write to a missing table.
-    console.log(
-      `[UserWorkbench] saveSnapshot user=${input.userId} profile=${input.profile?.id}`,
-    );
+    console.log(`[UserWorkbench] saveSnapshot user=${input.userId} profile=${input.profile?.id}`);
     this.ensureTables();
     const updatedAt = new Date().toISOString();
 

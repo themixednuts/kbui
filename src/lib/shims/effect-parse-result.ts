@@ -23,20 +23,30 @@ type AnyIssue = {
 };
 
 export const TreeFormatter = {
-  formatErrorSync(input: AnyIssue | unknown): string {
+  formatErrorSync(input: unknown): string {
     if (input == null) return "Schema parse error";
     if (typeof input === "string") return input;
     if (typeof input === "object" && input !== null) {
       const issue = input as AnyIssue;
       if (typeof issue.message === "string") return issue.message;
-      if (typeof issue.toString === "function") return issue.toString();
+      if (typeof issue.toString === "function" && issue.toString !== Object.prototype.toString) {
+        return issue.toString();
+      }
       try {
-        return JSON.stringify(issue, null, 2);
+        return JSON.stringify(issue, null, 2) ?? "Schema parse error";
       } catch {
-        // fall through
+        return "Schema parse error";
       }
     }
-    return String(input);
+    if (
+      typeof input === "number" ||
+      typeof input === "boolean" ||
+      typeof input === "bigint" ||
+      typeof input === "symbol"
+    ) {
+      return String(input);
+    }
+    return "Schema parse error";
   },
 };
 

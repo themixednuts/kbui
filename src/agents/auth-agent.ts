@@ -55,10 +55,7 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
         "SELECT identifier, expires_at FROM verification ORDER BY created_at DESC LIMIT 5",
       );
       const rows = cursor.toArray();
-      console.log(
-        `[AuthAgent] verification table on boot: ${rows.length} row(s)`,
-        rows,
-      );
+      console.log(`[AuthAgent] verification table on boot: ${rows.length} row(s)`, rows);
     } catch (error) {
       console.log("[AuthAgent] could not snapshot verification table:", error);
     }
@@ -76,19 +73,14 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
           "SELECT identifier, length(value) AS value_len, expires_at, created_at FROM verification ORDER BY created_at DESC LIMIT 5",
         );
         const rows = cursor.toArray();
-        console.log(
-          `[AuthAgent] verification rows at callback-time: ${rows.length}`,
-          rows,
-        );
+        console.log(`[AuthAgent] verification rows at callback-time: ${rows.length}`, rows);
       } catch (error) {
         console.log("[AuthAgent] verification snapshot failed:", error);
       }
     }
     const auth = this.getAuth();
     const response = await auth.handler(request);
-    console.log(
-      `[AuthAgent] <<< ${request.method} ${url.pathname} -> ${response.status}`,
-    );
+    console.log(`[AuthAgent] <<< ${request.method} ${url.pathname} -> ${response.status}`);
     return response;
   }
 

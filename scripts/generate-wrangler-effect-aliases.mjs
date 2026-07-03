@@ -1,9 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const wranglerPath = "wrangler.toml";
-const effectV3Pkg = JSON.parse(
-  await readFile("node_modules/effect-v3/package.json", "utf8"),
-);
+const effectV3Pkg = JSON.parse(await readFile("node_modules/effect-v3/package.json", "utf8"));
 
 /**
  * Wrangler re-bundles the worker and must resolve `effect` like @effect/* /
@@ -14,10 +12,7 @@ const workerEffectRoot = "./node_modules/effect-v3/dist/esm/index.js";
 const v3Aliases = Object.keys(effectV3Pkg.exports)
   .filter(
     (key) =>
-      key.startsWith("./") &&
-      !key.includes("*") &&
-      key !== "./package.json" &&
-      key !== "./.index",
+      key.startsWith("./") && !key.includes("*") && key !== "./package.json" && key !== "./.index",
   )
   .map((key) => {
     const name = key.slice(2);
@@ -29,10 +24,7 @@ const v3Aliases = Object.keys(effectV3Pkg.exports)
           ? target.import
           : null;
     if (!importPath?.endsWith(".js")) return null;
-    return [
-      `effect/${name}`,
-      `./node_modules/effect-v3/${importPath.replace(/^\.\//, "")}`,
-    ];
+    return [`effect/${name}`, `./node_modules/effect-v3/${importPath.replace(/^\.\//, "")}`];
   })
   .filter(Boolean)
   .sort(([a], [b]) => a.localeCompare(b));

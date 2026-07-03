@@ -102,10 +102,7 @@ for (const arr of grids.right.values()) {
   for (const k of arr) rightAllRots.push(k.rot);
 }
 rightAllRots.sort((a, b) => a - b);
-const rightTilt = snap(
-  rightAllRots[Math.floor(rightAllRots.length / 2)],
-  0.25,
-);
+const rightTilt = snap(rightAllRots[Math.floor(rightAllRots.length / 2)], 0.25);
 
 // Pivot: the detected position of 4,2 — un-rotate every right key
 // around that point, then translate so 4,2 lands at the canonical
@@ -228,8 +225,6 @@ for (const e of out) {
   const r = e.r.toFixed(2);
   const rx = e.rx.toFixed(3);
   const ry = e.ry.toFixed(3);
-  console.log(
-    `        [{ r: ${r}, rx: ${rx}, ry: ${ry}, x: 0, y: 0 }, "${e.label}"],`,
-  );
+  console.log(`        [{ r: ${r}, rx: ${rx}, ry: ${ry}, x: 0, y: 0 }, "${e.label}"],`);
 }
 console.log("],");

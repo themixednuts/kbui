@@ -25,15 +25,14 @@ export function parseWorkbenchSearch(url: URL): WorkbenchSearch {
   const mode = params.get("mode");
 
   const keymapMode: KeymapMode =
-    mode === "rgb" || bind === "rgb" ? "rgb" : mode === "bind" ? "bind" : "bind";
+    mode && KEYMAP_MODES.has(mode) ? (mode as KeymapMode) : bind === "rgb" ? "rgb" : "bind";
 
   return {
     layerId: params.get("layer") ?? "base",
     keyId: params.get("key") ?? "",
     keymapMode,
     logicTab: logic && LOGIC_TABS.has(logic) ? (logic as LogicTab) : "macros",
-    inspectorTab:
-      bind && INSPECTOR_TABS.has(bind) ? (bind as InspectorTab) : "binding",
+    inspectorTab: bind && INSPECTOR_TABS.has(bind) ? (bind as InspectorTab) : "binding",
   };
 }
 
@@ -45,10 +44,7 @@ export type WorkbenchSearchPatch = {
   bind?: InspectorTab;
 };
 
-function resolveKeyParam(
-  current: URL,
-  patch: WorkbenchSearchPatch,
-): string | null {
+function resolveKeyParam(current: URL, patch: WorkbenchSearchPatch): string | null {
   if (patch.key === null) return null;
   if (patch.key !== undefined) return patch.key || null;
   return current.searchParams.get("key");

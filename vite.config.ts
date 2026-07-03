@@ -4,17 +4,21 @@ import agents from "agents/vite";
 import sqlocal from "sqlocal/vite";
 import { defineConfig } from "vite-plus";
 
+const externalArtifactPatterns = ["resources/**", "docs/redesign/**"];
+
 export default defineConfig({
-  fmt: {},
-  lint: { options: { typeAware: true, typeCheck: true } },
+  fmt: { ignorePatterns: externalArtifactPatterns },
+  lint: {
+    ignorePatterns: externalArtifactPatterns,
+    options: { typeAware: true, typeCheck: true },
+  },
   test: {
     include: ["src/**/*.test.ts"],
   },
   run: {
     tasks: {
       "dev:worker": {
-        command:
-          "vp build && node scripts/generate-wrangler-effect-aliases.mjs && wrangler dev",
+        command: "vp build && node scripts/generate-wrangler-effect-aliases.mjs && wrangler dev",
         cache: false,
       },
       "worker:aliases": {

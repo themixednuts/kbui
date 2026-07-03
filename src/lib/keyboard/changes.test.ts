@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { diffProfiles } from "./changes";
 import { cloneDevice, sampleKeyboard } from "./schema";

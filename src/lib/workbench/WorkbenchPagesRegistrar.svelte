@@ -4,7 +4,13 @@
 
   let { pages, children }: { pages: WorkbenchPages; children: Snippet } = $props();
 
-  registerWorkbenchPages(pages);
+  registerWorkbenchPages({
+    keymap: () => pages.keymap(),
+    logic: () => pages.logic(),
+    lighting: () => pages.lighting(),
+    versioning: () => pages.versioning(),
+    firmware: () => pages.firmware(),
+  });
 </script>
 
 {@render children()}

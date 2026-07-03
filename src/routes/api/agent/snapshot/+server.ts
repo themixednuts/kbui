@@ -64,10 +64,7 @@ export const GET: RequestHandler = ({ platform, locals }) =>
   Effect.runPromise(
     Effect.tryPromise(async () => {
       if (!locals.user) {
-        return Response.json(
-          { error: "Sign in to load workbench state." },
-          { status: 401 },
-        );
+        return Response.json({ error: "Sign in to load workbench state." }, { status: 401 });
       }
 
       const userId = normalizeAgentName(locals.user.id);

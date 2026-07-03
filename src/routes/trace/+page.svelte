@@ -623,7 +623,7 @@
   }
 
   function otsuThreshold(gray: Uint8ClampedArray) {
-    const hist = new Array(256).fill(0);
+    const hist = Array.from({ length: 256 }, () => 0);
     const total = gray.length;
     for (let i = 0; i < total; i++) hist[gray[i]]++;
     let sumAll = 0;
@@ -1444,8 +1444,8 @@
       colIdx.set(k.id, Math.max(0, Math.min(cols - 1, idx)));
     }
     for (let iter = 0; iter < 6; iter++) {
-      const sums = new Array(cols).fill(0);
-      const counts = new Array(cols).fill(0);
+      const sums = Array.from({ length: cols }, () => 0);
+      const counts = Array.from({ length: cols }, () => 0);
       for (const k of keys) {
         const c = colIdx.get(k.id) ?? 0;
         sums[c] += localX.get(k.id) ?? 0;

@@ -97,7 +97,9 @@ test("surfaces sign-in and WebHID click outcomes", async ({ context, page }) => 
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: "GitHub" })).toBeVisible();
 
   await page.getByTestId("connect-webhid").click();
-  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "No WebHID keyboard selected" })).toBeVisible();
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: "No WebHID keyboard selected" }),
+  ).toBeVisible();
 });
 
 test("does not open the editor with a sample layout when a generic WebHID board has no definition", async ({
@@ -116,7 +118,9 @@ test("does not open the editor with a sample layout when a generic WebHID board 
 
   await expect(page.getByTestId("layout-resolution-needed")).toBeVisible();
   await expect(page.locator(".app-kb-block")).toHaveCount(0);
-  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "no matching VIA definition" })).toBeVisible();
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: "no matching VIA definition" }),
+  ).toBeVisible();
 });
 
 test("keeps the top bar to one non-overflowing row across breakpoints", async ({ page }) => {

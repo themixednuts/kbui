@@ -209,9 +209,7 @@ const materializers = State.SQLite.materializers(events, {
       .onConflict("id", "replace"),
 
   "v1.LayerAdded": ({ id, profileId, name, color, sortOrder }) =>
-    layer
-      .insert({ id, profileId, name, color, sortOrder })
-      .onConflict("id", "replace"),
+    layer.insert({ id, profileId, name, color, sortOrder }).onConflict("id", "replace"),
 
   "v1.LayerRenamed": ({ id, name }) => layer.update({ name }).where({ id }),
 
@@ -242,9 +240,7 @@ const materializers = State.SQLite.materializers(events, {
   ],
 
   "v1.MacroSet": ({ id, name, trigger, sequence }) =>
-    macro
-      .insert({ id, name, trigger: trigger ?? null, sequence })
-      .onConflict("id", "replace"),
+    macro.insert({ id, name, trigger: trigger ?? null, sequence }).onConflict("id", "replace"),
 
   "v1.MacroRemoved": ({ id }) => macro.delete().where({ id }),
 

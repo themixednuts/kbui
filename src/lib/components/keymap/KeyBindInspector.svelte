@@ -10,6 +10,11 @@
   type RenderedBinding = KeyBinding & {
     display: string;
     keycap: string;
+    rawCode: string;
+    sourceColor: string;
+    sourceLayerId: string;
+    sourceLayerName: string;
+    transparent: boolean;
   };
 
   type Props = {

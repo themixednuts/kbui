@@ -69,9 +69,7 @@ const handle: RequestHandler = async ({ request, platform, url }) => {
             throw new Error("JWT missing sub claim");
           }
           if (subject !== requestedUserId) {
-            throw new Error(
-              `Auth subject (${subject}) does not own store ${requestedUserId}`,
-            );
+            throw new Error(`Auth subject (${subject}) does not own store ${requestedUserId}`);
           }
         },
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),

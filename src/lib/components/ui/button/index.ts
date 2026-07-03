@@ -1,17 +1,11 @@
-import Root, {
-	type ButtonProps,
-	type ButtonSize,
-	type ButtonVariant,
-	buttonVariants,
-} from "./button.svelte";
+import Root from "./button.svelte";
+import { buttonVariants } from "./variants";
 
 export {
-	Root,
-	type ButtonProps as Props,
-	//
-	Root as Button,
-	buttonVariants,
-	type ButtonProps,
-	type ButtonSize,
-	type ButtonVariant,
+  Root,
+  //
+  Root as Button,
+  buttonVariants,
 };
+
+export type { ButtonProps, ButtonProps as Props, ButtonSize, ButtonVariant } from "./variants";

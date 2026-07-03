@@ -7,7 +7,7 @@
  * the server because it touches `globalThis.SharedWorker` and OPFS.
  */
 import { createStore } from "@livestore/svelte";
-import { makePersistedAdapter } from "@livestore/adapter-web";
+import { makePersistedAdapter, type WebAdapterOptions } from "@livestore/adapter-web";
 import LiveStoreSharedWorker from "@livestore/adapter-web/shared-worker?sharedworker";
 import LiveStoreWorker from "./livestore.worker.ts?worker";
 
@@ -23,8 +23,9 @@ export type ClientStoreOptions = {
 };
 
 export const createKlaksonStore = (options: ClientStoreOptions) => {
+  const storage = { type: "opfs" } as unknown as WebAdapterOptions["storage"];
   const adapter = makePersistedAdapter({
-    storage: { type: "opfs" },
+    storage,
     worker: LiveStoreWorker,
     sharedWorker: LiveStoreSharedWorker,
   });

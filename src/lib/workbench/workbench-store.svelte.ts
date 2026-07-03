@@ -2,7 +2,7 @@ import { page } from "$app/state";
 import { getConnectionState, type ConnectionState } from "$lib/keyboard/transport";
 import { cloneDevice, sampleKeyboard, type DeviceProfile } from "$lib/keyboard/schema";
 import { workbenchRouteFromPath, type WorkbenchRoute } from "./routes";
-import { parseWorkbenchSearch, type InspectorTab, type KeymapMode, type LogicTab } from "./url-search";
+import { parseWorkbenchSearch } from "./url-search";
 
 /** Mutable workbench session state (class fields use reactive runes). */
 export class WorkbenchStore {

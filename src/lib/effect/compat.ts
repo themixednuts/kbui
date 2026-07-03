@@ -9,9 +9,7 @@ const effectApis = Effect as Record<string, unknown>;
  * the same source works in both bundles.
  */
 export const catchCauseCompat: typeof Effect.catchCause = (
-  typeof Effect.catchCause === "function"
-    ? Effect.catchCause
-    : effectApis["catchAllCause"]
+  typeof Effect.catchCause === "function" ? Effect.catchCause : effectApis["catchAllCause"]
 ) as typeof Effect.catchCause;
 
 export const catchCompat: typeof Effect.catch = (

@@ -453,7 +453,7 @@ function lineClearanceCost(
   clearanceCache: Map<string, number>,
 ) {
   let cost = 0;
-  for (const point of segmentSamplePoints(start, end, grid)) {
+  for (const point of segmentSamplePoints(start, end)) {
     const key = cellKey(cellForPoint(point, grid));
     cost += clearancePenalty(point, key, blockers, clearanceCache);
   }
@@ -470,12 +470,11 @@ function lineCellKeys(points: Point[], grid: Grid) {
 
 function segmentCellKeys(start: Point, end: Point, grid: Grid) {
   const keys = new Set<string>();
-  for (const point of segmentSamplePoints(start, end, grid))
-    keys.add(cellKey(cellForPoint(point, grid)));
+  for (const point of segmentSamplePoints(start, end)) keys.add(cellKey(cellForPoint(point, grid)));
   return keys;
 }
 
-function segmentSamplePoints(start: Point, end: Point, grid: Grid) {
+function segmentSamplePoints(start: Point, end: Point) {
   const points: Point[] = [];
   const steps = Math.max(1, Math.ceil(distance(start, end) / GRID_CELL));
 

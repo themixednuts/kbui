@@ -33,7 +33,10 @@ export function isSplitTransportAllowed(mode: SplitTransport, device: SplitDevic
   return mode === "serial" || mode === "i2c";
 }
 
-export function splitTransportDisabledReason(mode: SplitTransport, device: SplitDevice): string | null {
+export function splitTransportDisabledReason(
+  mode: SplitTransport,
+  device: SplitDevice,
+): string | null {
   if (isSplitTransportAllowed(mode, device)) return null;
   if (mode === "ble") return "ZMK boards only";
   if (isZmkDevice(device)) return "QMK boards only";

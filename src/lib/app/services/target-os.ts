@@ -31,10 +31,7 @@ export const detect: Effect.Effect<TargetOS> = Effect.sync(() => {
   if (typeof navigator === "undefined") return "win";
   const platform =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (navigator as any).userAgentData?.platform ??
-    navigator.platform ??
-    navigator.userAgent ??
-    "";
+    (navigator as any).userAgentData?.platform ?? navigator.platform ?? navigator.userAgent ?? "";
   if (/mac|darwin|iphone|ipad/i.test(platform)) return "mac";
   if (/linux|x11/i.test(platform) && !/android/i.test(platform)) return "linux";
   return "win";
@@ -50,8 +47,7 @@ export const load: Effect.Effect<TargetOS> = Effect.gen(function* () {
 });
 
 /** Persist a target OS choice. */
-export const save = (target: TargetOS): Effect.Effect<void> =>
-  Preferences.set(STORAGE_KEY, target);
+export const save = (target: TargetOS): Effect.Effect<void> => Preferences.set(STORAGE_KEY, target);
 
 /** Clear the override; next `load` will fall back to auto-detection. */
 export const reset: Effect.Effect<void> = Preferences.remove(STORAGE_KEY);
