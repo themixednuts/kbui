@@ -1,0 +1,4 @@
+resources/pilot/svelte/Keymap.svelte: ERROR attribute_duplicate at 168:35
+Attributes need to be unique
+https://svelte.dev/e/attribute_duplicate
+resources/pilot/svelte/Browse.svelte: OK

@@ -1,0 +1,221 @@
+<x-dc>
+  <helmet>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+  </helmet>
+  <section class="body" style="flex-direction: column; padding: 22px; gap: 16px;" data-htmlswap-region="community.browse">
+    <div class="row" style="gap: 10px; flex-wrap: wrap;">
+      <div class="browse-tags">
+        <sc-for list="{{ browse.tags }}" as="tag" hint-placeholder-count="7">
+          <button
+            id="{{ tag.buttonId }}"
+            class="browse-tag"
+            aria-pressed="{{ tag.selected }}"
+            onClick="{{ tag.select }}"
+            data-htmlswap-key="{{ tag.value }}"
+          >
+            {{ tag.label }}
+          </button>
+        </sc-for>
+      </div>
+      <div class="spacer"></div>
+      <sc-if value="{{ browse.hasDevice }}" hint-placeholder-val="{{ true }}">
+        <button
+          id="browse-compatible-only"
+          class="btn"
+          data-htmlswap-tone="neutral"
+          data-htmlswap-variant="{{ browse.compatVariant }}"
+          data-htmlswap-size="sm"
+          aria-pressed="{{ browse.compatOnly }}"
+          onClick="{{ browse.toggleCompatOnly }}"
+        >
+          <span class="material-symbols-outlined">check</span>
+          <span>{{ browse.compatLabel }}</span>
+        </button>
+      </sc-if>
+    </div>
+
+    <p class="muted" style="margin: 0; font-size: 12px;">
+      Shared read-only — adopt one to make your own copy you can edit and flash. Sorted by likes; no rankings, no downvotes.
+    </p>
+
+    <div class="browse-grid">
+      <sc-for list="{{ browse.maps }}" as="map" hint-placeholder-count="6">
+        <article class="map-card" data-htmlswap-key="{{ map.id }}">
+          <button
+            id="{{ map.previewButtonId }}"
+            class="map-preview"
+            title="Preview"
+            onClick="{{ map.preview }}"
+            data-htmlswap-variant="text"
+            data-htmlswap-tone="neutral"
+          >
+            <div class="mini-board" style="{{ map.previewStyle }}">
+              <sc-for list="{{ map.previewRows }}" as="previewRow" hint-placeholder-count="5">
+                <div style="{{ previewRow.style }}" data-htmlswap-key="{{ previewRow.id }}">
+                  <sc-for list="{{ previewRow.groups }}" as="group" hint-placeholder-count="3">
+                    <sc-if value="{{ group.isGap }}" hint-placeholder-val="{{ false }}">
+                      <div style="{{ group.style }}" data-htmlswap-key="{{ group.id }}"></div>
+                    </sc-if>
+                    <sc-else>
+                      <div style="{{ group.style }}" data-htmlswap-key="{{ group.id }}">
+                        <sc-for list="{{ group.cells }}" as="cell" hint-placeholder-count="15">
+                          <span style="{{ cell.style }}" data-htmlswap-key="{{ cell.id }}"></span>
+                        </sc-for>
+                      </div>
+                    </sc-else>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </button>
+
+          <div class="map-info">
+            <div class="row" style="gap: 8px;">
+              <span class="map-name">{{ map.name }}</span>
+              <sc-if value="{{ map.official }}" hint-placeholder-val="{{ false }}">
+                <span class="tag" style="background: var(--ink); color: var(--paper);">official</span>
+              </sc-if>
+            </div>
+
+            <div class="row" style="gap: 6px;">
+              <sc-if value="{{ map.hasAvatar }}" hint-placeholder-val="{{ true }}">
+                <img class="avatar" src="{{ map.avatarUrl }}" alt="{{ map.authorLabel }}" style="{{ map.avatarStyle }}">
+              </sc-if>
+              <sc-else>
+                <span class="avatar fallback" style="{{ map.avatarStyle }}">{{ map.initials }}</span>
+              </sc-else>
+              <span class="map-by">{{ map.byline }}</span>
+            </div>
+
+            <div class="row" style="gap: 5px; flex-wrap: wrap;">
+              <sc-for list="{{ map.tags }}" as="mapTag" hint-placeholder-count="3">
+                <span class="tag" data-htmlswap-key="{{ mapTag.id }}">{{ mapTag.label }}</span>
+              </sc-for>
+            </div>
+
+            <div class="signals">
+              <span title="Likes">
+                <span class="material-symbols-outlined" style="font-size: 14px; color: var(--coral-ink);">favorite</span>
+                <span>{{ map.likesLabel }}</span>
+              </span>
+              <span title="People who adopted this">
+                <span class="material-symbols-outlined" style="font-size: 14px;">download</span>
+                <span>{{ map.adoptionsLabel }}</span>
+              </span>
+              <sc-if value="{{ map.compiles }}" hint-placeholder-val="{{ true }}">
+                <span class="ok" title="Verified to compile">
+                  <span class="material-symbols-outlined" style="font-size: 14px;">verified</span>
+                  <span>compiles</span>
+                </span>
+              </sc-if>
+            </div>
+
+            <div class="row" style="gap: 6px; margin-top: auto;">
+              <button id="{{ map.previewActionId }}" class="btn" data-htmlswap-size="sm" data-htmlswap-tone="neutral" data-htmlswap-variant="ghost" style="flex: 1;" onClick="{{ map.preview }}">
+                <span class="material-symbols-outlined">visibility</span>
+                <span>Preview</span>
+              </button>
+              <button id="{{ map.adoptActionId }}" class="btn" data-htmlswap-size="sm" data-htmlswap-tone="accent" data-htmlswap-variant="solid" style="flex: 1;" onClick="{{ map.adopt }}">
+                <span class="material-symbols-outlined">download</span>
+                <span>Adopt</span>
+              </button>
+            </div>
+          </div>
+        </article>
+      </sc-for>
+
+      <sc-if value="{{ browse.isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div class="empty" style="width: 100%;">
+          <span class="material-symbols-outlined" style="font-size: 28px; color: var(--ink-3);">search_off</span>
+          <p class="muted" style="margin: 0;">No maps match that filter.</p>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ browse.preview.visible }}" hint-placeholder-val="{{ true }}">
+      <div class="overlay" onClick="{{ browse.preview.close }}">
+        <div class="modal" style="width: 560px;" onClick="{{ browse.preview.stopClose }}">
+          <div class="row" style="gap: 10px;">
+            <div class="col" style="flex: 1; min-width: 0;">
+              <div class="row" style="gap: 8px;">
+                <b style="font-size: 16px;">{{ browse.preview.name }}</b>
+                <sc-if value="{{ browse.preview.official }}" hint-placeholder-val="{{ false }}">
+                  <span class="tag" style="background: var(--ink); color: var(--paper);">official</span>
+                </sc-if>
+              </div>
+              <div class="row" style="gap: 6px;">
+                <sc-if value="{{ browse.preview.hasAvatar }}" hint-placeholder-val="{{ true }}">
+                  <img class="avatar" src="{{ browse.preview.avatarUrl }}" alt="{{ browse.preview.authorLabel }}" style="{{ browse.preview.avatarStyle }}">
+                </sc-if>
+                <sc-else>
+                  <span class="avatar fallback" style="{{ browse.preview.avatarStyle }}">{{ browse.preview.initials }}</span>
+                </sc-else>
+                <span class="map-by">{{ browse.preview.byline }}</span>
+              </div>
+            </div>
+            <button id="browse-close-preview" class="place-x" onClick="{{ browse.preview.close }}">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <div class="map-preview big">
+            <div class="mini-board" style="{{ browse.preview.boardStyle }}">
+              <sc-for list="{{ browse.preview.rows }}" as="previewRow" hint-placeholder-count="5">
+                <div style="{{ previewRow.style }}" data-htmlswap-key="{{ previewRow.id }}">
+                  <sc-for list="{{ previewRow.groups }}" as="group" hint-placeholder-count="3">
+                    <sc-if value="{{ group.isGap }}" hint-placeholder-val="{{ false }}">
+                      <div style="{{ group.style }}" data-htmlswap-key="{{ group.id }}"></div>
+                    </sc-if>
+                    <sc-else>
+                      <div style="{{ group.style }}" data-htmlswap-key="{{ group.id }}">
+                        <sc-for list="{{ group.cells }}" as="cell" hint-placeholder-count="15">
+                          <span style="{{ cell.style }}" data-htmlswap-key="{{ cell.id }}"></span>
+                        </sc-for>
+                      </div>
+                    </sc-else>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-2);">{{ browse.preview.note }}</p>
+
+          <div class="row" style="gap: 5px; flex-wrap: wrap;">
+            <sc-for list="{{ browse.preview.tags }}" as="previewTag" hint-placeholder-count="3">
+              <span class="tag" data-htmlswap-key="{{ previewTag.id }}">{{ previewTag.label }}</span>
+            </sc-for>
+          </div>
+
+          <div class="signals">
+            <span title="Likes">
+              <span class="material-symbols-outlined" style="font-size: 14px; color: var(--coral-ink);">favorite</span>
+              <span>{{ browse.preview.likesLabel }}</span>
+            </span>
+            <span title="People who adopted this">
+              <span class="material-symbols-outlined" style="font-size: 14px;">download</span>
+              <span>{{ browse.preview.adoptionsLabel }}</span>
+            </span>
+            <sc-if value="{{ browse.preview.compiles }}" hint-placeholder-val="{{ true }}">
+              <span class="ok" title="Verified to compile">
+                <span class="material-symbols-outlined" style="font-size: 14px;">verified</span>
+                <span>compiles</span>
+              </span>
+            </sc-if>
+          </div>
+
+          <div class="row" style="gap: 8px;">
+            <button id="browse-adopt-preview" class="btn" data-htmlswap-tone="accent" data-htmlswap-variant="solid" style="flex: 1;" onClick="{{ browse.preview.adopt }}">
+              <span class="material-symbols-outlined">download</span>
+              <span>Adopt as a variant</span>
+            </button>
+            <button id="browse-report-preview" class="btn" data-htmlswap-tone="neutral" data-htmlswap-variant="ghost" title="Report this map" onClick="{{ browse.preview.report }}">
+              <span class="material-symbols-outlined">flag</span>
+              <span>Report</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </section>
+</x-dc>
