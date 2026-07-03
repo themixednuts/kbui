@@ -1,0 +1,22 @@
+# Local dev secrets — read automatically by `wrangler dev` and bound onto
+# `env.*` for the Cloudflare worker (including AuthAgent + UserWorkbenchAgent).
+#
+# Copy to `.dev.vars` and fill in real values. `.dev.vars` is .gitignored.
+# Restart `wrangler dev` after editing — values are only read on boot.
+
+# Any 32+ character random string. Generate with:
+#   openssl rand -base64 32
+BETTER_AUTH_SECRET="replace-with-at-least-32-random-characters"
+
+# Match the host the browser hits. For local Cloudflare dev this is :8787.
+BETTER_AUTH_URL="http://localhost:8787"
+
+# --- GitHub OAuth ---------------------------------------------------------
+# 1. Create an OAuth App: https://github.com/settings/developers
+#       Application name : Klakson (Local)
+#       Homepage URL     : http://localhost:8787
+#       Callback URL     : http://localhost:8787/api/auth/callback/github
+# 2. Paste the resulting Client ID + Client Secret here.
+# 3. Restart `wrangler dev`.
+GITHUB_CLIENT_ID=""
+GITHUB_CLIENT_SECRET=""

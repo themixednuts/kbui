@@ -1,0 +1,24 @@
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1m				You have defined bindings to the following internal Durable Objects:[0m
+
+  				- {"name":"UserWorkbenchAgent","class_name":"UserWorkbenchAgent"}
+  - {"name":"AuthAgent","class_name":"AuthAgent"}
+  				These will not work in local development, but they should work in production.
+  
+  				If you want to develop these locally, you can define your DO in a separate Worker, with a separate configuration file.
+  				For detailed instructions, refer to the Durable Objects section here: [4mhttps://developers.cloudflare.com/workers/wrangler/api#supported-bindings[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1m				You have defined bindings to the following internal Durable Objects:[0m
+
+  				- {"name":"UserWorkbenchAgent","class_name":"UserWorkbenchAgent"}
+  - {"name":"AuthAgent","class_name":"AuthAgent"}
+  				These will not work in local development, but they should work in production.
+  
+  				If you want to develop these locally, you can define your DO in a separate Worker, with a separate configuration file.
+  				For detailed instructions, refer to the Durable Objects section here: [4mhttps://developers.cloudflare.com/workers/wrangler/api#supported-bindings[0m
+
+
+workerd/server/server.c++:1967: warning: A DurableObjectNamespace in the config referenced the class "AuthAgent", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.
+workerd/server/server.c++:1967: warning: A DurableObjectNamespace in the config referenced the class "UserWorkbenchAgent", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.
+workerd/server/server.c++:1967: warning: A DurableObjectNamespace in the config referenced the class "AuthAgent", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.
+workerd/server/server.c++:1967: warning: A DurableObjectNamespace in the config referenced the class "UserWorkbenchAgent", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.

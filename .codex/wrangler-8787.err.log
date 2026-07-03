@@ -1,0 +1,4251 @@
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 70 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/ai/dist/esm/LanguageModel.js:54:25:
+  [37m      54 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/ai/dist/esm/McpServer.js:16:25:
+  [37m      16 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Arbitrary"[0m
+  
+      node_modules/@effect/ai/dist/esm/Prompt.js:54:27:
+  [37m      54 │ import * as Arbitrary from [32m"effect/Arbitrary"[37m;
+           ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Arbitrary.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/DevTools/Client.js:13:25:
+  [37m      13 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/MetricState"[0m
+  
+      node_modules/@effect/experimental/dist/esm/DevTools/Client.js:15:29:
+  [37m      15 │ import * as MetricState from [32m"effect/MetricState"[37m;
+           ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/MetricState.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/experimental/dist/esm/EventLog.js:6:26:
+  [37m      6 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/EventLogRemote.js:10:25:
+  [37m      10 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/EventLogServer.js:9:25:
+  [37m      9 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:11:26:
+  [37m      11 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:12:27:
+  [37m      12 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+           ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:15:28:
+  [37m      15 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Readable"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:20:26:
+  [37m      20 │ import * as Readable from [32m"effect/Readable"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Readable.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Subscribable"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:23:30:
+  [37m      23 │ import * as Subscribable from [32m"effect/Subscribable"[37m;
+           ╵                               [32m~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Subscribable.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Reactivity.js:11:25:
+  [37m      11 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/experimental/dist/esm/RequestResolver.js:6:24:
+  [37m      6 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Sse.js:9:25:
+  [37m      9 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpLogger.js:6:25:
+  [37m      6 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpLogger.js:7:26:
+  [37m      7 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpLogger.js:8:27:
+  [37m      8 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/MetricState"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpMetrics.js:6:29:
+  [37m      6 │ import * as MetricState from [32m"effect/MetricState"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/MetricState.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/Cookies.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:4:26:
+  [37m      4 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:5:27:
+  [37m      5 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiBuilder.js:11:28:
+  [37m      11 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiClient.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiSchema.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApp.js:9:29:
+  [37m      9 │ import * as GlobalValue from [32m"effect/GlobalValue"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpLayerRouter.js:9:26:
+  [37m      9 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpServerRequest.js:2:24:
+  [37m      2 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/Multipart.js:8:25:
+  [37m      8 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/OpenApi.js:3:28:
+  [37m      3 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ConfigError"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:6:29:
+  [37m      6 │ import * as ConfigError from [32m"effect/ConfigError"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ConfigError.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ConfigProviderPathPatch"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:8:27:
+  [37m      8 │ import * as PathPatch from [32m"effect/ConfigProviderPathPatch"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ConfigProviderPathPatch.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/DefaultServices"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:10:33:
+  [37m      10 │ import * as DefaultServices from [32m"effect/DefaultServices"[37m;
+           ╵                                  [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/DefaultServices.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:12:24:
+  [37m      12 │ import * as Either from [32m"effect/Either"[37m;
+           ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Runtime.js:7:26:
+  [37m      7 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/platform/dist/esm/Runtime.js:8:27:
+  [37m      8 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ExecutionStrategy"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:8:35:
+  [37m      8 │ import * as ExecutionStrategy from [32m"effect/ExecutionStrategy"[37m;
+          ╵                                    [32m~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ExecutionStrategy.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:10:26:
+  [37m      10 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:13:28:
+  [37m      13 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:15:25:
+  [37m      15 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/Url.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/UrlParams.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/fetchHttpClient.js:2:26:
+  [37m      2 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpApp.js:2:26:
+  [37m      2 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpApp.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClient.js:4:26:
+  [37m      4 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClient.js:6:28:
+  [37m      6 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClientRequest.js:2:24:
+  [37m      2 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpMiddleware.js:3:26:
+  [37m      3 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpMiddleware.js:6:28:
+  [37m      6 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpRouter.js:5:26:
+  [37m      5 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpRouter.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpServerError.js:3:25:
+  [37m      3 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpServerError.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/keyValueStore.js:3:24:
+  [37m      3 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/DefaultServices"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/platformConfigProvider.js:3:33:
+  [37m      3 │ import * as DefaultServices from [32m"effect/DefaultServices"[37m;
+          ╵                                  [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/DefaultServices.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/platformConfigProvider.js:5:26:
+  [37m      5 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/worker.js:6:26:
+  [37m      6 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/worker.js:10:25:
+  [37m      10 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/workerRunner.js:6:24:
+  [37m      6 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/workerRunner.js:8:25:
+  [37m      8 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/rpc/dist/esm/Rpc.js:2:28:
+  [37m      2 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:17:25:
+  [37m      17 │ import * as FiberId from [32m"effect/FiberId"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:18:26:
+  [37m      18 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:20:28:
+  [37m      20 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:22:25:
+  [37m      22 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcServer.js:21:25:
+  [37m      21 │ import * as FiberId from [32m"effect/FiberId"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcServer.js:25:25:
+  [37m      25 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 70 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/ai/dist/esm/LanguageModel.js:54:25:
+  [37m      54 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/ai/dist/esm/McpServer.js:16:25:
+  [37m      16 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Arbitrary"[0m
+  
+      node_modules/@effect/ai/dist/esm/Prompt.js:54:27:
+  [37m      54 │ import * as Arbitrary from [32m"effect/Arbitrary"[37m;
+           ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Arbitrary.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/DevTools/Client.js:13:25:
+  [37m      13 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/MetricState"[0m
+  
+      node_modules/@effect/experimental/dist/esm/DevTools/Client.js:15:29:
+  [37m      15 │ import * as MetricState from [32m"effect/MetricState"[37m;
+           ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/MetricState.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/experimental/dist/esm/EventLog.js:6:26:
+  [37m      6 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/EventLogRemote.js:10:25:
+  [37m      10 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/EventLogServer.js:9:25:
+  [37m      9 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:11:26:
+  [37m      11 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:12:27:
+  [37m      12 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+           ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:15:28:
+  [37m      15 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Readable"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:20:26:
+  [37m      20 │ import * as Readable from [32m"effect/Readable"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Readable.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Subscribable"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Machine.js:23:30:
+  [37m      23 │ import * as Subscribable from [32m"effect/Subscribable"[37m;
+           ╵                               [32m~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Subscribable.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Reactivity.js:11:25:
+  [37m      11 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/experimental/dist/esm/RequestResolver.js:6:24:
+  [37m      6 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/experimental/dist/esm/Sse.js:9:25:
+  [37m      9 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpLogger.js:6:25:
+  [37m      6 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpLogger.js:7:26:
+  [37m      7 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpLogger.js:8:27:
+  [37m      8 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/MetricState"[0m
+  
+      node_modules/@effect/opentelemetry/dist/esm/OtlpMetrics.js:6:29:
+  [37m      6 │ import * as MetricState from [32m"effect/MetricState"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/MetricState.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/Cookies.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:4:26:
+  [37m      4 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:5:27:
+  [37m      5 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiBuilder.js:11:28:
+  [37m      11 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiClient.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiSchema.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApp.js:9:29:
+  [37m      9 │ import * as GlobalValue from [32m"effect/GlobalValue"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpLayerRouter.js:9:26:
+  [37m      9 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpServerRequest.js:2:24:
+  [37m      2 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/Multipart.js:8:25:
+  [37m      8 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/OpenApi.js:3:28:
+  [37m      3 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ConfigError"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:6:29:
+  [37m      6 │ import * as ConfigError from [32m"effect/ConfigError"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ConfigError.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ConfigProviderPathPatch"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:8:27:
+  [37m      8 │ import * as PathPatch from [32m"effect/ConfigProviderPathPatch"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ConfigProviderPathPatch.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/DefaultServices"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:10:33:
+  [37m      10 │ import * as DefaultServices from [32m"effect/DefaultServices"[37m;
+           ╵                                  [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/DefaultServices.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:12:24:
+  [37m      12 │ import * as Either from [32m"effect/Either"[37m;
+           ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Runtime.js:7:26:
+  [37m      7 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/platform/dist/esm/Runtime.js:8:27:
+  [37m      8 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ExecutionStrategy"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:8:35:
+  [37m      8 │ import * as ExecutionStrategy from [32m"effect/ExecutionStrategy"[37m;
+          ╵                                    [32m~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ExecutionStrategy.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:10:26:
+  [37m      10 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:13:28:
+  [37m      13 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:15:25:
+  [37m      15 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/Url.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/UrlParams.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/fetchHttpClient.js:2:26:
+  [37m      2 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpApp.js:2:26:
+  [37m      2 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpApp.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClient.js:4:26:
+  [37m      4 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClient.js:6:28:
+  [37m      6 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClientRequest.js:2:24:
+  [37m      2 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpMiddleware.js:3:26:
+  [37m      3 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpMiddleware.js:6:28:
+  [37m      6 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpRouter.js:5:26:
+  [37m      5 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpRouter.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpServerError.js:3:25:
+  [37m      3 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpServerError.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/keyValueStore.js:3:24:
+  [37m      3 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/DefaultServices"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/platformConfigProvider.js:3:33:
+  [37m      3 │ import * as DefaultServices from [32m"effect/DefaultServices"[37m;
+          ╵                                  [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/DefaultServices.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/platformConfigProvider.js:5:26:
+  [37m      5 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/worker.js:6:26:
+  [37m      6 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/worker.js:10:25:
+  [37m      10 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/workerRunner.js:6:24:
+  [37m      6 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/workerRunner.js:8:25:
+  [37m      8 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/rpc/dist/esm/Rpc.js:2:28:
+  [37m      2 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:17:25:
+  [37m      17 │ import * as FiberId from [32m"effect/FiberId"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:18:26:
+  [37m      18 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:20:28:
+  [37m      20 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:22:25:
+  [37m      22 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcServer.js:21:25:
+  [37m      21 │ import * as FiberId from [32m"effect/FiberId"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcServer.js:25:25:
+  [37m      25 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mInvalid TOML document: only letter, numbers, dashes and underscores are allowed in keys[0m
+
+    E:\Projects\kbgui\wrangler.toml:41:0:
+[37m      41 │ [32m[37meffect/ParseResult = ./src/lib/shims/effect-parse-result.ts
+         ╵ [32m^[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mInvalid TOML document: found extra tokens after the string part[0m
+
+    E:\Projects\kbgui\wrangler.toml:43:2:
+[37m      43 │ ""[32m[37meffect/Arbitrary"" = ""./node_modules/effect-v3/dist/esm/Arbitra...
+         ╵   [32m^[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 37 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "STM"[0m
+  
+      node_modules/@livestore/utils/dist/effect/BucketQueue.js:1:24:
+  [37m      1 │ import { Array, Effect, [32mSTM[37m, TRef } from 'effect';
+          ╵                         [32m~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/BucketQueue.js:1:29:
+  [37m      1 │ import { Array, Effect, STM, [32mTRef[37m } from 'effect';
+          │                              [32m~~~~[37m
+          ╵                              [32mTxRef[0m
+  
+    Did you mean to import "TxRef" instead?
+  
+      node_modules/effect/dist/index.js:4060:12:
+  [37m      4060 │ export * as [32mTxRef[37m from "./TxRef.js";
+             ╵             [32m~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/Schema/index.js:2:23:
+  [37m      2 │ import { Effect, Hash, [32mParseResult[37m, Schema } from 'effect';
+          ╵                        [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Readable"[0m
+  
+      node_modules/@livestore/utils/dist/effect/Subscribable.js:2:29:
+  [37m      2 │ import { Effect, Effectable, [32mReadable[37m, Stream } from 'effect';
+          ╵                              [32m~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/WebChannel/WebChannel.js:1:19:
+  [37m      1 │ import { Deferred, [32mEither[37m, Exit, GlobalValue, identity, Option, Pub...
+          ╵                    [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "GlobalValue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/WebChannel/WebChannel.js:1:33:
+  [37m      1 │ ... { Deferred, Either, Exit, [32mGlobalValue[37m, identity, Option, PubSub...
+          ╵                               [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ConfigError"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:78:
+  [37m      11 │ ..., Channel, Chunk, Config, [32mConfigError[37m, ConfigProvider, Console,...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ExecutionStrategy"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:166:
+  [37m      11 │ ...ration, Either, Equal, [32mExecutionStrategy[37m, Exit, FastCheck, Fibe...
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FastCheck"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:191:
+  [37m      11 │ ..., ExecutionStrategy, Exit, [32mFastCheck[37m, Fiber, FiberHandle, Fiber...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberId"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:222:
+  [37m      11 │ ...tCheck, Fiber, FiberHandle, [32mFiberId[37m, FiberMap, FiberRef, FiberR...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:241:
+  [37m      11 │ ...rHandle, FiberId, FiberMap, [32mFiberRef[37m, FiberRefs, FiberRefsPatch...
+           ╵                                [32m~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRefs"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:251:
+  [37m      11 │ ...berId, FiberMap, FiberRef, [32mFiberRefs[37m, FiberRefsPatch, FiberSet,...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRefsPatch"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:262:
+  [37m      11 │ ...ap, FiberRef, FiberRefs, [32mFiberRefsPatch[37m, FiberSet, GlobalValue,...
+           ╵                             [32m~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "GlobalValue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:288:
+  [37m      11 │ ...FiberRefsPatch, FiberSet, [32mGlobalValue[37m, Hash, HashMap, HashSet, ...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "List"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:355:
+  [37m      11 │ ...Inspectable, identity, Layer, [32mList[37m, LogLevel, LogSpan, Mailbox,...
+           ╵                                  [32m~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "LogSpan"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:371:
+  [37m      11 │ ...ity, Layer, List, LogLevel, [32mLogSpan[37m, Mailbox, ManagedRuntime, M...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Mailbox"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:380:
+  [37m      11 │ ...r, List, LogLevel, LogSpan, [32mMailbox[37m, ManagedRuntime, Match, Met...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Mailbox"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:380:
+  [37m      11 │ ...r, List, LogLevel, LogSpan, [32mMailbox[37m, ManagedRuntime, Match, Met...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Mailbox"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:380:
+  [37m      11 │ ...r, List, LogLevel, LogSpan, [32mMailbox[37m, ManagedRuntime, Match, Met...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "MetricState"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:420:
+  [37m      11 │ ...edRuntime, Match, Metric, [32mMetricState[37m, MutableHashMap, MutableH...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:480:
+  [37m      11 │ ...leHashSet, Option, Order, [32mParseResult[37m, Predicate, Pretty, Prima...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:480:
+  [37m      11 │ ...leHashSet, Option, Order, [32mParseResult[37m, Predicate, Pretty, Prima...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:480:
+  [37m      11 │ ...leHashSet, Option, Order, [32mParseResult[37m, Predicate, Pretty, Prima...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Pretty"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:504:
+  [37m      11 │ ...ption, Order, ParseResult, Predicate, [32mPretty[37m, PrimaryKey, PubSub, 
+           ╵                                          [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "RuntimeFlags"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:86:
+  [37m      13 │ ...d, Ref, Request, Runtime, [32mRuntimeFlags[37m, Scope, ScopedRef, Sink,...
+           ╵                              [32m~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "SortedMap"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:124:
+  [37m      13 │ ...s, Scope, ScopedRef, Sink, [32mSortedMap[37m, STM, SynchronizedRef, Tes...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "STM"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:135:
+  [37m      13 │ ..., ScopedRef, Sink, SortedMap, [32mSTM[37m, SynchronizedRef, TestClock, ...
+           ╵                                  [32m~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TestClock"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:157:
+  [37m      13 │ ...Map, STM, SynchronizedRef, [32mTestClock[37m, TestServices, TQueue, TRe...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TestServices"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:168:
+  [37m      13 │ ...nchronizedRef, TestClock, [32mTestServices[37m, TQueue, TRef, Tracer, T...
+           ╵                              [32m~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TQueue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:182:
+  [37m      13 │ ...ef, TestClock, TestServices, [32mTQueue[37m, TRef, Tracer, Types, } fro...
+           │                                 [32m~~~~~~[37m
+           ╵                                 [32mTxQueue[0m
+  
+    Did you mean to import "TxQueue" instead?
+  
+      node_modules/effect/dist/index.js:4040:12:
+  [37m      4040 │ export * as [32mTxQueue[37m from "./TxQueue.js";
+             ╵             [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TQueue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:182:
+  [37m      13 │ ...ef, TestClock, TestServices, [32mTQueue[37m, TRef, Tracer, Types, } fro...
+           │                                 [32m~~~~~~[37m
+           ╵                                 [32mTxQueue[0m
+  
+    Did you mean to import "TxQueue" instead?
+  
+      node_modules/effect/dist/index.js:4040:12:
+  [37m      4040 │ export * as [32mTxQueue[37m from "./TxQueue.js";
+             ╵             [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:190:
+  [37m      13 │ ...tClock, TestServices, TQueue, [32mTRef[37m, Tracer, Types, } from 'effe...
+           │                                  [32m~~~~[37m
+           ╵                                  [32mTxRef[0m
+  
+    Did you mean to import "TxRef" instead?
+  
+      node_modules/effect/dist/index.js:4060:12:
+  [37m      4060 │ export * as [32mTxRef[37m from "./TxRef.js";
+             ╵             [32m~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/spanEvent.js:1:17:
+  [37m      1 │ import { Effect, [32mFiberRef[37m, HashSet, Logger } from 'effect';
+          ╵                  [32m~~~~~~~~[0m
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 9 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/0.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:15:23:
+  [37m      15 │       __memo(() => import([32m'../output/server/nodes/0.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/1.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:16:23:
+  [37m      16 │       __memo(() => import([32m'../output/server/nodes/1.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/2.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:17:23:
+  [37m      17 │       __memo(() => import([32m'../output/server/nodes/2.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/3.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:18:23:
+  [37m      18 │       __memo(() => import([32m'../output/server/nodes/3.js'[37m))
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/chunks/remote-viflc.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:21:32:
+  [37m      21 │ ...': __memo(() => import([32m'../output/server/chunks/remote-viflc.js'[37m))
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/entries/endpoints/api/agent/snapshot/_server.ts.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:36:34:
+  [37m      36 │ ...=> import([32m'../output/server/entries/endpoints/api/agent/snapsho[37m...
+           ╵              [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/entries/endpoints/api/auth/_...all_/_server.ts.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:43:34:
+  [37m      43 │ ...=> import([32m'../output/server/entries/endpoints/api/auth/_...all_[37m...
+           ╵              [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/entries/endpoints/api/livestore/_server.ts.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:50:34:
+  [37m      50 │ ...=> import([32m'../output/server/entries/endpoints/api/livestore/_se[37m...
+           ╵              [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "./../output/server/index.js"[0m
+  
+      .svelte-kit/cloudflare/_worker.js:2:23:
+  [37m      2 │ import { Server } from [32m"./../output/server/index.js"[37m;
+          ╵                        [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 4 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/0.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:15:23:
+  [37m      15 │       __memo(() => import([32m'../output/server/nodes/0.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/1.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:16:23:
+  [37m      16 │       __memo(() => import([32m'../output/server/nodes/1.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/2.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:17:23:
+  [37m      17 │       __memo(() => import([32m'../output/server/nodes/2.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/3.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:18:23:
+  [37m      18 │       __memo(() => import([32m'../output/server/nodes/3.js'[37m))
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 9 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/0.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:15:23:
+  [37m      15 │       __memo(() => import([32m'../output/server/nodes/0.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/1.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:16:23:
+  [37m      16 │       __memo(() => import([32m'../output/server/nodes/1.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/2.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:17:23:
+  [37m      17 │       __memo(() => import([32m'../output/server/nodes/2.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/3.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:18:23:
+  [37m      18 │       __memo(() => import([32m'../output/server/nodes/3.js'[37m))
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/chunks/remote-viflc.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:21:32:
+  [37m      21 │ ...': __memo(() => import([32m'../output/server/chunks/remote-viflc.js'[37m))
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/entries/endpoints/api/agent/snapshot/_server.ts.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:36:34:
+  [37m      36 │ ...=> import([32m'../output/server/entries/endpoints/api/agent/snapsho[37m...
+           ╵              [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/entries/endpoints/api/auth/_...all_/_server.ts.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:43:34:
+  [37m      43 │ ...=> import([32m'../output/server/entries/endpoints/api/auth/_...all_[37m...
+           ╵              [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/entries/endpoints/api/livestore/_server.ts.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:50:34:
+  [37m      50 │ ...=> import([32m'../output/server/entries/endpoints/api/livestore/_se[37m...
+           ╵              [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "./../output/server/index.js"[0m
+  
+      .svelte-kit/cloudflare/_worker.js:2:23:
+  [37m      2 │ import { Server } from [32m"./../output/server/index.js"[37m;
+          ╵                        [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 4 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/0.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:15:23:
+  [37m      15 │       __memo(() => import([32m'../output/server/nodes/0.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/1.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:16:23:
+  [37m      16 │       __memo(() => import([32m'../output/server/nodes/1.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/2.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:17:23:
+  [37m      17 │       __memo(() => import([32m'../output/server/nodes/2.js'[37m)),
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "../output/server/nodes/3.js"[0m
+  
+      .svelte-kit/cloudflare-tmp/manifest.js:18:23:
+  [37m      18 │       __memo(() => import([32m'../output/server/nodes/3.js'[37m))
+           ╵                           [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mENOENT: no such file or directory, stat 'E:\Projects\kbgui\.svelte-kit\cloudflare\_app\remote'[0m
+
+
+🪵  Logs were written to "C:\Users\jonfo\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-05-15_10-28-40_750.log"
+
+  
+      node_modules/@effect/platform/dist/esm/Cookies.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:4:26:
+  [37m      4 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:5:27:
+  [37m      5 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/Headers.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiBuilder.js:11:28:
+  [37m      11 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiClient.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApiSchema.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpApp.js:9:29:
+  [37m      9 │ import * as GlobalValue from [32m"effect/GlobalValue"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpLayerRouter.js:9:26:
+  [37m      9 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/HttpServerRequest.js:2:24:
+  [37m      2 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/Multipart.js:8:25:
+  [37m      8 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/OpenApi.js:3:28:
+  [37m      3 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ConfigError"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:6:29:
+  [37m      6 │ import * as ConfigError from [32m"effect/ConfigError"[37m;
+          ╵                              [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ConfigError.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ConfigProviderPathPatch"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:8:27:
+  [37m      8 │ import * as PathPatch from [32m"effect/ConfigProviderPathPatch"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ConfigProviderPathPatch.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/DefaultServices"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:10:33:
+  [37m      10 │ import * as DefaultServices from [32m"effect/DefaultServices"[37m;
+           ╵                                  [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/DefaultServices.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/PlatformConfigProvider.js:12:24:
+  [37m      12 │ import * as Either from [32m"effect/Either"[37m;
+           ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Runtime.js:7:26:
+  [37m      7 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRefs"[0m
+  
+      node_modules/@effect/platform/dist/esm/Runtime.js:8:27:
+  [37m      8 │ import * as FiberRefs from [32m"effect/FiberRefs"[37m;
+          ╵                            [32m~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRefs.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/ExecutionStrategy"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:8:35:
+  [37m      8 │ import * as ExecutionStrategy from [32m"effect/ExecutionStrategy"[37m;
+          ╵                                    [32m~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/ExecutionStrategy.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:10:26:
+  [37m      10 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:13:28:
+  [37m      13 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/Socket.js:15:25:
+  [37m      15 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/Url.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/UrlParams.js:5:24:
+  [37m      5 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/fetchHttpClient.js:2:26:
+  [37m      2 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpApp.js:2:26:
+  [37m      2 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpApp.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClient.js:4:26:
+  [37m      4 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClient.js:6:28:
+  [37m      6 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpClientRequest.js:2:24:
+  [37m      2 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpMiddleware.js:3:26:
+  [37m      3 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpMiddleware.js:6:28:
+  [37m      6 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpRouter.js:5:26:
+  [37m      5 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpRouter.js:7:28:
+  [37m      7 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpServerError.js:3:25:
+  [37m      3 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/httpServerError.js:4:28:
+  [37m      4 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/keyValueStore.js:3:24:
+  [37m      3 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/DefaultServices"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/platformConfigProvider.js:3:33:
+  [37m      3 │ import * as DefaultServices from [32m"effect/DefaultServices"[37m;
+          ╵                                  [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/DefaultServices.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/platformConfigProvider.js:5:26:
+  [37m      5 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/worker.js:6:26:
+  [37m      6 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+          ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/worker.js:10:25:
+  [37m      10 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Either"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/workerRunner.js:6:24:
+  [37m      6 │ import * as Either from [32m"effect/Either"[37m;
+          ╵                         [32m~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Either.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/platform/dist/esm/internal/workerRunner.js:8:25:
+  [37m      8 │ import * as FiberId from [32m"effect/FiberId"[37m;
+          ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/rpc/dist/esm/Rpc.js:2:28:
+  [37m      2 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+          ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:17:25:
+  [37m      17 │ import * as FiberId from [32m"effect/FiberId"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberRef"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:18:26:
+  [37m      18 │ import * as FiberRef from [32m"effect/FiberRef"[37m;
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberRef.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/GlobalValue"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:20:28:
+  [37m      20 │ import { globalValue } from [32m"effect/GlobalValue"[37m;
+           ╵                             [32m~~~~~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/GlobalValue.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcClient.js:22:25:
+  [37m      22 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/FiberId"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcServer.js:21:25:
+  [37m      21 │ import * as FiberId from [32m"effect/FiberId"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/FiberId.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "effect/Mailbox"[0m
+  
+      node_modules/@effect/rpc/dist/esm/RpcServer.js:25:25:
+  [37m      25 │ import * as Mailbox from [32m"effect/Mailbox"[37m;
+           ╵                          [32m~~~~~~~~~~~~~~~~[0m
+  
+    The module "./dist/Mailbox.js" was not found on the file system:
+  
+      node_modules/effect/package.json:51:11:
+  [37m      51 │     "./*": [32m"./dist/*.js"[37m,
+           ╵            [32m~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mInvalid TOML document: only letter, numbers, dashes and underscores are allowed in keys[0m
+
+    E:\Projects\kbgui\wrangler.toml:41:0:
+[37m      41 │ [32m[37meffect/ParseResult = ./src/lib/shims/effect-parse-result.ts
+         ╵ [32m^[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mInvalid TOML document: found extra tokens after the string part[0m
+
+    E:\Projects\kbgui\wrangler.toml:43:2:
+[37m      43 │ ""[32m[37meffect/Arbitrary"" = ""./node_modules/effect-v3/dist/esm/Arbitra...
+         ╵   [32m^[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 37 errors:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "STM"[0m
+  
+      node_modules/@livestore/utils/dist/effect/BucketQueue.js:1:24:
+  [37m      1 │ import { Array, Effect, [32mSTM[37m, TRef } from 'effect';
+          ╵                         [32m~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/BucketQueue.js:1:29:
+  [37m      1 │ import { Array, Effect, STM, [32mTRef[37m } from 'effect';
+          │                              [32m~~~~[37m
+          ╵                              [32mTxRef[0m
+  
+    Did you mean to import "TxRef" instead?
+  
+      node_modules/effect/dist/index.js:4060:12:
+  [37m      4060 │ export * as [32mTxRef[37m from "./TxRef.js";
+             ╵             [32m~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/Schema/index.js:2:23:
+  [37m      2 │ import { Effect, Hash, [32mParseResult[37m, Schema } from 'effect';
+          ╵                        [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Readable"[0m
+  
+      node_modules/@livestore/utils/dist/effect/Subscribable.js:2:29:
+  [37m      2 │ import { Effect, Effectable, [32mReadable[37m, Stream } from 'effect';
+          ╵                              [32m~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/WebChannel/WebChannel.js:1:19:
+  [37m      1 │ import { Deferred, [32mEither[37m, Exit, GlobalValue, identity, Option, Pub...
+          ╵                    [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "GlobalValue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/WebChannel/WebChannel.js:1:33:
+  [37m      1 │ ... { Deferred, Either, Exit, [32mGlobalValue[37m, identity, Option, PubSub...
+          ╵                               [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ConfigError"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:78:
+  [37m      11 │ ..., Channel, Chunk, Config, [32mConfigError[37m, ConfigProvider, Console,...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Either"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:151:
+  [37m      11 │ ...t, Data, Deferred, Duration, [32mEither[37m, Equal, ExecutionStrategy, ...
+           ╵                                 [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ExecutionStrategy"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:166:
+  [37m      11 │ ...ration, Either, Equal, [32mExecutionStrategy[37m, Exit, FastCheck, Fibe...
+           ╵                           [32m~~~~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FastCheck"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:191:
+  [37m      11 │ ..., ExecutionStrategy, Exit, [32mFastCheck[37m, Fiber, FiberHandle, Fiber...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberId"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:222:
+  [37m      11 │ ...tCheck, Fiber, FiberHandle, [32mFiberId[37m, FiberMap, FiberRef, FiberR...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:241:
+  [37m      11 │ ...rHandle, FiberId, FiberMap, [32mFiberRef[37m, FiberRefs, FiberRefsPatch...
+           ╵                                [32m~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRefs"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:251:
+  [37m      11 │ ...berId, FiberMap, FiberRef, [32mFiberRefs[37m, FiberRefsPatch, FiberSet,...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRefsPatch"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:262:
+  [37m      11 │ ...ap, FiberRef, FiberRefs, [32mFiberRefsPatch[37m, FiberSet, GlobalValue,...
+           ╵                             [32m~~~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "GlobalValue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:288:
+  [37m      11 │ ...FiberRefsPatch, FiberSet, [32mGlobalValue[37m, Hash, HashMap, HashSet, ...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "List"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:355:
+  [37m      11 │ ...Inspectable, identity, Layer, [32mList[37m, LogLevel, LogSpan, Mailbox,...
+           ╵                                  [32m~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "LogSpan"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:371:
+  [37m      11 │ ...ity, Layer, List, LogLevel, [32mLogSpan[37m, Mailbox, ManagedRuntime, M...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Mailbox"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:380:
+  [37m      11 │ ...r, List, LogLevel, LogSpan, [32mMailbox[37m, ManagedRuntime, Match, Met...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Mailbox"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:380:
+  [37m      11 │ ...r, List, LogLevel, LogSpan, [32mMailbox[37m, ManagedRuntime, Match, Met...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Mailbox"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:380:
+  [37m      11 │ ...r, List, LogLevel, LogSpan, [32mMailbox[37m, ManagedRuntime, Match, Met...
+           ╵                                [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "MetricState"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:420:
+  [37m      11 │ ...edRuntime, Match, Metric, [32mMetricState[37m, MutableHashMap, MutableH...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:480:
+  [37m      11 │ ...leHashSet, Option, Order, [32mParseResult[37m, Predicate, Pretty, Prima...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:480:
+  [37m      11 │ ...leHashSet, Option, Order, [32mParseResult[37m, Predicate, Pretty, Prima...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "ParseResult"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:480:
+  [37m      11 │ ...leHashSet, Option, Order, [32mParseResult[37m, Predicate, Pretty, Prima...
+           ╵                              [32m~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "Pretty"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:11:504:
+  [37m      11 │ ...ption, Order, ParseResult, Predicate, [32mPretty[37m, PrimaryKey, PubSub, 
+           ╵                                          [32m~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "RuntimeFlags"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:86:
+  [37m      13 │ ...d, Ref, Request, Runtime, [32mRuntimeFlags[37m, Scope, ScopedRef, Sink,...
+           ╵                              [32m~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "SortedMap"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:124:
+  [37m      13 │ ...s, Scope, ScopedRef, Sink, [32mSortedMap[37m, STM, SynchronizedRef, Tes...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "STM"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:135:
+  [37m      13 │ ..., ScopedRef, Sink, SortedMap, [32mSTM[37m, SynchronizedRef, TestClock, ...
+           ╵                                  [32m~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TestClock"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:157:
+  [37m      13 │ ...Map, STM, SynchronizedRef, [32mTestClock[37m, TestServices, TQueue, TRe...
+           ╵                               [32m~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TestServices"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:168:
+  [37m      13 │ ...nchronizedRef, TestClock, [32mTestServices[37m, TQueue, TRef, Tracer, T...
+           ╵                              [32m~~~~~~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TQueue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:182:
+  [37m      13 │ ...ef, TestClock, TestServices, [32mTQueue[37m, TRef, Tracer, Types, } fro...
+           │                                 [32m~~~~~~[37m
+           ╵                                 [32mTxQueue[0m
+  
+    Did you mean to import "TxQueue" instead?
+  
+      node_modules/effect/dist/index.js:4040:12:
+  [37m      4040 │ export * as [32mTxQueue[37m from "./TxQueue.js";
+             ╵             [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TQueue"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:182:
+  [37m      13 │ ...ef, TestClock, TestServices, [32mTQueue[37m, TRef, Tracer, Types, } fro...
+           │                                 [32m~~~~~~[37m
+           ╵                                 [32mTxQueue[0m
+  
+    Did you mean to import "TxQueue" instead?
+  
+      node_modules/effect/dist/index.js:4040:12:
+  [37m      4040 │ export * as [32mTxQueue[37m from "./TxQueue.js";
+             ╵             [32m~~~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "TRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/mod.js:13:190:
+  [37m      13 │ ...tClock, TestServices, TQueue, [32mTRef[37m, Tracer, Types, } from 'effe...
+           │                                  [32m~~~~[37m
+           ╵                                  [32mTxRef[0m
+  
+    Did you mean to import "TxRef" instead?
+  
+      node_modules/effect/dist/index.js:4060:12:
+  [37m      4060 │ export * as [32mTxRef[37m from "./TxRef.js";
+             ╵             [32m~~~~~[0m
+  
+  
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "node_modules/effect/dist/index.js" for import "FiberRef"[0m
+  
+      node_modules/@livestore/utils/dist/effect/spanEvent.js:1:17:
+  [37m      1 │ import { Effect, [32mFiberRef[37m, HashSet, Logger } from 'effect';
+          ╵                  [32m~~~~~~~~[0m
+  
+  
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mIgnoring this import because "node_modules/sqlocal/dist/index.js" was marked as having no side effects[0m [ignored-bare-import]
+
+    .svelte-kit/output/server/entries/pages/_page.svelte.js:13:7:
+[37m      13 │ import [32m"sqlocal"[37m;
+         ╵        [32m~~~~~~~~~[0m
+
+  "sideEffects" is false in the enclosing "package.json" file:
+
+    node_modules/sqlocal/package.json:44:1:
+[37m      44 │   [32m"sideEffects"[37m: false,
+         ╵   [32m~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mThe Workers runtime failed to start. There is likely additional logging output above.[0m
+
+
+🪵  Logs were written to "C:\Users\jonfo\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-05-15_10-25-27_505.log"

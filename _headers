@@ -1,0 +1,11 @@
+# Static response headers — copied verbatim by adapter-cloudflare into the
+# worker output, merged with SvelteKit's auto-generated immutable-asset
+# section. Edit here; rebuild to ship.
+#
+# Cross-origin isolation: COOP=same-origin + COEP=require-corp lets us use
+# SharedArrayBuffer / OPFS / threaded WASM in the browser (sqlocal, future
+# audio/perf features). Applied to every route — it's a page-level setting,
+# not API-specific — and harmless on routes that don't need it.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

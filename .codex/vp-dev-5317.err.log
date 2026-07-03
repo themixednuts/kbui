@@ -1,0 +1,58 @@
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1m				You have defined bindings to the following internal Durable Objects:[0m
+
+  				- {"name":"UserWorkbenchAgent","class_name":"UserWorkbenchAgent"}
+  - {"name":"AuthAgent","class_name":"AuthAgent"}
+  				These will not work in local development, but they should work in production.
+  
+  				If you want to develop these locally, you can define your DO in a separate Worker, with a separate configuration file.
+  				For detailed instructions, refer to the Durable Objects section here: [4mhttps://developers.cloudflare.com/workers/wrangler/api#supported-bindings[0m
+
+
+workerd/server/server.c++:1967: warning: A DurableObjectNamespace in the config referenced the class "AuthAgent", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.
+workerd/server/server.c++:1967: warning: A DurableObjectNamespace in the config referenced the class "UserWorkbenchAgent", but no such Durable Object class is exported from the worker. Please make sure the class name matches, it is exported, and the class extends 'DurableObject'. Attempts to call to this Durable Object class will fail at runtime, but historically this was not a startup-time error. Future versions of workerd may make this a startup-time error.
+[2m4:36:19 AM[22m [31m[1m[vite+][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mDataCloneError[22m: Failed to execute 'structuredClone' on 'Window': #<Object> could not be cloned.
+[39m > cloneDevice src/lib/keyboard/schema.ts:654:9
+    652 |  
+    653 |  export function cloneDevice(device: DeviceProfile): DeviceProfile {
+    654 |    return structuredClone(device);
+        |           ^
+    655 |  }
+    656 |  
+ > HTMLButtonElement.resetDraft src/routes/+page.svelte:351:13
+ > HTMLDivElement.handle_event_propagation node_modules/svelte/src/internal/client/dom/elements/events.js:278:15
+
+[2m4:36:37 AM[22m [31m[1m[vite+][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mDataCloneError[22m: Failed to execute 'structuredClone' on 'Window': #<Object> could not be cloned.
+[39m > cloneDevice src/lib/keyboard/schema.ts:654:9
+    652 |  
+    653 |  export function cloneDevice(device: DeviceProfile): DeviceProfile {
+    654 |    return structuredClone(device);
+        |           ^
+    655 |  }
+    656 |  
+ > HTMLButtonElement.resetDraft src/routes/+page.svelte:351:13
+ > HTMLDivElement.handle_event_propagation node_modules/svelte/src/internal/client/dom/elements/events.js:278:15
+
+[2m4:38:23 AM[22m [31m[1m[vite+][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mDataCloneError[22m: Failed to execute 'structuredClone' on 'Window': #<Object> could not be cloned.
+[39m > cloneDevice src/lib/keyboard/schema.ts:654:9
+    652 |  
+    653 |  export function cloneDevice(device: DeviceProfile): DeviceProfile {
+    654 |    return structuredClone(device);
+        |           ^
+    655 |  }
+    656 |  
+ > resetDraft src/routes/+page.svelte:351:13
+ > HTMLButtonElement.click_9 src/routes/+page.svelte:527:64
+ > HTMLDivElement.handle_event_propagation node_modules/svelte/src/internal/client/dom/elements/events.js:278:15
+
+[2m4:38:42 AM[22m [31m[1m[vite+][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mDataCloneError[22m: Failed to execute 'structuredClone' on 'Window': #<Object> could not be cloned.
+[39m > cloneDevice src/lib/keyboard/schema.ts:654:9
+    652 |  
+    653 |  export function cloneDevice(device: DeviceProfile): DeviceProfile {
+    654 |    return structuredClone(device);
+        |           ^
+    655 |  }
+    656 |  
+ > resetDraft src/routes/+page.svelte:351:13
+ > HTMLButtonElement.click_19 src/routes/+page.svelte:745:72
+ > HTMLDivElement.handle_event_propagation node_modules/svelte/src/internal/client/dom/elements/events.js:278:15
+

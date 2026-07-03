@@ -1,0 +1,79 @@
+
+ ⛅️ wrangler 4.87.0 (update available 4.91.0)
+─────────────────────────────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.UserWorkbenchAgent (UserWorkbenchAgent)        Durable Object            local
+env.AuthAgent (AuthAgent)                          Durable Object            local
+env.LiveStoreSyncDO (LiveStoreSyncDO)              Durable Object            local
+env.ASSETS                                         Assets                    local
+env.BETTER_AUTH_SECRET ("(hidden)")                Environment Variable      local
+env.BETTER_AUTH_URL ("(hidden)")                   Environment Variable      local
+env.GITHUB_CLIENT_ID ("(hidden)")                  Environment Variable      local
+env.GITHUB_CLIENT_SECRET ("(hidden)")              Environment Variable      local
+
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.UserWorkbenchAgent (UserWorkbenchAgent)        Durable Object            local
+env.AuthAgent (AuthAgent)                          Durable Object            local
+env.LiveStoreSyncDO (LiveStoreSyncDO)              Durable Object            local
+env.ASSETS                                         Assets                    local
+env.BETTER_AUTH_SECRET ("(hidden)")                Environment Variable      local
+env.BETTER_AUTH_URL ("(hidden)")                   Environment Variable      local
+env.GITHUB_CLIENT_ID ("(hidden)")                  Environment Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding            Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.UserWorkbenchAgent (UserWorkbenchAgent)        Durable Object            local
+env.AuthAgent (AuthAgent)                          Durable Object            local
+env.LiveStoreSyncDO (LiveStoreSyncDO)              Durable Object            local
+env.ASSETS                                         Assets                    local
+env.BETTER_AUTH_SECRET ("(hidden)")                Environment Variable      local
+env.BETTER_AUTH_URL ("(hidden)")                   Environment Variable      local
+env.GITHUB_CLIENT_ID ("(hidden)")                  Environment Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding            Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.UserWorkbenchAgent (UserWorkbenchAgent)        Durable Object            local
+env.AuthAgent (AuthAgent)                          Durable Object            local
+env.LiveStoreSyncDO (LiveStoreSyncDO)              Durable Object            local
+env.ASSETS                                         Assets                    local
+env.BETTER_AUTH_SECRET ("(hidden)")                Environment Variable      local
+env.BETTER_AUTH_URL ("(hidden)")                   Environment Variable      local
+env.GITHUB_CLIENT_ID ("(hidden)")                  Environment Variable      local
+env.GITHUB_CLIENT_SECRET ("(hidden)")              Environment Variable      local
+
+⎔ Starting local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+[wrangler:info] Ready on http://127.0.0.1:8787
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 3 valid header rules.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+
+[32mIf you think this is a bug then please create an issue at https://github.com/cloudflare/workers-sdk/issues/new/choose[0m
+Note that there is a newer version of Wrangler available (4.91.0). Consider checking whether upgrading resolves this error.
+? Would you like to report this error to Cloudflare? Wrangler's output and the error details will be shared with the Wrangler team to help us diagnose and fix the issue.
+🤖 Using fallback value in non-interactive context: no
+⎔ Reloading local server...
+s diagnose and fix the issue.
+🤖 Using fallback value in non-interactive context: no

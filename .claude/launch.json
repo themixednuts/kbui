@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vite",
+      "runtimeExecutable": "vp",
+      "runtimeArgs": ["dev"],
+      "port": 5173
+    },
+    {
+      "name": "storybook",
+      "runtimeExecutable": "vp",
+      "runtimeArgs": ["run", "storybook"],
+      "port": 6006
+    },
+    {
+      "name": "dev:worker",
+      "runtimeExecutable": "vp",
+      "runtimeArgs": ["run", "dev:worker"],
+      "port": 8787
+    }
+  ]
+}
