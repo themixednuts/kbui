@@ -46,6 +46,10 @@ export default defineConfig({
         command: "vp test",
         cache: false,
       },
+      "subset:material-symbols": {
+        command: "python scripts/subset-material-symbols.py",
+        cache: false,
+      },
       storybook: {
         command: "storybook dev -p 6006",
         cache: false,

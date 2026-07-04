@@ -296,7 +296,7 @@
             disabled={busy}
             onclick={disconnectDevice}
           >
-            <span class="option-icon material-symbols-outlined" aria-hidden="true">cable_off</span>
+            <span class="option-icon material-symbols-outlined" aria-hidden="true">link_off</span>
             <span class="option-copy">
               <strong>{busyAction === "disconnect" ? "Disconnecting device" : "Disconnect device"}</strong>
               <small>Keep the current draft and stop live VIA writes</small>

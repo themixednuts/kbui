@@ -36,3 +36,6 @@ vite.config.ts.timestamp-*
 
 # Regenerable visual-capture screenshots (vp run capture)
 docs/redesign/screenshots/
+
+# Full Material Symbols source font (regen source for the shipped subset)
+resources/fonts/
