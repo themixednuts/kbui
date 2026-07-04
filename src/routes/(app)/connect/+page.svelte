@@ -425,14 +425,6 @@
           <span class="option-action">Local</span>
         </button>
 
-        <button type="button" class="connect-option stub" disabled>
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">photo_camera</span>
-          <span class="option-copy">
-            <strong>Trace from photo</strong>
-            <small>Placeholder for the photo-to-layout workflow</small>
-          </span>
-          <span class="option-action">Soon</span>
-        </button>
       </div>
 
       <div class="connect-foot">
@@ -572,10 +564,6 @@
   .connect-option.disconnect .option-action {
     border-color: oklch(0.62 0.2 25 / 0.34);
     color: oklch(0.4 0.16 25);
-  }
-
-  .connect-option.stub {
-    opacity: 0.56;
   }
 
   .connect-status,

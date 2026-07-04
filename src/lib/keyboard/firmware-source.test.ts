@@ -98,6 +98,56 @@ describe("firmware source generation", () => {
     );
   });
 
+  it("excludes incomplete logic drafts from generated QMK source and clears their key bindings", () => {
+    const profile = qmkProfileWithMetadata();
+    profile.macros = [{ id: "macro-draft", name: "", sequence: [], trigger: "Unassigned" }];
+    profile.combos = [{ id: "combo-draft", name: "", keys: [], binding: "" }];
+    profile.tapDances = [{ id: "td-draft", keyId: "", tap: "", hold: "", doubleTap: "" }];
+    profile.keyOverrides = [];
+    profile.layers[0].bindings["k0-0"] = { code: "QK_MACRO_0" };
+    profile.layers[0].bindings["k0-1"] = { code: "TD(0)" };
+
+    const json = generateQmkKeymapJson(profile);
+    const generated = generateQmkSourceBundle(profile);
+    const keymap = sourceByRole(generated.files, "qmk-keymap-c");
+    const rules = sourceByRole(generated.files, "qmk-rules-mk");
+
+    expect(json.keymap.layers[0][0]).toBe("KC_NO");
+    expect(json.keymap.layers[0][1]).toBe("KC_NO");
+    expect(keymap).not.toContain("case QK_MACRO_0");
+    expect(keymap).not.toContain("combo_t key_combos");
+    expect(keymap).not.toContain("tap_dance_actions");
+    expect(rules).not.toContain("COMBO_ENABLE = yes");
+    expect(rules).not.toContain("TAP_DANCE_ENABLE = yes");
+    expect(generated.diagnostics.map((item) => item.code)).toContain(
+      "qmk.logic.incomplete_binding",
+    );
+  });
+
+  it("preserves original macro and tap-dance indexes when earlier drafts are incomplete", () => {
+    const profile = qmkProfileWithMetadata();
+    profile.macros = [
+      { id: "macro-draft", name: "", sequence: [], trigger: "Unassigned" },
+      { id: "macro-ready", name: "Ready", sequence: ["KC_A"], trigger: "Unassigned" },
+    ];
+    profile.tapDances = [
+      { id: "td-draft", keyId: "", tap: "", hold: "", doubleTap: "" },
+      { id: "td-ready", keyId: "k2-0", tap: "KC_ESC", hold: "KC_LCTL", doubleTap: "KC_TAB" },
+    ];
+    profile.combos = [];
+    profile.keyOverrides = [];
+    profile.layers[0].bindings["k0-0"] = { code: "QK_MACRO_1" };
+    profile.layers[0].bindings["k0-1"] = { code: "TD(1)" };
+
+    const generated = generateQmkSourceBundle(profile);
+    const keymap = sourceByRole(generated.files, "qmk-keymap-c");
+
+    expect(keymap).toContain("case QK_MACRO_1");
+    expect(keymap).not.toContain("case QK_MACRO_0");
+    expect(keymap).toContain("TD_READY = 1");
+    expect(keymap).toContain("TD(1)");
+  });
+
   it("generates ZMK keymap, conf, and build yaml skeletons", () => {
     const profile = cloneDevice(splitDemoKeyboard);
     const generated = generateZmkSource(profile);

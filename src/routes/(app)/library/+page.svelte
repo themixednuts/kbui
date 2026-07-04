@@ -13,7 +13,12 @@
     comboKeyOptionLabel,
     comboLayerScopeLabel,
   } from "$lib/keyboard/combo-visibility";
-  import { macroBindingCode, tapDanceBindingCode } from "$lib/keyboard/logic-bindings";
+  import {
+    isCompleteMacro,
+    isCompleteTapDance,
+    macroBindingCode,
+    tapDanceBindingCode,
+  } from "$lib/keyboard/logic-bindings";
   import { keyById, type Combo, type Macro, type TapDance } from "$lib/keyboard/schema";
 
   type LibraryTab = "macros" | "combos" | "tapDance";
@@ -117,19 +122,38 @@
   }
 
   function placeMacro(macro: Macro) {
-    shell.startPlacement({ kind: "macro", id: macro.id, label: macro.name });
+    if (!isCompleteMacro(macro)) return;
+    shell.startPlacement({ kind: "macro", id: macro.id, label: macroTitle(macro) });
     void goto("/editor");
   }
 
   function placeCombo(combo: Combo) {
-    shell.startPlacement({ kind: "combo", id: combo.id, label: combo.name, picks: [] });
+    shell.startPlacement({ kind: "combo", id: combo.id, label: comboTitle(combo), picks: [] });
     void goto("/editor");
   }
 
   function placeTapDance(dance: TapDance) {
-    const label = keyById(workbench.profile, dance.keyId)?.label ?? dance.keyId;
+    if (!isCompleteTapDance(dance)) return;
+    const label = tapDanceSourceLabel(dance);
     shell.startPlacement({ kind: "tapDance", id: dance.id, label: `Tap dance ${label}` });
     void goto("/editor");
+  }
+
+  function macroTitle(macro: Macro) {
+    return macro.name || "Untitled macro";
+  }
+
+  function comboTitle(combo: Combo) {
+    return combo.name || "Untitled combo";
+  }
+
+  function tapDanceSourceLabel(dance: TapDance) {
+    if (!dance.keyId) return "Unassigned key";
+    return keyById(workbench.profile, dance.keyId)?.label ?? dance.keyId;
+  }
+
+  function codeLabel(code: string, fallback: string) {
+    return code.trim() ? displayCode(code) : fallback;
   }
 
   function comboKeyLabel(combo: Combo, keyId: string) {
@@ -162,7 +186,6 @@
 
   function toggleComboKey(combo: Combo, keyId: string) {
     if (combo.keys.includes(keyId)) {
-      if (combo.keys.length <= 2) return;
       workbench.updateCombo(combo.id, {
         keys: combo.keys.filter((candidate) => candidate !== keyId),
       });
@@ -228,17 +251,27 @@
                 <div class="library-row" class:selected={selectedIds.macros === macro.id}>
                   <button type="button" class="row-main" onclick={() => selectItem(macro.id)}>
                     <span class="row-title">
-                      <strong>{macro.name}</strong>
+                      <strong>{macroTitle(macro)}</strong>
                       <Chip>{macro.trigger || "Unassigned"}</Chip>
                     </span>
                     <span class="seq">
-                      {#each macro.sequence as step, index (`${macro.id}-${index}`)}
-                        <span class="seq-key">{displayCode(step)}</span>
-                        {#if index < macro.sequence.length - 1}<span class="seq-arrow">-&gt;</span>{/if}
-                      {/each}
+                      {#if macro.sequence.length === 0}
+                        <span class="draft-note">Add sequence</span>
+                      {:else}
+                        {#each macro.sequence as step, index (`${macro.id}-${index}`)}
+                          <span class="seq-key">{displayCode(step)}</span>
+                          {#if index < macro.sequence.length - 1}<span class="seq-arrow">-&gt;</span>{/if}
+                        {/each}
+                      {/if}
                     </span>
                   </button>
-                  <Button variant="ghost" size="sm" onclick={() => placeMacro(macro)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!isCompleteMacro(macro)}
+                    title={isCompleteMacro(macro) ? "Place macro" : "Add a sequence before placing"}
+                    onclick={() => placeMacro(macro)}
+                  >
                     <Keyboard size={14} aria-hidden="true" />
                     Use it
                   </Button>
@@ -259,16 +292,24 @@
                 <div class="library-row" class:selected={selectedIds.combos === combo.id}>
                   <button type="button" class="row-main" onclick={() => selectItem(combo.id)}>
                     <span class="row-title">
-                      <strong>{combo.name}</strong>
+                      <strong>{comboTitle(combo)}</strong>
                       <Chip>{comboLayerScopeLabel(workbench.profile, combo)}</Chip>
                     </span>
                     <span class="seq">
-                      {#each comboChordLabels(workbench.profile, combo, displayCode, workbench.activeLayer) as keyLabel, index (`${combo.id}-${index}`)}
-                        <span class="seq-key">{keyLabel}</span>
-                        {#if index < combo.keys.length - 1}<span class="seq-arrow">+</span>{/if}
-                      {/each}
+                      {#if combo.keys.length === 0}
+                        <span class="draft-note">Add keys</span>
+                      {:else}
+                        {#each comboChordLabels(workbench.profile, combo, displayCode, workbench.activeLayer) as keyLabel, index (`${combo.id}-${index}`)}
+                          <span class="seq-key">{keyLabel}</span>
+                          {#if index < combo.keys.length - 1}<span class="seq-arrow">+</span>{/if}
+                        {/each}
+                      {/if}
                       <span class="seq-arrow">-&gt;</span>
-                      <span class="seq-key added-key">{displayCode(combo.binding)}</span>
+                      {#if combo.binding}
+                        <span class="seq-key added-key">{displayCode(combo.binding)}</span>
+                      {:else}
+                        <span class="draft-note">Set output</span>
+                      {/if}
                     </span>
                   </button>
                   <Button variant="ghost" size="sm" onclick={() => placeCombo(combo)}>
@@ -288,20 +329,27 @@
         {:else}
           <div class="library-list">
             {#each workbench.profile.tapDances as dance (dance.id)}
-              {@const danceKey = keyById(workbench.profile, dance.keyId)}
               <div class="library-row" class:selected={selectedIds.tapDance === dance.id}>
                 <button type="button" class="row-main" onclick={() => selectItem(dance.id)}>
                   <span class="row-title">
-                    <strong>{danceKey?.label ?? dance.keyId}</strong>
-                    <Chip>tap dance</Chip>
+                    <strong>{tapDanceSourceLabel(dance)}</strong>
+                    <Chip>{isCompleteTapDance(dance) ? "tap dance" : "unassigned"}</Chip>
                   </span>
                   <span class="tap-grid">
-                    <span><small>Tap</small><b class="seq-key">{displayCode(dance.tap)}</b></span>
-                    <span><small>Hold</small><b class="seq-key">{displayCode(dance.hold)}</b></span>
-                    <span><small>Double</small><b class="seq-key">{displayCode(dance.doubleTap)}</b></span>
+                    <span><small>Tap</small><b class="seq-key">{codeLabel(dance.tap, "Set tap")}</b></span>
+                    <span><small>Hold</small><b class="seq-key">{codeLabel(dance.hold, "Set hold")}</b></span>
+                    <span><small>Double</small><b class="seq-key">{codeLabel(dance.doubleTap, "Set double")}</b></span>
                   </span>
                 </button>
-                <Button variant="ghost" size="sm" onclick={() => placeTapDance(dance)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!isCompleteTapDance(dance)}
+                  title={isCompleteTapDance(dance)
+                    ? "Place tap dance"
+                    : "Choose a key and actions before placing"}
+                  onclick={() => placeTapDance(dance)}
+                >
                   <Keyboard size={14} aria-hidden="true" />
                   Use it
                 </Button>
@@ -326,7 +374,7 @@
           <div class="selected-head">
             <span class="logic-mark">M</span>
             <div>
-              <strong>{selectedMacro.name}</strong>
+              <strong>{macroTitle(selectedMacro)}</strong>
               <small>{macroPlacementCount(selectedMacro)} placed</small>
             </div>
           </div>
@@ -336,6 +384,7 @@
             <input
               class="library-input"
               value={selectedMacro.name}
+              placeholder="Name this macro"
               oninput={(event) => workbench.updateMacro(selectedMacro.id, { name: inputValue(event) })}
             />
           </label>
@@ -356,6 +405,7 @@
               class="library-input mono"
               spellcheck="false"
               value={selectedMacro.sequence.join(" ")}
+              placeholder="KC_LCTL KC_C"
               oninput={(event) =>
                 workbench.updateMacro(selectedMacro.id, {
                   sequence: sequenceFromInput(inputValue(event)),
@@ -364,12 +414,22 @@
           </label>
 
           <div class="seq preview">
-            {#each selectedMacro.sequence as step, index (`preview-${selectedMacro.id}-${index}`)}
-              <span class="seq-key">{displayCode(step)}</span>
-            {/each}
+            {#if selectedMacro.sequence.length === 0}
+              <span class="draft-note">Add sequence</span>
+            {:else}
+              {#each selectedMacro.sequence as step, index (`preview-${selectedMacro.id}-${index}`)}
+                <span class="seq-key">{displayCode(step)}</span>
+              {/each}
+            {/if}
           </div>
 
-          <Button variant="coral" class="wide-action" onclick={() => placeMacro(selectedMacro)}>
+          <Button
+            variant="coral"
+            class="wide-action"
+            disabled={!isCompleteMacro(selectedMacro)}
+            title={isCompleteMacro(selectedMacro) ? "Place macro" : "Add a sequence before placing"}
+            onclick={() => placeMacro(selectedMacro)}
+          >
             <Keyboard size={15} aria-hidden="true" />
             Place on a key
           </Button>
@@ -377,8 +437,8 @@
           <div class="selected-head">
             <span class="logic-mark combo-mark">C</span>
             <div>
-              <strong>{selectedCombo.name}</strong>
-              <small>{selectedCombo.keys.length} members</small>
+              <strong>{comboTitle(selectedCombo)}</strong>
+              <small>{selectedCombo.keys.length ? `${selectedCombo.keys.length} members` : "Add keys"}</small>
             </div>
           </div>
 
@@ -387,6 +447,7 @@
             <input
               class="library-input"
               value={selectedCombo.name}
+              placeholder="Name this combo"
               oninput={(event) => workbench.updateCombo(selectedCombo.id, { name: inputValue(event) })}
             />
           </label>
@@ -397,6 +458,7 @@
               class="library-input mono"
               spellcheck="false"
               value={selectedCombo.binding}
+              placeholder="KC_ESC"
               oninput={(event) =>
                 workbench.updateCombo(selectedCombo.id, { binding: inputValue(event) })}
             />
@@ -450,11 +512,10 @@
             Pick keys on board
           </Button>
         {:else if tab === "tapDance" && selectedTapDance}
-          {@const danceKey = keyById(workbench.profile, selectedTapDance.keyId)}
           <div class="selected-head">
             <span class="logic-mark dance-mark">T</span>
             <div>
-              <strong>{danceKey?.label ?? selectedTapDance.keyId}</strong>
+              <strong>{tapDanceSourceLabel(selectedTapDance)}</strong>
               <small>{tapDancePlacementCount(selectedTapDance)} placed</small>
             </div>
           </div>
@@ -467,6 +528,7 @@
               onchange={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { keyId: selectValue(event) })}
             >
+              <option value="">Choose a key</option>
               {#each workbench.profile.keys as key (key.id)}
                 <option value={key.id}>{key.label}</option>
               {/each}
@@ -479,6 +541,7 @@
               class="library-input mono"
               spellcheck="false"
               value={selectedTapDance.tap}
+              placeholder="KC_ESC"
               oninput={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { tap: inputValue(event) })}
             />
@@ -490,6 +553,7 @@
               class="library-input mono"
               spellcheck="false"
               value={selectedTapDance.hold}
+              placeholder="KC_LCTL"
               oninput={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { hold: inputValue(event) })}
             />
@@ -501,12 +565,21 @@
               class="library-input mono"
               spellcheck="false"
               value={selectedTapDance.doubleTap}
+              placeholder="KC_CAPS"
               oninput={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { doubleTap: inputValue(event) })}
             />
           </label>
 
-          <Button variant="coral" class="wide-action" onclick={() => placeTapDance(selectedTapDance)}>
+          <Button
+            variant="coral"
+            class="wide-action"
+            disabled={!isCompleteTapDance(selectedTapDance)}
+            title={isCompleteTapDance(selectedTapDance)
+              ? "Place tap dance"
+              : "Choose a key and actions before placing"}
+            onclick={() => placeTapDance(selectedTapDance)}
+          >
             <Keyboard size={15} aria-hidden="true" />
             Place on a key
           </Button>
@@ -632,6 +705,12 @@
 
   .seq {
     margin-top: 0;
+  }
+
+  .draft-note {
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 11px;
   }
 
   .preview {

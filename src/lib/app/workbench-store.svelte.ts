@@ -27,6 +27,7 @@ import {
   type SavePointAuthorMeta,
   type WorkspaceFork,
 } from "$lib/keyboard/schema";
+import { newId } from "$lib/util/id";
 
 export interface WorkbenchStoreOptions extends EditorStoreOptions {
   boardId?: SampleBoardId;
@@ -328,11 +329,7 @@ function timestampFor(options: SavePointActionOptions): string {
 }
 
 function randomId(prefix: string): string {
-  const value =
-    typeof globalThis.crypto?.randomUUID === "function"
-      ? globalThis.crypto.randomUUID()
-      : Math.random().toString(36).slice(2, 12);
-  return `${prefix}-${value}`;
+  return `${prefix}-${newId()}`;
 }
 
 function upsertSavePoint(savePoints: readonly SavePoint[], savePoint: SavePoint): SavePoint[] {

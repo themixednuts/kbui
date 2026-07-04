@@ -11,6 +11,8 @@ import {
   type LightingSwatchId,
 } from "$lib/keyboard/lighting-swatches";
 import {
+  isCompleteMacro,
+  isCompleteTapDance,
   logicBindingOptions,
   macroBindingCode,
   tapDanceBindingCode,
@@ -39,6 +41,7 @@ import {
   type Macro,
   type TapDance,
 } from "$lib/keyboard/schema";
+import { newId } from "$lib/util/id";
 
 export type EditorLens = "keys" | "lighting";
 export type EditorInspectorTab = "bind" | "hold" | "notes";
@@ -583,11 +586,10 @@ export class EditorStore {
   }
 
   addMacro(): Macro {
-    const index = this.profile.macros.length;
     const macro: Macro = {
       id: uniqueLogicId("macro"),
-      name: `Macro ${index + 1}`,
-      sequence: ["KC_LCTL", "KC_LSFT", "KC_P"],
+      name: "",
+      sequence: [],
       trigger: "Unassigned",
     };
     this.commitProfile({
@@ -607,7 +609,7 @@ export class EditorStore {
         : current.sequence;
     const next: Macro = {
       ...current,
-      name: "name" in patch ? nonEmptyName(patch.name, current.name) : current.name,
+      name: "name" in patch ? (patch.name ?? current.name).trim() : current.name,
       trigger: "trigger" in patch ? (patch.trigger ?? current.trigger).trim() : current.trigger,
       sequence,
     };
@@ -646,12 +648,11 @@ export class EditorStore {
   }
 
   addCombo(): Combo {
-    const index = this.profile.combos.length;
     const combo: Combo = {
       id: uniqueLogicId("combo"),
-      name: `Combo ${index + 1}`,
-      keys: this.profile.keys.slice(0, 2).map((key) => key.id),
-      binding: "KC_NO",
+      name: "",
+      keys: [],
+      binding: "",
     };
     this.commitProfile({
       ...this.profile,
@@ -667,7 +668,6 @@ export class EditorStore {
     const validKeyIds = new Set(this.profile.keys.map((key) => key.id));
     const validLayerIds = new Set(this.profile.layers.map((layer) => layer.id));
     const nextKeys = "keys" in patch ? uniqueValidIds(patch.keys ?? [], validKeyIds) : current.keys;
-    if (nextKeys.length < 2) return;
 
     const rawLayerIds = "layerIds" in patch ? patch.layerIds : current.layerIds;
     const nextLayerIds = rawLayerIds ? uniqueValidIds(rawLayerIds, validLayerIds) : undefined;
@@ -677,10 +677,10 @@ export class EditorStore {
         : undefined;
     const next: Combo = {
       ...current,
-      name: "name" in patch ? nonEmptyName(patch.name, current.name) : current.name,
+      name: "name" in patch ? (patch.name ?? current.name).trim() : current.name,
       binding:
         "binding" in patch
-          ? normalizeEditorKeycode(patch.binding ?? current.binding)
+          ? normalizeEditorKeycode(patch.binding ?? current.binding, "")
           : current.binding,
       keys: nextKeys,
       layerIds: normalizedLayerIds,
@@ -724,15 +724,12 @@ export class EditorStore {
   }
 
   addTapDance(): TapDance | undefined {
-    const keyId = this.primarySelectedKeyId ?? this.profile.keys[0]?.id;
-    if (!keyId) return undefined;
-
     const dance: TapDance = {
       id: uniqueLogicId("td"),
-      keyId,
-      tap: "KC_NO",
-      hold: "KC_NO",
-      doubleTap: "KC_NO",
+      keyId: "",
+      tap: "",
+      hold: "",
+      doubleTap: "",
     };
     this.commitProfile({
       ...this.profile,
@@ -752,14 +749,16 @@ export class EditorStore {
     const next: TapDance = {
       ...current,
       keyId:
-        "keyId" in patch && patch.keyId && validKeyIds.has(patch.keyId)
-          ? patch.keyId
+        "keyId" in patch
+          ? patch.keyId && validKeyIds.has(patch.keyId)
+            ? patch.keyId
+            : ""
           : current.keyId,
-      tap: "tap" in patch ? normalizeEditorKeycode(patch.tap ?? current.tap) : current.tap,
-      hold: "hold" in patch ? normalizeEditorKeycode(patch.hold ?? current.hold) : current.hold,
+      tap: "tap" in patch ? normalizeEditorKeycode(patch.tap ?? current.tap, "") : current.tap,
+      hold: "hold" in patch ? normalizeEditorKeycode(patch.hold ?? current.hold, "") : current.hold,
       doubleTap:
         "doubleTap" in patch
-          ? normalizeEditorKeycode(patch.doubleTap ?? current.doubleTap)
+          ? normalizeEditorKeycode(patch.doubleTap ?? current.doubleTap, "")
           : current.doubleTap,
     };
 
@@ -803,6 +802,7 @@ export class EditorStore {
     if (intent.kind === "macro") {
       const index = this.profile.macros.findIndex((macro) => macro.id === intent.id);
       if (index < 0) return false;
+      if (!isCompleteMacro(this.profile.macros[index])) return false;
       const result = applyBindingToDevice(
         this.profile,
         this.activeLayer,
@@ -817,6 +817,7 @@ export class EditorStore {
 
     const index = this.profile.tapDances.findIndex((dance) => dance.id === intent.id);
     if (index < 0) return false;
+    if (!isCompleteTapDance(this.profile.tapDances[index])) return false;
     const result = applyBindingToDevice(
       this.profile,
       this.activeLayer,
@@ -903,26 +904,19 @@ const MACRO_BINDING_PATTERN = /^QK_MACRO_(\d+)$/;
 const TAP_DANCE_BINDING_PATTERN = /^TD\((\d+)\)$/;
 
 function uniqueLogicId(prefix: string): string {
-  const random =
-    typeof globalThis.crypto?.randomUUID === "function"
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  return `${prefix}-${random}`;
+  return `${prefix}-${newId()}`;
 }
 
 function normalizeKeycodeSequence(sequence: readonly string[]): string[] {
   const normalized = sequence
     .map((step) => normalizeEditorKeycode(step, ""))
     .filter((step) => step.length > 0);
-  return normalized.length > 0 ? normalized : ["KC_NO"];
-}
-
-function nonEmptyName(value: string | undefined, fallback: string): string {
-  return value?.trim() || fallback;
+  return normalized;
 }
 
 function copyName(name: string): string {
-  return `${name} copy`;
+  const trimmed = name.trim();
+  return trimmed ? `${trimmed} copy` : "";
 }
 
 function uniqueValidIds(ids: readonly string[], validIds: ReadonlySet<string>): string[] {

@@ -24,8 +24,8 @@
   const workbench = getWorkbenchContext();
 
   let tab = $state<VersionTab>("changes");
-  let savePointMessage = $state("Tweak home-row timing");
-  let branchName = $state("experiment-thumbcluster");
+  let savePointMessage = $state("");
+  let branchName = $state("");
   let changesOpen = $state(true);
   let selectedChangesOpen = $state(true);
   let actionError = $state<string | null>(null);
@@ -92,7 +92,7 @@
       const fork = await workbench.branchFromSavePoint(branchName, {
         savePointId: selectedSavePoint.id,
       });
-      if (fork) branchName = `variant-${workbench.forks.length + 1}`;
+      if (fork) branchName = "";
     } catch (error) {
       actionError = messageFor(error, "Could not create variant");
     } finally {

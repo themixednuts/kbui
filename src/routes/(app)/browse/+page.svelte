@@ -18,6 +18,7 @@
   } from "$lib/community/types";
   import type { SegmentItem } from "$lib/components/ui/types";
   import { decodeDeviceProfileFromStorage } from "$lib/keyboard/schema";
+  import { newId } from "$lib/util/id";
 
   import type { PageData } from "./$types";
   import {
@@ -188,7 +189,7 @@
     }
     if (adoptBusyId) return;
 
-    const localForkId = randomUuid();
+    const localForkId = newId();
     adoptBusyId = detail.id;
     actionError = null;
     actionNotice = null;
@@ -201,7 +202,7 @@
         detail: adopted,
         profile,
         localForkId,
-        savePointId: `sp-${randomUuid()}`,
+        savePointId: `sp-${newId()}`,
         adoptedAt,
       });
       replaceCardFromDetail(adopted);
@@ -319,10 +320,6 @@
     return fallback;
   }
 
-  function randomUuid() {
-    if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
-    return Math.random().toString(36).slice(2, 12);
-  }
 </script>
 
 <section class="browse-route">

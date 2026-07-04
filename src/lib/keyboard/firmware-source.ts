@@ -1,5 +1,11 @@
 import { qmkDirectKeycodes } from "./qmk-keycodes";
 import {
+  incompleteLogicBindingReason,
+  isCompleteCombo,
+  isCompleteMacro,
+  isCompleteTapDance,
+} from "./logic-bindings";
+import {
   normalizeQmkKeycode,
   qmkKeycodeName,
   qmkKeycodeValue,
@@ -7,6 +13,7 @@ import {
   type KeyBinding,
   type KeyOverride,
   type KeyboardKey,
+  type Combo,
   type Macro,
   type TapDance,
 } from "./schema";
@@ -86,6 +93,7 @@ interface ZmkMetadata {
 }
 
 type UnknownRecord = Record<string, unknown>;
+type Indexed<T> = { index: number; item: T };
 
 const qmkMacroPattern = /^QK_MACRO_(\d+)$/i;
 const qmkTapDancePattern = /^TD\((\d+)\)$/i;
@@ -396,8 +404,45 @@ function qmkCodeForBinding(
   return qmkKeycodeName(value);
 }
 
-function qmkCodeForJson(binding: KeyBinding, diagnostics: FirmwareDiagnostic[], context: string) {
-  return qmkCodeForBinding(binding, diagnostics, context).replace(/\s*\/\*.*\*\/\s*$/g, "");
+function clearCodeForLayerIndex(layerIndex: number): string {
+  return layerIndex === 0 ? "KC_NO" : "KC_TRNS";
+}
+
+function qmkCodeForProfileBinding(
+  profile: DeviceProfile,
+  binding: KeyBinding,
+  diagnostics: FirmwareDiagnostic[],
+  context: string,
+  layerIndex: number,
+) {
+  const incomplete = incompleteLogicBindingReason(profile, binding.code);
+  if (incomplete) {
+    const clearCode = clearCodeForLayerIndex(layerIndex);
+    diagnostics.push(
+      diagnostic(
+        "qmk.logic.incomplete_binding",
+        "warning",
+        `${incomplete} ${clearCode} was emitted for this keymap cell.`,
+        { path: context },
+      ),
+    );
+    return clearCode;
+  }
+
+  return qmkCodeForBinding(binding, diagnostics, context);
+}
+
+function qmkCodeForJson(
+  profile: DeviceProfile,
+  binding: KeyBinding,
+  diagnostics: FirmwareDiagnostic[],
+  context: string,
+  layerIndex: number,
+) {
+  return qmkCodeForProfileBinding(profile, binding, diagnostics, context, layerIndex).replace(
+    /\s*\/\*.*\*\/\s*$/g,
+    "",
+  );
 }
 
 export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeymapJson {
@@ -438,9 +483,11 @@ export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeyma
     layers: profile.layers.map((layer, layerIndex) =>
       keyOrder.map((keyId) =>
         qmkCodeForJson(
+          profile,
           layer.bindings[keyId] ?? { code: layerIndex === 0 ? "KC_NO" : "KC_TRNS" },
           diagnostics,
           `layers/${layer.name}/${keyId}`,
+          layerIndex,
         ),
       ),
     ),
@@ -548,26 +595,28 @@ function generateQmkKeymapC(
       const enumName = layers[layerIndex]?.enumName ?? `LAYER_${layerIndex}`;
       const keyLines = keyOrder.map((keyId, index) => {
         const suffix = index === keyOrder.length - 1 ? "" : ",";
-        return `    ${qmkCodeForBinding(
+        return `    ${qmkCodeForProfileBinding(
+          profile,
           layer.bindings[keyId] ?? { code: layerIndex === 0 ? "KC_NO" : "KC_TRNS" },
           diagnostics,
           `layers/${layer.name}/${keyId}`,
+          layerIndex,
         )}${suffix}`;
       });
       return [`  [_${enumName}] = ${layoutMacro}(`, ...keyLines, "  ),"];
     }),
     "};",
     "",
-    ...qmkMacroSource(profile.macros, diagnostics),
+    ...qmkMacroSource(completeMacroEntries(profile.macros), diagnostics),
     ...qmkComboSource(profile, diagnostics),
-    ...qmkTapDanceSource(profile.tapDances, diagnostics),
+    ...qmkTapDanceSource(completeTapDanceEntries(profile.tapDances), diagnostics),
     ...qmkKeyOverrideSource(profile.keyOverrides, diagnostics),
   ];
 
   return `${lines.join("\n").replace(/\n{3,}/g, "\n\n")}\n`;
 }
 
-function qmkMacroSource(macros: readonly Macro[], diagnostics: FirmwareDiagnostic[]) {
+function qmkMacroSource(macros: readonly Indexed<Macro>[], diagnostics: FirmwareDiagnostic[]) {
   if (macros.length === 0) return [];
 
   diagnostics.push(
@@ -584,8 +633,8 @@ function qmkMacroSource(macros: readonly Macro[], diagnostics: FirmwareDiagnosti
     "// UNSUPPORTED: sequence timing and modifier hold semantics must be reviewed manually.",
     "bool process_record_user(uint16_t keycode, keyrecord_t *record) {",
     "  switch (keycode) {",
-    ...macros.flatMap((macro, index) => [
-      `    case QK_MACRO_${index}: // ${macro.name}`,
+    ...macros.flatMap(({ index, item: macro }) => [
+      `    case QK_MACRO_${index}: // ${macro.name || macro.id}`,
       "      if (record->event.pressed) {",
       ...macro.sequence.map(
         (code) =>
@@ -614,22 +663,25 @@ function qmkStandaloneCode(
 }
 
 function qmkComboSource(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[]) {
-  if (profile.combos.length === 0) return [];
+  const combos = completeCombos(profile.combos);
+  if (combos.length === 0) return [];
 
   const baseLayer = profile.layers[0];
   if (!baseLayer) return [];
 
-  const enumNames = profile.combos.map((combo, index) =>
+  const enumNames = combos.map((combo, index) =>
     cEnumName(combo.name || combo.id, `COMBO_${index}`),
   );
 
-  const definitions = profile.combos.flatMap((combo, index) => {
+  const definitions = combos.flatMap((combo, index) => {
     const id = cIdentifier(combo.id || combo.name, `combo_${index}`);
     const comboCodes = combo.keys.map((keyId) =>
-      qmkCodeForBinding(
+      qmkCodeForProfileBinding(
+        profile,
         baseLayer.bindings[keyId] ?? { code: "KC_NO" },
         diagnostics,
         `combos/${combo.name}/${keyId}`,
+        0,
       ).replace(/\s*\/\*.*\*\/\s*$/g, ""),
     );
     const binding = qmkStandaloneCode(combo.binding, diagnostics, `combos/${combo.name}/binding`);
@@ -657,7 +709,7 @@ function qmkComboSource(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[
     "uint16_t COMBO_LEN = COMBO_LENGTH;",
     ...definitions,
     "combo_t key_combos[] = {",
-    ...profile.combos.map((combo, index) => {
+    ...combos.map((combo, index) => {
       const id = cIdentifier(combo.id || combo.name, `combo_${index}`);
       const binding = qmkStandaloneCode(combo.binding, diagnostics, `combos/${combo.name}/binding`);
       return `  [${enumNames[index]}] = COMBO(${id}_keys, ${binding}),`;
@@ -667,7 +719,10 @@ function qmkComboSource(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[
   ];
 }
 
-function qmkTapDanceSource(tapDances: readonly TapDance[], diagnostics: FirmwareDiagnostic[]) {
+function qmkTapDanceSource(
+  tapDances: readonly Indexed<TapDance>[],
+  diagnostics: FirmwareDiagnostic[],
+) {
   if (tapDances.length === 0) return [];
 
   diagnostics.push(
@@ -679,14 +734,14 @@ function qmkTapDanceSource(tapDances: readonly TapDance[], diagnostics: Firmware
     ),
   );
 
-  const enumNames = tapDances.map((dance, index) => cEnumName(dance.id, `TD_${index}`));
+  const enumNames = tapDances.map(({ index, item: dance }) => cEnumName(dance.id, `TD_${index}`));
   return [
     "// Tap dance definitions.",
     "enum tap_dance_events {",
-    ...enumNames.map((name) => `  ${name},`),
+    ...tapDances.map(({ index }, entryIndex) => `  ${enumNames[entryIndex]} = ${index},`),
     "};",
     "tap_dance_action_t tap_dance_actions[] = {",
-    ...tapDances.map((dance, index) => {
+    ...tapDances.map(({ item: dance }, index) => {
       const tap = qmkStandaloneCode(dance.tap, diagnostics, `tap-dances/${dance.id}/tap`);
       const doubleTap = qmkStandaloneCode(
         dance.doubleTap,
@@ -833,11 +888,11 @@ function generateQmkConfigH(profile: DeviceProfile, diagnostics: FirmwareDiagnos
 function generateQmkRulesMk(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[]) {
   const rules = ["# Generated by kbgui source export."];
   if (profile.protocol === "via-v3") rules.push("VIA_ENABLE = yes");
-  if (profile.combos.length > 0) rules.push("COMBO_ENABLE = yes");
-  if (profile.tapDances.length > 0) rules.push("TAP_DANCE_ENABLE = yes");
+  if (completeCombos(profile.combos).length > 0) rules.push("COMBO_ENABLE = yes");
+  if (completeTapDances(profile.tapDances).length > 0) rules.push("TAP_DANCE_ENABLE = yes");
   if (profile.keyOverrides.length > 0) rules.push("KEY_OVERRIDE_ENABLE = yes");
   if (profile.settings.nkro) rules.push("NKRO_ENABLE = yes");
-  if (profile.macros.length > 0) {
+  if (completeMacros(profile.macros).length > 0) {
     rules.push("# Macros are emitted through process_record_user in keymap.c.");
   }
   if (profile.capabilities.includes("lighting")) {
@@ -931,9 +986,11 @@ function generateZmkKeymap(
     ).toLowerCase();
     const bindings = keyOrder.map((keyId) =>
       zmkBehaviorForBinding(
+        profile,
         layer.bindings[keyId] ?? { code: layerIndex === 0 ? "KC_NO" : "KC_TRNS" },
         diagnostics,
         `layers/${layer.name}/${keyId}`,
+        layerIndex,
       ),
     );
 
@@ -955,8 +1012,8 @@ function generateZmkKeymap(
     "#include <dt-bindings/zmk/bt.h>",
     "",
     "/ {",
-    ...zmkMacroSection(profile.macros, diagnostics),
-    ...zmkTapDanceSection(profile.tapDances, diagnostics),
+    ...zmkMacroSection(completeMacros(profile.macros), diagnostics),
+    ...zmkTapDanceSection(completeTapDances(profile.tapDances), diagnostics),
     ...zmkComboSection(profile, keyOrder, diagnostics),
     "  keymap {",
     '    compatible = "zmk,keymap";',
@@ -1044,13 +1101,14 @@ function zmkComboSection(
   keyOrder: readonly string[],
   diagnostics: FirmwareDiagnostic[],
 ) {
-  if (profile.combos.length === 0) return [];
+  const combos = completeCombos(profile.combos);
+  if (combos.length === 0) return [];
   const positionByKeyId = new Map(keyOrder.map((keyId, index) => [keyId, index]));
 
   return [
     "  combos {",
     '    compatible = "zmk,combos";',
-    ...profile.combos.flatMap((combo, index) => {
+    ...combos.flatMap((combo, index) => {
       const node = cIdentifier(combo.id || combo.name, `combo_${index}`).toLowerCase();
       const positions = combo.keys
         .map((keyId) => positionByKeyId.get(keyId))
@@ -1094,10 +1152,26 @@ function zmkComboSection(
 }
 
 function zmkBehaviorForBinding(
+  profile: DeviceProfile,
   binding: KeyBinding,
   diagnostics: FirmwareDiagnostic[],
   context: string,
+  layerIndex: number,
 ) {
+  const incomplete = incompleteLogicBindingReason(profile, binding.code);
+  if (incomplete) {
+    const text = layerIndex === 0 ? "&none" : "&trans";
+    diagnostics.push(
+      diagnostic(
+        "zmk.logic.incomplete_binding",
+        "warning",
+        `${incomplete} ${text} was emitted for this keymap cell.`,
+        { path: context },
+      ),
+    );
+    return `${text} /* INCOMPLETE: ${binding.code} */`;
+  }
+
   if (binding.tap || binding.hold || binding.macroId || binding.notes) {
     diagnostics.push(
       diagnostic(
@@ -1236,11 +1310,33 @@ function escapeDtsString(value: string) {
 
 function hasAdvancedQmkSource(profile: DeviceProfile) {
   return (
-    profile.macros.length > 0 ||
-    profile.combos.length > 0 ||
-    profile.tapDances.length > 0 ||
+    completeMacroEntries(profile.macros).length > 0 ||
+    completeCombos(profile.combos).length > 0 ||
+    completeTapDanceEntries(profile.tapDances).length > 0 ||
     profile.keyOverrides.length > 0
   );
+}
+
+function completeMacroEntries(macros: readonly Macro[]): Indexed<Macro>[] {
+  return macros.map((item, index) => ({ index, item })).filter(({ item }) => isCompleteMacro(item));
+}
+
+function completeMacros(macros: readonly Macro[]): Macro[] {
+  return completeMacroEntries(macros).map(({ item }) => item);
+}
+
+function completeCombos(combos: readonly Combo[]): Combo[] {
+  return combos.filter(isCompleteCombo);
+}
+
+function completeTapDanceEntries(tapDances: readonly TapDance[]): Indexed<TapDance>[] {
+  return tapDances
+    .map((item, index) => ({ index, item }))
+    .filter(({ item }) => isCompleteTapDance(item));
+}
+
+function completeTapDances(tapDances: readonly TapDance[]): TapDance[] {
+  return completeTapDanceEntries(tapDances).map(({ item }) => item);
 }
 
 export function generateFirmwareArtifacts(profile: DeviceProfile): FirmwareArtifacts {

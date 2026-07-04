@@ -1,4 +1,5 @@
 import { diffProfiles } from "./changes";
+import { incompleteLogicBindingReason } from "./logic-bindings";
 import { encodeZmkBinding } from "./zmk-binding";
 import { type ChangeRecord, type DeviceProfile, type KeyBinding, type KeyboardKey } from "./schema";
 import type { ConnectionState } from "./transport";
@@ -177,6 +178,12 @@ function classifyBindingChange(
     );
   }
 
+  const code = draftBinding?.code;
+  const incompleteLogic = code ? incompleteLogicBindingReason(draft, code) : undefined;
+  if (incompleteLogic) {
+    return withClassification(change, "invalid", incompleteLogic);
+  }
+
   if (draft.firmware !== "zmk" || draft.protocol !== "zmk-studio") {
     return withClassification(
       change,
@@ -194,7 +201,6 @@ function classifyBindingChange(
     );
   }
 
-  const code = draftBinding?.code;
   if (!code) return withClassification(change, "invalid", "Binding code is missing.");
 
   if (/^ZMK_BEHAVIOR\(/i.test(code.trim())) {

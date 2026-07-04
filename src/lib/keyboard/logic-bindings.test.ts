@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { sampleKeyboard } from "./schema";
+import { cloneDevice, sampleKeyboard } from "./schema";
 import {
   comboMarkerText,
   comboAppliesToLayer,
@@ -11,7 +11,12 @@ import {
   combosForKeyOnLayer,
   viaComboDefinitionsUnavailable,
 } from "./combo-visibility";
-import { logicBindingOptions, macroBindingCode, tapDanceBindingCode } from "./logic-bindings";
+import {
+  incompleteLogicBindingReason,
+  logicBindingOptions,
+  macroBindingCode,
+  tapDanceBindingCode,
+} from "./logic-bindings";
 
 describe("logicBindingOptions", () => {
   it("maps workspace macros and tap dances to bindable keycodes", () => {
@@ -25,6 +30,34 @@ describe("logicBindingOptions", () => {
     ).toBe(macroBindingCode(0));
     expect(options.find((item) => item.kind === "tapDance")?.code).toBe(tapDanceBindingCode(0));
     expect(options.some((item) => item.kind === "combo" && item.code === null)).toBe(true);
+  });
+
+  it("keeps incomplete macro and tap-dance drafts out of bindable keycodes", () => {
+    const profile = cloneDevice(sampleKeyboard);
+    profile.macros = [
+      { id: "macro-draft", name: "", sequence: [], trigger: "Unassigned" },
+      { id: "macro-ready", name: "", sequence: ["KC_A"], trigger: "Unassigned" },
+    ];
+    profile.tapDances = [
+      { id: "td-draft", keyId: "", tap: "", hold: "", doubleTap: "" },
+      { id: "td-ready", keyId: "k2-0", tap: "KC_ESC", hold: "KC_LCTL", doubleTap: "KC_TAB" },
+    ];
+
+    const options = logicBindingOptions(profile);
+
+    expect(options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "macro", id: "macro-ready", code: macroBindingCode(1) }),
+        expect.objectContaining({ kind: "tapDance", id: "td-ready", code: tapDanceBindingCode(1) }),
+      ]),
+    );
+    expect(options.some((item) => item.id === "macro-draft" || item.id === "td-draft")).toBe(false);
+    expect(incompleteLogicBindingReason(profile, macroBindingCode(0))).toContain(
+      "incomplete macro",
+    );
+    expect(incompleteLogicBindingReason(profile, tapDanceBindingCode(0))).toContain(
+      "incomplete tap dance",
+    );
   });
 });
 

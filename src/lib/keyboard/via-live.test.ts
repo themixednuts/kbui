@@ -38,6 +38,22 @@ describe("VIA live change classification", () => {
     expect(binding?.liveWrite).toBeUndefined();
   });
 
+  it("does not live-write bindings that target incomplete logic drafts", () => {
+    const draft = cloneDevice(sampleKeyboard);
+    draft.macros = [{ id: "macro-draft", name: "", sequence: [], trigger: "Unassigned" }];
+    draft.layers[0].bindings["k2-4"] = { code: "QK_MACRO_0" };
+
+    const binding = classifyViaProfileChanges(sampleKeyboard, draft).find(
+      (change) => change.id === "binding:base.k2-4",
+    );
+
+    expect(binding).toMatchObject({
+      classification: "invalid",
+      reason: expect.stringContaining("incomplete macro"),
+    });
+    expect(binding?.liveWrite).toBeUndefined();
+  });
+
   it("flags combo, macro, tap-dance, key-override, settings, and layer-count edits for rebuild", () => {
     const draft = cloneDevice(sampleKeyboard);
     draft.combos = [

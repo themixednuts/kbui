@@ -48,14 +48,14 @@ describe("VIA live sync engine", () => {
 
   it("flags rebuild-required edits without blocking live keymap writes", async () => {
     const { engine, hidDevice, workbench } = await createLiveSyncHarness();
-    const combo = workbench.addCombo();
+    workbench.addCombo();
     const beforeWrites = setKeycodeWrites(hidDevice).length;
 
     engine.processChanges();
     await engine.flush();
     expect(setKeycodeWrites(hidDevice).length).toBe(beforeWrites);
     expect(engine.rebuildRequiredChanges).toEqual(
-      expect.arrayContaining([expect.objectContaining({ path: `combos/${combo.name}` })]),
+      expect.arrayContaining([expect.objectContaining({ kind: "combo" })]),
     );
 
     workbench.selectKey("k2-4");

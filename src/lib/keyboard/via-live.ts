@@ -1,4 +1,5 @@
 import { diffProfiles } from "./changes";
+import { incompleteLogicBindingReason } from "./logic-bindings";
 import {
   qmkKeycodeValue,
   type ChangeRecord,
@@ -179,6 +180,12 @@ function classifyBindingChange(
     );
   }
 
+  const code = draftBinding?.code;
+  const incompleteLogic = code ? incompleteLogicBindingReason(draft, code) : undefined;
+  if (incompleteLogic) {
+    return withClassification(change, "invalid", incompleteLogic);
+  }
+
   if (draft.protocol !== "via-v3") {
     return withClassification(
       change,
@@ -187,7 +194,6 @@ function classifyBindingChange(
     );
   }
 
-  const code = draftBinding?.code;
   const keycode = code ? qmkKeycodeValue(code) : undefined;
   if (keycode === undefined) {
     return withClassification(

@@ -7,6 +7,51 @@ import { ShellStore } from "./shell-store.svelte";
 import { WorkbenchStore } from "./workbench-store.svelte";
 
 describe("workbench store library placement", () => {
+  it("creates honest empty logic drafts", () => {
+    const workbench = new WorkbenchStore({ persist: false });
+
+    const macro = workbench.addMacro();
+    const combo = workbench.addCombo();
+    const dance = workbench.addTapDance();
+
+    expect(macro).toMatchObject({
+      name: "",
+      sequence: [],
+      trigger: "Unassigned",
+    });
+    expect(combo).toMatchObject({
+      name: "",
+      keys: [],
+      binding: "",
+    });
+    expect(dance).toMatchObject({
+      keyId: "",
+      tap: "",
+      hold: "",
+      doubleTap: "",
+    });
+
+    workbench.updateMacro(macro.id, { sequence: ["kc_a"] });
+    workbench.updateCombo(combo.id, { binding: "kc_esc", keys: ["k2-4"] });
+    workbench.updateTapDance(dance!.id, { keyId: "k2-0", tap: "kc_esc" });
+
+    expect(
+      workbench.profile.macros.find((candidate) => candidate.id === macro.id)?.sequence,
+    ).toEqual(["KC_A"]);
+    expect(workbench.profile.combos.find((candidate) => candidate.id === combo.id)).toMatchObject({
+      binding: "KC_ESC",
+      keys: ["k2-4"],
+    });
+    expect(
+      workbench.profile.tapDances.find((candidate) => candidate.id === dance!.id),
+    ).toMatchObject({
+      keyId: "k2-0",
+      tap: "KC_ESC",
+      hold: "",
+      doubleTap: "",
+    });
+  });
+
   it("updates device-scoped keyboard settings through the shared draft profile", () => {
     const workbench = new WorkbenchStore({ persist: false });
 
@@ -54,6 +99,15 @@ describe("workbench store library placement", () => {
     const workbench = new WorkbenchStore({ persist: false });
     const macro = workbench.addMacro();
     const dance = workbench.addTapDance();
+    const macroName = "Test macro";
+
+    workbench.updateMacro(macro.id, { name: macroName, sequence: ["KC_A"] });
+    workbench.updateTapDance(dance!.id, {
+      keyId: "k2-0",
+      tap: "KC_ESC",
+      hold: "KC_LCTL",
+      doubleTap: "KC_TAB",
+    });
 
     expect(dance).toBeDefined();
     expect(workbench.placeLogicBindingOnKey({ kind: "macro", id: macro.id }, "k2-4")).toBe(true);
@@ -73,7 +127,7 @@ describe("workbench store library placement", () => {
     expect(workbench.profile.layers[0].bindings["k2-5"].code).toBe(tapDanceBindingCode(danceIndex));
     expect(diffProfiles(workbench.baseProfile, workbench.profile)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "macro", path: `macros/${macro.name}` }),
+        expect.objectContaining({ kind: "macro", path: `macros/${macroName}` }),
         expect.objectContaining({ kind: "tapDance" }),
         expect.objectContaining({ kind: "binding", path: "layers/Base/k2-4" }),
         expect.objectContaining({ kind: "binding", path: "layers/Base/k2-5" }),
