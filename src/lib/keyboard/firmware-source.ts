@@ -66,10 +66,12 @@ export interface FirmwareSourceBundle {
 
 export interface FirmwareArtifacts {
   artifacts: FirmwareGeneratedFile[];
+  buildReady: boolean;
   buildCommand: string;
   diagnostics: FirmwareDiagnostic[];
   sourceHash: string;
   summary: {
+    buildReady: boolean;
     errors: number;
     files: number;
     target: DeviceProfile["firmware"];
@@ -101,6 +103,11 @@ const qmkLayerTapPattern = /^LT\((\d+),(.+)\)$/i;
 const qmkLayerPattern = /^(MO|TO|TG)\((\d+)\)$/i;
 const qmkModifiedPattern = /^(C|S|A|G|LCTL|LSFT|LALT|LGUI|RCTL|RSFT|RALT|RGUI)\((.+)\)$/i;
 const qmkModTapPattern = /^(LCTL|LSFT|LALT|LGUI|RCTL|RSFT|RALT|RGUI)_T\((.+)\)$/i;
+const requiredQmkKeyboardPath = "<REQUIRED: qmk keyboard path>";
+const requiredQmkLayoutMacroJson = "<REQUIRED: qmk layout macro>";
+const requiredQmkLayoutMacroIdentifier = "KBGUI_REQUIRED_QMK_LAYOUT_MACRO";
+const requiredZmkBoard = "<REQUIRED: zmk board>";
+const requiredZmkShield = "<REQUIRED: zmk shield>";
 
 const zmkKeyNames: Record<string, string> = {
   KC_NO: "NO",
@@ -393,8 +400,8 @@ function qmkCodeForBinding(
     diagnostics.push(
       diagnostic(
         "qmk.keycode.unsupported",
-        "error",
-        `${binding.code} cannot be converted to a known QMK keycode; ${fallback} was emitted.`,
+        "warning",
+        `Unsupported QMK keycode ${binding.code} at ${context}; ${fallback} was emitted.`,
         { path: context },
       ),
     );
@@ -460,8 +467,8 @@ export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeyma
       diagnostic(
         "qmk.metadata.keyboard_missing",
         "error",
-        "QMK keyboard path is missing; set metadata such as qmk.keyboard before compiling.",
-        { file: "qmk/keymap.json" },
+        "QMK keyboard path is missing; set metadata.qmk.keyboard before compiling.",
+        { file: "qmk/keymap.json", path: "metadata.qmk.keyboard" },
       ),
     );
   }
@@ -470,16 +477,16 @@ export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeyma
       diagnostic(
         "qmk.metadata.layout_missing",
         "error",
-        "QMK layout macro name is missing; set metadata such as qmk.layout before compiling.",
-        { file: "qmk/keymap.json" },
+        "QMK layout macro name is missing; set metadata.qmk.layout before compiling.",
+        { file: "qmk/keymap.json", path: "metadata.qmk.layout" },
       ),
     );
   }
 
   const keymap: QmkKeymapJson = {
-    keyboard: metadata.keyboard ?? "",
+    keyboard: metadata.keyboard ?? requiredQmkKeyboardPath,
     keymap: metadata.keymap,
-    layout: metadata.layout ?? "",
+    layout: metadata.layout ?? requiredQmkLayoutMacroJson,
     layers: profile.layers.map((layer, layerIndex) =>
       keyOrder.map((keyId) =>
         qmkCodeForJson(
@@ -509,6 +516,8 @@ export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeyma
 export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceBundle {
   const metadata = qmkMetadata(profile);
   const diagnostics: FirmwareDiagnostic[] = [];
+  const keymapName = metadata.keymap;
+  const sourceRoot = `qmk/keymaps/${keymapName}`;
   const { diagnostics: orderDiagnostics, keyOrder } = keyPositionOrder(
     profile,
     metadata.keyOrder,
@@ -521,7 +530,8 @@ export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceB
       diagnostic(
         "qmk.metadata.keyboard_missing",
         "error",
-        "QMK keyboard path is missing; keymap source was generated with a placeholder build command.",
+        "QMK keyboard path is missing; set metadata.qmk.keyboard before running the build command.",
+        { file: "COMMANDS.txt", path: "metadata.qmk.keyboard" },
       ),
     );
   }
@@ -530,17 +540,20 @@ export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceB
       diagnostic(
         "qmk.metadata.layout_missing",
         "error",
-        "QMK layout macro name is missing; keymap.c uses LAYOUT as a placeholder.",
-        { file: "qmk/keymaps/keymap.c" },
+        "QMK layout macro name is missing; replace KBGUI_REQUIRED_QMK_LAYOUT_MACRO with the target board layout macro before compiling.",
+        { file: `${sourceRoot}/keymap.c`, path: "metadata.qmk.layout" },
       ),
     );
   }
 
-  const keymapName = metadata.keymap;
-  const sourceRoot = `qmk/keymaps/${keymapName}`;
   const files: FirmwareGeneratedFile[] = [
     {
-      content: generateQmkKeymapC(profile, metadata.layout ?? "LAYOUT", keyOrder, diagnostics),
+      content: generateQmkKeymapC(
+        profile,
+        metadata.layout ?? requiredQmkLayoutMacroIdentifier,
+        keyOrder,
+        diagnostics,
+      ),
       mimeType: "text/x-csrc",
       path: `${sourceRoot}/keymap.c`,
       role: "qmk-keymap-c",
@@ -559,7 +572,7 @@ export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceB
     },
   ];
 
-  const buildCommand = `qmk compile -kb ${metadata.keyboard ?? "<qmk-keyboard>"} -km ${keymapName}`;
+  const buildCommand = `qmk compile -kb ${metadata.keyboard ?? requiredQmkKeyboardPath} -km ${keymapName}`;
   return {
     buildCommand,
     diagnostics: uniqueDiagnostics(diagnostics),
@@ -584,7 +597,12 @@ function generateQmkKeymapC(
     "#include QMK_KEYBOARD_H",
     "",
     "// Generated by kbgui source export.",
-    "// Review diagnostics before compiling; missing board metadata is left as TODO/UNSUPPORTED.",
+    "// Review diagnostics before compiling; required board metadata is left as explicit REQUIRED markers.",
+    ...(layoutMacro === requiredQmkLayoutMacroIdentifier
+      ? [
+          "// REQUIRED: replace KBGUI_REQUIRED_QMK_LAYOUT_MACRO with the target board's real QMK layout macro.",
+        ]
+      : []),
     "",
     "enum layers {",
     ...layers.map((layer) => `  _${layer.enumName},`),
@@ -674,6 +692,7 @@ function qmkComboSource(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[
   );
 
   const definitions = combos.flatMap((combo, index) => {
+    const comboLabel = combo.name || combo.id || `combo ${index}`;
     const id = cIdentifier(combo.id || combo.name, `combo_${index}`);
     const comboCodes = combo.keys.map((keyId) =>
       qmkCodeForProfileBinding(
@@ -687,10 +706,20 @@ function qmkComboSource(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[
     const binding = qmkStandaloneCode(combo.binding, diagnostics, `combos/${combo.name}/binding`);
     const layerComment = combo.layerIds?.length
       ? [
-          `// TODO: ${combo.name} is scoped to layer ids ${combo.layerIds.join(", ")}.`,
+          `// TODO: ${comboLabel} is scoped to layer ids ${combo.layerIds.join(", ")}.`,
           "// QMK layer-scoped combos need combo_should_trigger or equivalent policy code.",
         ]
       : [];
+    if (combo.layerIds?.length) {
+      diagnostics.push(
+        diagnostic(
+          "qmk.combos.layer_scope",
+          "warning",
+          `Combo ${comboLabel} is scoped to layer ids ${combo.layerIds.join(", ")}; QMK combo_should_trigger policy code was not generated.`,
+          { file: "keymap.c", path: `combos.${combo.id || index}.layerIds` },
+        ),
+      );
+    }
 
     return [
       ...layerComment,
@@ -863,8 +892,8 @@ function generateQmkConfigH(profile: DeviceProfile, diagnostics: FirmwareDiagnos
       diagnostic(
         "qmk.settings.split_transport",
         "warning",
-        "QMK split transport settings are board-specific; config.h contains a TODO comment.",
-        { file: "config.h" },
+        `QMK split transport ${profile.settings.splitTransport} is board-specific; config.h contains a TODO comment.`,
+        { file: "config.h", path: "settings.splitTransport" },
       ),
     );
   }
@@ -876,8 +905,8 @@ function generateQmkConfigH(profile: DeviceProfile, diagnostics: FirmwareDiagnos
       diagnostic(
         "qmk.lighting.unsupported",
         "warning",
-        "Lighting source generation is board-specific and is emitted as a TODO.",
-        { file: "config.h" },
+        `QMK lighting mode ${profile.lighting.mode} has ${Object.keys(profile.lighting.keys).length} per-key overrides; board RGBLIGHT/RGB_MATRIX config was not generated.`,
+        { file: "config.h", path: "lighting" },
       ),
     );
   }
@@ -902,7 +931,7 @@ function generateQmkRulesMk(profile: DeviceProfile, diagnostics: FirmwareDiagnos
         "qmk.rules.lighting_feature_unknown",
         "warning",
         "Lighting capability does not identify whether QMK uses RGBLIGHT or RGB_MATRIX.",
-        { file: "rules.mk" },
+        { file: "rules.mk", path: "capabilities.lighting" },
       ),
     );
   }
@@ -924,8 +953,8 @@ export function generateZmkSource(profile: DeviceProfile): FirmwareSourceBundle 
       diagnostic(
         "zmk.metadata.board_missing",
         "error",
-        "ZMK board identity is missing; build.yaml uses a placeholder board.",
-        { file: "zmk/build.yaml" },
+        "ZMK board identity is missing; set metadata.zmk.board before compiling.",
+        { file: "zmk/build.yaml", path: "metadata.zmk.board" },
       ),
     );
   }
@@ -933,9 +962,9 @@ export function generateZmkSource(profile: DeviceProfile): FirmwareSourceBundle 
     diagnostics.push(
       diagnostic(
         "zmk.metadata.shield_missing",
-        "warning",
-        "ZMK shield identity is missing; build.yaml uses a placeholder shield.",
-        { file: "zmk/build.yaml" },
+        "error",
+        "ZMK shield identity is missing; set metadata.zmk.shield before compiling.",
+        { file: "zmk/build.yaml", path: "metadata.zmk.shield" },
       ),
     );
   }
@@ -962,8 +991,8 @@ export function generateZmkSource(profile: DeviceProfile): FirmwareSourceBundle 
     },
   ];
 
-  const buildCommand = `west build -b ${metadata.board ?? "<zmk-board>"}${
-    metadata.shield ? ` -- -DSHIELD=${metadata.shield}` : " -- -DSHIELD=<zmk-shield>"
+  const buildCommand = `west build -b ${metadata.board ?? requiredZmkBoard}${
+    metadata.shield ? ` -- -DSHIELD=${metadata.shield}` : ` -- -DSHIELD=${requiredZmkShield}`
   }`;
 
   return {
@@ -1230,7 +1259,7 @@ function zmkBehaviorForCode(
     diagnostic(
       "zmk.keycode.unsupported",
       "warning",
-      `${rawCode} does not have a known ZMK behavior mapping; &none placeholder was emitted.`,
+      `Unsupported ZMK keycode ${rawCode} at ${context}; &none was emitted.`,
       { path: context },
     ),
   );
@@ -1276,6 +1305,14 @@ function generateZmkConf(profile: DeviceProfile, diagnostics: FirmwareDiagnostic
   if (profile.settings.splitTransport === "ble") lines.push("CONFIG_BT=y");
   if (profile.settings.splitTransport === "serial") {
     lines.push("# TODO: configure ZMK serial split transport for this board.");
+    diagnostics.push(
+      diagnostic(
+        "zmk.settings.serial_split_transport",
+        "warning",
+        "ZMK serial split transport is board-specific; .conf contains a TODO comment.",
+        { file: ".conf", path: "settings.splitTransport" },
+      ),
+    );
   }
   if (profile.settings.nkro) lines.push("CONFIG_ZMK_HID_REPORT_TYPE_NKRO=y");
   if (profile.settings.tappingTerm) {
@@ -1285,9 +1322,9 @@ function generateZmkConf(profile: DeviceProfile, diagnostics: FirmwareDiagnostic
     diagnostics.push(
       diagnostic(
         "zmk.settings.tapping_term_scope",
-        "info",
-        "ZMK tapping term is behavior-specific; .conf contains a TODO comment.",
-        { file: ".conf" },
+        "warning",
+        `ZMK tapping term ${profile.settings.tappingTerm}ms is behavior-specific; .conf contains a TODO comment.`,
+        { file: ".conf", path: "settings.tappingTerm" },
       ),
     );
   }
@@ -1297,11 +1334,22 @@ function generateZmkConf(profile: DeviceProfile, diagnostics: FirmwareDiagnostic
 function generateZmkBuildYaml(metadata: ZmkMetadata) {
   return [
     "# Generated by kbgui source export.",
+    ...(metadata.board
+      ? []
+      : ["# REQUIRED: set metadata.zmk.board to a real ZMK board target before building."]),
+    ...(metadata.shield
+      ? []
+      : ["# REQUIRED: set metadata.zmk.shield to a real ZMK shield before building."]),
     "include:",
-    `  - board: ${metadata.board ?? "<zmk-board>"}`,
-    `    shield: ${metadata.shield ?? "<zmk-shield>"}`,
+    `  - board: ${zmkBuildYamlValue(metadata.board ?? requiredZmkBoard)}`,
+    `    shield: ${zmkBuildYamlValue(metadata.shield ?? requiredZmkShield)}`,
     "",
   ].join("\n");
+}
+
+function zmkBuildYamlValue(value: string) {
+  if (/^[A-Za-z0-9_.-]+$/.test(value)) return value;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function escapeDtsString(value: string) {
@@ -1364,16 +1412,21 @@ function artifactResult(
   buildCommand: string,
 ): FirmwareArtifacts {
   const unique = uniqueDiagnostics(diagnostics);
+  const errors = unique.filter((item) => item.severity === "error").length;
+  const warnings = unique.filter((item) => item.severity === "warning").length;
+  const buildReady = errors === 0;
   return {
     artifacts,
+    buildReady,
     buildCommand,
     diagnostics: unique,
     sourceHash: firmwareSourceHash(artifacts),
     summary: {
-      errors: unique.filter((item) => item.severity === "error").length,
+      buildReady,
+      errors,
       files: artifacts.length,
       target,
-      warnings: unique.filter((item) => item.severity === "warning").length,
+      warnings,
     },
     target,
   };

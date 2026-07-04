@@ -111,7 +111,12 @@
         )
       : "",
   );
-  const diagnosticPreview = $derived(result?.diagnostics.slice(0, 4) ?? []);
+  const errorDiagnostics = $derived(
+    result?.diagnostics.filter((item) => item.severity === "error") ?? [],
+  );
+  const warningDiagnostics = $derived(
+    result?.diagnostics.filter((item) => item.severity === "warning") ?? [],
+  );
   const targetLabel = $derived(result?.target === "zmk" ? "ZMK" : "QMK");
   const viaJumpAvailable = $derived(
     shell.liveConnection?.status === "connected" &&
@@ -249,6 +254,11 @@
 
   async function buildFirmwareInBrowser() {
     if (!result || browserBuilding) return;
+    if (!result.buildReady) {
+      browserBuildError = `Browser build blocked: generated source is not build-ready (${diagnosticSummary(errorDiagnostics)}).`;
+      appendUf2Log(browserBuildError);
+      return;
+    }
 
     const manifest = experimentalBrowserBuildManifest(profile);
     if (!manifest) {
@@ -454,7 +464,9 @@
       `${JSON.stringify(
         {
           buildCommand: result.buildCommand,
+          buildReady: result.buildReady,
           diagnostics: result.diagnostics,
+          summary: result.summary,
           sourceHash: result.sourceHash,
           target: result.target,
         },
@@ -510,6 +522,7 @@
   function canOfferBrowserBuild(activeProfile: DeviceProfile, artifacts: FirmwareArtifacts) {
     return (
       browser &&
+      artifacts.buildReady &&
       artifacts.target === "qmk" &&
       isBrowserBuildAvailable() &&
       experimentalBrowserBuildManifest(activeProfile) !== null
@@ -594,6 +607,7 @@
       `$ kbgui firmware-source generate --target ${artifacts.target}`,
       `profile: ${profileDisplayName(activeProfile)}`,
       `source-hash: ${artifacts.sourceHash}`,
+      `source-status: ${artifacts.buildReady ? "build-ready" : "not build-ready"}`,
       "",
       "profile changes included:",
       ...changeLines,
@@ -611,15 +625,20 @@
       ...flashLines,
       "",
       "notes:",
+      artifacts.buildReady
+        ? "  Generated source has no build-blocking diagnostics."
+        : "  Generated source is not build-ready; replace required metadata markers before compiling or flashing firmware from it.",
       "  UF2 guided flash is mock-tested and real-device hardware-unverified.",
       "  VIA EEPROM may override flashed default keymaps until a future reset flow exists.",
     ].join("\n");
   }
 
-  function diagnosticClass(item: FirmwareDiagnostic) {
-    if (item.severity === "error") return "error";
-    if (item.severity === "warning") return "warning";
-    return "info";
+  function diagnosticTarget(item: FirmwareDiagnostic) {
+    return item.path ?? item.file ?? item.code;
+  }
+
+  function diagnosticSummary(items: readonly FirmwareDiagnostic[]) {
+    return items.map(diagnosticTarget).join(", ");
   }
 
   function phaseStatus(key: FlashPhase) {
@@ -691,11 +710,55 @@
           <span>Source hash</span>
           <strong>{result.sourceHash}</strong>
         </div>
+        <div class:source-blocked={!result.buildReady}>
+          <span>Source status</span>
+          <strong>{result.buildReady ? "build-ready" : "not build-ready"}</strong>
+        </div>
         <div>
           <span>UF2</span>
           <strong>{uf2Plan ? formatBytes(uf2Plan.artifact.size) : "not selected"}</strong>
         </div>
       </div>
+
+      {#if errorDiagnostics.length > 0}
+        <section class="diagnostic-banner error" aria-label="Build readiness errors">
+          <div class="diagnostic-title">
+            <span class="material-symbols-outlined" aria-hidden="true">report</span>
+            <div>
+              <strong>Not build-ready - missing: {diagnosticSummary(errorDiagnostics)}</strong>
+              <small>Fill these required inputs before compiling, browser-building, or flashing firmware generated from this source.</small>
+            </div>
+          </div>
+          <ul class="diagnostic-list">
+            {#each errorDiagnostics as item (`${item.code}:${diagnosticTarget(item)}`)}
+              <li>
+                <span>{diagnosticTarget(item)}</span>
+                <p>{item.message}</p>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+
+      {#if warningDiagnostics.length > 0}
+        <section class="diagnostic-banner warning" aria-label="Incomplete source coverage warnings">
+          <div class="diagnostic-title">
+            <span class="material-symbols-outlined" aria-hidden="true">warning</span>
+            <div>
+              <strong>Incomplete coverage - review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
+              <small>These source sections compile to fallbacks, TODOs, or board-specific review points.</small>
+            </div>
+          </div>
+          <ul class="diagnostic-list">
+            {#each warningDiagnostics as item (`${item.code}:${diagnosticTarget(item)}`)}
+              <li>
+                <span>{diagnosticTarget(item)}</span>
+                <p>{item.message}</p>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
 
       <section class="flash-panels" aria-label="UF2 guided flash controls">
         <div class="flash-panel">
@@ -715,7 +778,9 @@
             </dl>
           {:else}
             <p class="panel-copy">
-              Build externally for now, then bring the UF2 back here. The source bundle path remains available without a board.
+              {result.buildReady
+                ? "Build externally for now, then bring the UF2 back here."
+                : "Resolve the source diagnostics before compiling or flashing firmware from this export. The zip remains available so you can fill the required metadata."}
             </p>
           {/if}
 
@@ -853,20 +918,6 @@
             </Button>
           </div>
         </section>
-      {/if}
-
-      {#if result.diagnostics.length > 0}
-        <div class="diagnostics" aria-label="Source generation diagnostics">
-          {#each diagnosticPreview as item (`${item.code}:${item.path ?? item.file ?? ""}`)}
-            <div class:warning={diagnosticClass(item) === "warning"} class:error={diagnosticClass(item) === "error"}>
-              <span>{item.severity}</span>
-              <strong>{item.message}</strong>
-            </div>
-          {/each}
-          {#if result.diagnostics.length > diagnosticPreview.length}
-            <small>{result.diagnostics.length - diagnosticPreview.length} more in the downloaded diagnostics file</small>
-          {/if}
-        </div>
       {/if}
 
       <pre class="command-log">{commandLog}</pre>
@@ -1012,7 +1063,7 @@
 
   .source-facts {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -1043,6 +1094,115 @@
     font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .source-facts .source-blocked {
+    border-color: oklch(0.62 0.2 25 / 0.36);
+    background: oklch(0.95 0.04 25);
+  }
+
+  .diagnostic-banner {
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .diagnostic-banner.error {
+    border-color: oklch(0.62 0.2 25 / 0.36);
+    background: oklch(0.95 0.04 25);
+  }
+
+  .diagnostic-banner.warning {
+    border-color: color-mix(in oklch, var(--mustard) 48%, var(--line-2));
+    background: color-mix(in oklch, var(--mustard) 14%, var(--surface));
+  }
+
+  .diagnostic-title {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    min-width: 0;
+  }
+
+  .diagnostic-title > .material-symbols-outlined {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    border: 1px solid color-mix(in oklch, currentColor 30%, var(--surface));
+    border-radius: 8px;
+    background: var(--surface);
+    font-size: 17px;
+  }
+
+  .diagnostic-banner.error .diagnostic-title > .material-symbols-outlined {
+    color: oklch(0.42 0.15 25);
+  }
+
+  .diagnostic-banner.warning .diagnostic-title > .material-symbols-outlined {
+    color: color-mix(in oklch, var(--mustard) 72%, var(--ink));
+  }
+
+  .diagnostic-title strong,
+  .diagnostic-title small {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .diagnostic-title strong {
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .diagnostic-title small {
+    margin-top: 3px;
+    color: var(--ink-3);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .diagnostic-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .diagnostic-list li {
+    display: grid;
+    grid-template-columns: minmax(110px, 0.42fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid color-mix(in oklch, var(--surface) 55%, var(--line));
+    border-radius: 8px;
+    background: color-mix(in oklch, var(--surface) 70%, transparent);
+  }
+
+  .diagnostic-list span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .diagnostic-list p {
+    min-width: 0;
+    margin: 0;
+    color: var(--ink-2);
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .flash-panels {
@@ -1258,53 +1418,6 @@
   .verify-error {
     color: oklch(0.42 0.15 25);
     background: oklch(0.95 0.04 25);
-  }
-
-  .diagnostics {
-    display: grid;
-    gap: 6px;
-  }
-
-  .diagnostics div {
-    display: grid;
-    grid-template-columns: 54px minmax(0, 1fr);
-    gap: 8px;
-    align-items: start;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper-2) 72%, transparent);
-  }
-
-  .diagnostics div.warning {
-    border-color: color-mix(in oklch, var(--mustard) 44%, var(--line-2));
-    background: color-mix(in oklch, var(--mustard) 14%, var(--surface));
-  }
-
-  .diagnostics div.error {
-    border-color: oklch(0.62 0.2 25 / 0.32);
-    background: oklch(0.95 0.04 25);
-  }
-
-  .diagnostics span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .diagnostics strong {
-    min-width: 0;
-    color: var(--ink-2);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .diagnostics small {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
   }
 
   .command-log {
