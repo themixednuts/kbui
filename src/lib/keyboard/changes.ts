@@ -1,4 +1,4 @@
-import type { ChangeRecord, Combo, DeviceProfile, KeyBinding } from "./schema";
+import type { ChangeRecord, Combo, DeviceProfile, KeyBinding, Macro, TapDance } from "./schema";
 
 function stableValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -22,6 +22,14 @@ function bindingLabel(binding?: KeyBinding): string {
 function comboLabel(combo: Combo): string {
   const layerScope = combo.layerIds?.length ? ` [${combo.layerIds.join(", ")}]` : " [all layers]";
   return `${combo.name}: ${combo.keys.join("+")} -> ${combo.binding}${layerScope}`;
+}
+
+function macroLabel(macro: Macro): string {
+  return `${macro.name}: ${macro.sequence.join(" + ")} (${macro.trigger})`;
+}
+
+function tapDanceLabel(dance: TapDance): string {
+  return `${dance.keyId}: tap ${dance.tap} hold ${dance.hold} double ${dance.doubleTap}`;
 }
 
 function changeId(kind: string, path: string): string {
@@ -81,17 +89,30 @@ export function diffProfiles(base: DeviceProfile, draft: DeviceProfile): ChangeR
       continue;
     }
 
-    if (before.name !== macro.name || before.sequence.join("|") !== macro.sequence.join("|")) {
+    if (macroLabel(before) !== macroLabel(macro)) {
       changes.push({
         id: changeId("macro", macro.id),
         kind: "macro",
         scope: "Macros",
         path: `macros/${macro.name}`,
-        before: `${before.name}: ${before.sequence.join(" + ")}`,
-        after: `${macro.name}: ${macro.sequence.join(" + ")}`,
+        before: macroLabel(before),
+        after: macroLabel(macro),
         staged: true,
       });
     }
+  }
+
+  for (const macro of base.macros) {
+    if (draft.macros.some((candidate) => candidate.id === macro.id)) continue;
+    changes.push({
+      id: changeId("macro", macro.id),
+      kind: "macro",
+      scope: "Macros",
+      path: `macros/${macro.name}`,
+      before: macroLabel(macro),
+      after: "removed",
+      staged: true,
+    });
   }
 
   for (const combo of draft.combos) {
@@ -108,6 +129,48 @@ export function diffProfiles(base: DeviceProfile, draft: DeviceProfile): ChangeR
         staged: true,
       });
     }
+  }
+
+  for (const combo of base.combos) {
+    if (draft.combos.some((candidate) => candidate.id === combo.id)) continue;
+    changes.push({
+      id: changeId("combo", combo.id),
+      kind: "combo",
+      scope: "Combos",
+      path: `combos/${combo.name}`,
+      before: comboLabel(combo),
+      after: "removed",
+      staged: true,
+    });
+  }
+
+  for (const dance of draft.tapDances) {
+    const before = base.tapDances.find((candidate) => candidate.id === dance.id);
+
+    if (!before || tapDanceLabel(before) !== tapDanceLabel(dance)) {
+      changes.push({
+        id: changeId("tapDance", dance.id),
+        kind: "tapDance",
+        scope: "Tap Dances",
+        path: `tap-dances/${dance.keyId}`,
+        before: before ? tapDanceLabel(before) : "",
+        after: tapDanceLabel(dance),
+        staged: true,
+      });
+    }
+  }
+
+  for (const dance of base.tapDances) {
+    if (draft.tapDances.some((candidate) => candidate.id === dance.id)) continue;
+    changes.push({
+      id: changeId("tapDance", dance.id),
+      kind: "tapDance",
+      scope: "Tap Dances",
+      path: `tap-dances/${dance.keyId}`,
+      before: tapDanceLabel(dance),
+      after: "removed",
+      staged: true,
+    });
   }
 
   for (const [key, value] of Object.entries(draft.settings)) {
@@ -186,7 +249,9 @@ export function summarizeDiff(changes: ChangeRecord[]) {
   return {
     total: changes.length,
     bindings: changes.filter((change) => change.kind === "binding").length,
-    logic: changes.filter((change) => change.kind === "macro" || change.kind === "combo").length,
+    logic: changes.filter(
+      (change) => change.kind === "macro" || change.kind === "combo" || change.kind === "tapDance",
+    ).length,
     firmware: changes.filter((change) => change.kind === "setting" || change.kind === "metadata")
       .length,
   };

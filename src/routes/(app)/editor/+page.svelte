@@ -1,11 +1,10 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { Eye, EyeOff, Keyboard, Lightbulb, MousePointer2 } from "@lucide/svelte";
-  import { onDestroy } from "svelte";
 
   import { getShellContext } from "$lib/app/shell-store.svelte";
+  import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import {
-    EditorStore,
     type EditorLens,
     type EditorLightingDragMode,
   } from "$lib/app/editor-store.svelte";
@@ -21,19 +20,17 @@
   import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
   import {
     sampleBoardIdFromParam,
-    sampleBoards,
     type SampleBoardId,
   } from "$lib/keyboard/sample-boards";
 
   const shell = getShellContext();
-  const initialBoardId = sampleBoardIdFromParam(page.url.searchParams.get("board"));
+  const editor = getWorkbenchContext();
 
-  let activeBoardId = $state<SampleBoardId>(initialBoardId);
-  let editor = $state(new EditorStore({ baseProfile: sampleBoards[initialBoardId] }));
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
 
   const requestedBoardId = $derived(sampleBoardIdFromParam(page.url.searchParams.get("board")));
+  const activeBoardId = $derived(editor.activeBoardId);
   const lensItems: SegmentItem<EditorLens>[] = [
     { value: "keys", label: "Keys", icon: Keyboard, title: "Edit key bindings" },
     { value: "lighting", label: "Lighting", icon: Lightbulb, title: "Lighting lens" },
@@ -78,40 +75,56 @@
     if (editor.lightingSelection.mixed) return "var(--teal)";
     return keyLightingToCss(lighting) ?? "var(--ink-3)";
   });
+  const placementMarkedKeys = $derived(
+    shell.placeMode?.kind === "combo" ? shell.placeMode.picks : [],
+  );
 
   $effect(() => {
-    shell.setDirty(editor.dirty);
-    shell.setDevice({
-      connected: true,
-      name: editor.profile.name,
-      protocol: protocolLabel(editor.profile.protocol),
-      transport: editor.profile.firmware.toUpperCase(),
-    });
-  });
+    if (requestedBoardId === editor.activeBoardId) return;
 
-  $effect(() => {
-    if (requestedBoardId === activeBoardId) return;
-
-    const previousEditor = editor;
-    void previousEditor.flushPersistence();
-    activeBoardId = requestedBoardId;
-    editor = new EditorStore({ baseProfile: sampleBoards[activeBoardId] });
+    void editor.switchSampleBoard(requestedBoardId);
     boardZoom = 1;
     boardPan = { x: 0, y: 0 };
   });
 
-  onDestroy(() => {
-    void editor.flushPersistence();
+  $effect(() => {
+    if (shell.placeMode && editor.lens !== "keys") editor.setLens("keys");
   });
-
-  function protocolLabel(protocol: string) {
-    if (protocol === "via-v3") return "VIA v3";
-    if (protocol === "zmk-studio") return "ZMK Studio";
-    return protocol.toUpperCase();
-  }
 
   function handleLightingDrag(keyIds: string[], mode: EditorLightingDragMode) {
     editor.applyLightingDrag(keyIds, mode);
+  }
+
+  function handleBoardSelectKey(keyId: string) {
+    const placement = shell.placeMode;
+
+    if (placement?.kind === "macro" || placement?.kind === "tapDance") {
+      if (editor.placeLogicBindingOnKey(placement, keyId)) {
+        shell.clearPlacement();
+        return;
+      }
+    }
+
+    if (placement?.kind === "combo") {
+      editor.selectKey(keyId);
+      const picks = shell.toggleComboPlacementKey(keyId);
+      if (picks.length >= 2) {
+        editor.updateComboKeys(placement.id, picks.slice(0, 2));
+        shell.clearPlacement();
+      }
+      return;
+    }
+
+    editor.selectKey(keyId);
+  }
+
+  function handleBoardToggleKey(keyId: string) {
+    if (shell.placeMode?.kind === "combo") {
+      handleBoardSelectKey(keyId);
+      return;
+    }
+
+    editor.toggleKey(keyId);
   }
 
   function boardHref(boardId: SampleBoardId) {
@@ -178,12 +191,13 @@
           activeLayer={editor.activeLayer}
           lens="keys"
           selection={editor.selectionIds}
+          marked={placementMarkedKeys}
           showFallthrough={editor.showFallthrough}
           targetOs={editor.boardTargetOs}
           bind:zoom={boardZoom}
           bind:pan={boardPan}
-          onSelectKey={(keyId) => editor.selectKey(keyId)}
-          onToggleKey={(keyId) => editor.toggleKey(keyId)}
+          onSelectKey={handleBoardSelectKey}
+          onToggleKey={handleBoardToggleKey}
           onClearSelection={() => editor.clearSelection()}
         />
       </section>

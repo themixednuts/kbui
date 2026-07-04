@@ -96,9 +96,10 @@ for (const target of targets) {
 }
 
 async function waitForAppRouteHeading(page: Page, heading: string) {
-  const route = page.locator(".app-route-page");
-  await expect(route).toBeVisible();
-  await expect(route.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+  // Anchor on the shell appbar (banner) heading, which every (app) route shares
+  // whether it is a placeholder or a rebuilt screen.
+  const banner = page.getByRole("banner");
+  await expect(banner.getByRole("heading", { level: 1, name: heading })).toBeVisible();
 }
 
 async function waitForVisualReady(page: Page) {

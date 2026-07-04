@@ -20,7 +20,14 @@ export type Capability =
 
 export type EditorView = "keymap" | "logic" | "firmware";
 
-export type ChangeKind = "binding" | "macro" | "combo" | "setting" | "lighting" | "metadata";
+export type ChangeKind =
+  | "binding"
+  | "macro"
+  | "combo"
+  | "tapDance"
+  | "setting"
+  | "lighting"
+  | "metadata";
 
 export interface KeyboardKey {
   id: string;

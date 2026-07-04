@@ -17,7 +17,7 @@
 {#if items.length === 0}
   <p class="logic-empty">
     Nothing in the Logic builder yet.
-    <a href="/logic" data-sveltekit-preload-data="hover">Create macros &amp; tap dances</a>
+    <a href="/library" data-sveltekit-preload-data="hover">Create macros &amp; tap dances</a>
     first.
   </p>
 {:else}

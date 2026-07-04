@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { authClient } from "$lib/auth-client";
+  import { onDestroy } from "svelte";
   import AvatarButton from "$lib/components/ui/AvatarButton.svelte";
   import Brand from "$lib/components/ui/Brand.svelte";
   import Button from "$lib/components/ui/Button.svelte";
@@ -13,11 +14,18 @@
     ShellStore,
     type ShellSessionUser,
   } from "$lib/app/shell-store.svelte";
+  import {
+    protocolLabel,
+    setWorkbenchContext,
+    WorkbenchStore,
+  } from "$lib/app/workbench-store.svelte";
 
   let { children } = $props();
 
   const shell = new ShellStore();
+  const workbench = new WorkbenchStore();
   setShellContext(shell);
+  setWorkbenchContext(workbench);
   const pathname = $derived(page.url.pathname);
   const routeTitle = $derived(routeTitleFromPath(pathname));
   const accountAvatar = $derived(
@@ -40,6 +48,20 @@
     if (!browser || authRequested) return;
     authRequested = true;
     void refreshSession();
+  });
+
+  $effect(() => {
+    shell.setDirty(workbench.dirty);
+    shell.setDevice({
+      connected: true,
+      name: workbench.profile.name,
+      protocol: protocolLabel(workbench.profile.protocol),
+      transport: workbench.profile.firmware.toUpperCase(),
+    });
+  });
+
+  onDestroy(() => {
+    void workbench.flushPersistence();
   });
 
   async function refreshSession() {
@@ -269,11 +291,18 @@
     </header>
 
     <div class="placement-banner-host" data-shell-placement-banner>
-      {#if shell.placeMode && shell.placeMode.kind !== "combo"}
+      {#if pathname.startsWith("/editor") && shell.placeMode}
         <div class="placement-banner">
           <span class="material-symbols-outlined" aria-hidden="true">ads_click</span>
-          <span>Placing <strong>{shell.placeMode.label}</strong></span>
-          <button type="button" aria-label="Cancel placement" onclick={() => (shell.placeMode = null)}>
+          {#if shell.placeMode.kind === "combo"}
+            <span>
+              Picking <strong>{shell.placeMode.label}</strong>
+              <small>{shell.placeMode.picks.length}/2 keys</small>
+            </span>
+          {:else}
+            <span>Placing <strong>{shell.placeMode.label}</strong> - click a key</span>
+          {/if}
+          <button type="button" aria-label="Cancel placement" onclick={() => shell.clearPlacement()}>
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
@@ -676,6 +705,13 @@
 
   .placement-banner button:hover {
     background: color-mix(in oklch, var(--coral) 16%, transparent);
+  }
+
+  .placement-banner small {
+    margin-left: 6px;
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
   }
 
   .shell-content {

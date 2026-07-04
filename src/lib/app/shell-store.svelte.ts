@@ -51,10 +51,30 @@ export interface ShellSessionUser {
   image?: string | null;
 }
 
-export interface ShellPlaceMode {
-  kind: "macro" | "tapDance" | "combo";
-  label: string;
-}
+export type ShellPlaceMode =
+  | {
+      kind: "macro";
+      id: string;
+      label: string;
+    }
+  | {
+      kind: "tapDance";
+      id: string;
+      label: string;
+    }
+  | {
+      kind: "combo";
+      id: string;
+      label: string;
+      picks: string[];
+    };
+
+export type ShellPlacementIntent =
+  | Extract<ShellPlaceMode, { kind: "macro" }>
+  | Extract<ShellPlaceMode, { kind: "tapDance" }>
+  | (Omit<Extract<ShellPlaceMode, { kind: "combo" }>, "picks"> & {
+      picks?: string[];
+    });
 
 const SHELL_CONTEXT = Symbol("kbgui.shell");
 
@@ -209,6 +229,28 @@ export class ShellStore {
 
   setCurrentVariant(variant: ShellVariant) {
     this.currentVariant = variant;
+  }
+
+  startPlacement(intent: ShellPlacementIntent) {
+    this.placeMode =
+      intent.kind === "combo" ? { ...intent, picks: [...(intent.picks ?? [])] } : intent;
+  }
+
+  clearPlacement() {
+    this.placeMode = null;
+  }
+
+  toggleComboPlacementKey(keyId: string): string[] {
+    if (this.placeMode?.kind !== "combo") return [];
+
+    const picks = this.placeMode.picks.includes(keyId)
+      ? this.placeMode.picks.filter((candidate) => candidate !== keyId)
+      : [...this.placeMode.picks, keyId];
+    this.placeMode = {
+      ...this.placeMode,
+      picks,
+    };
+    return picks;
   }
 }
 

@@ -10,7 +10,12 @@ import {
   swatchToKeyLighting,
   type LightingSwatchId,
 } from "$lib/keyboard/lighting-swatches";
-import { logicBindingOptions, type LogicBindingOption } from "$lib/keyboard/logic-bindings";
+import {
+  logicBindingOptions,
+  macroBindingCode,
+  tapDanceBindingCode,
+  type LogicBindingOption,
+} from "$lib/keyboard/logic-bindings";
 import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from "$lib/keyboard/local-store";
 import { defaultSampleKeyboard } from "$lib/keyboard/sample-boards";
 import {
@@ -19,11 +24,14 @@ import {
   emptyBindingsForKeys,
   normalizeQmkKeycode,
   qmkKeycodeLabel,
+  type Combo,
   type DeviceProfile,
   type KeyBinding,
   type KeyLighting,
   type Layer,
   type LightingProfile,
+  type Macro,
+  type TapDance,
 } from "$lib/keyboard/schema";
 
 export type EditorLens = "keys" | "lighting";
@@ -50,6 +58,16 @@ export interface EditorMutationResult {
   profile: DeviceProfile;
   changedKeyIds: string[];
 }
+
+export type EditorLogicPlacementIntent =
+  | {
+      kind: "macro";
+      id: string;
+    }
+  | {
+      kind: "tapDance";
+      id: string;
+    };
 
 export interface EditorLightingSelectionSummary {
   count: number;
@@ -255,7 +273,7 @@ export class EditorStore {
   readonly lightingSpeed = $derived(this.profile.lighting.speed);
 
   private readonly persistEnabled: boolean;
-  private readonly draftProfileId: string;
+  private draftProfileId = defaultSampleKeyboard.id;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: EditorStoreOptions = {}) {
@@ -307,6 +325,19 @@ export class EditorStore {
     this.profile = withUpdatedAt(result.profile);
     this.activeLayer = result.layer.id;
     this.queuePersistence();
+  }
+
+  async replaceProfile(baseProfile: DeviceProfile, profile?: DeviceProfile) {
+    await this.flushPersistence();
+    this.baseProfile = cloneDevice(baseProfile);
+    this.profile = cloneDevice(profile ?? this.baseProfile);
+    this.draftProfileId = this.baseProfile.id;
+    this.activeLayer = this.profile.layers[0]?.id ?? "base";
+    this.selection = new Set([defaultSelectedKeyId(this.profile)]);
+    this.persistenceError = null;
+    this.hydrated = !browser || !this.persistEnabled;
+
+    if (browser) await this.hydrate();
   }
 
   setLens(lens: EditorLens) {
@@ -474,6 +505,252 @@ export class EditorStore {
     this.applyBindingToSelection(item.code, item.kind === "macro" ? item.macroId : undefined);
   }
 
+  addMacro(): Macro {
+    const index = this.profile.macros.length;
+    const macro: Macro = {
+      id: uniqueLogicId("macro"),
+      name: `Macro ${index + 1}`,
+      sequence: ["KC_LCTL", "KC_LSFT", "KC_P"],
+      trigger: "Unassigned",
+    };
+    this.commitProfile({
+      ...this.profile,
+      macros: [...this.profile.macros, macro],
+    });
+    return macro;
+  }
+
+  updateMacro(id: string, patch: Partial<Pick<Macro, "name" | "sequence" | "trigger">>) {
+    const current = this.profile.macros.find((macro) => macro.id === id);
+    if (!current) return;
+
+    const sequence =
+      "sequence" in patch
+        ? normalizeKeycodeSequence(patch.sequence ?? current.sequence)
+        : current.sequence;
+    const next: Macro = {
+      ...current,
+      name: "name" in patch ? nonEmptyName(patch.name, current.name) : current.name,
+      trigger: "trigger" in patch ? (patch.trigger ?? current.trigger).trim() : current.trigger,
+      sequence,
+    };
+
+    if (macroEquals(current, next)) return;
+    this.commitProfile({
+      ...this.profile,
+      macros: this.profile.macros.map((macro) => (macro.id === id ? next : macro)),
+    });
+  }
+
+  duplicateMacro(id: string): Macro | undefined {
+    const current = this.profile.macros.find((macro) => macro.id === id);
+    if (!current) return undefined;
+
+    const copy: Macro = {
+      ...current,
+      id: uniqueLogicId("macro"),
+      name: copyName(current.name),
+    };
+    this.commitProfile({
+      ...this.profile,
+      macros: [...this.profile.macros, copy],
+    });
+    return copy;
+  }
+
+  removeMacro(id: string) {
+    if (!this.profile.macros.some((macro) => macro.id === id)) return;
+    const next = cloneDevice({
+      ...this.profile,
+      macros: this.profile.macros.filter((macro) => macro.id !== id),
+    });
+    reconcileMacroBindings(next);
+    this.commitProfile(next);
+  }
+
+  addCombo(): Combo {
+    const index = this.profile.combos.length;
+    const combo: Combo = {
+      id: uniqueLogicId("combo"),
+      name: `Combo ${index + 1}`,
+      keys: this.profile.keys.slice(0, 2).map((key) => key.id),
+      binding: "KC_NO",
+    };
+    this.commitProfile({
+      ...this.profile,
+      combos: [...this.profile.combos, combo],
+    });
+    return combo;
+  }
+
+  updateCombo(id: string, patch: Partial<Pick<Combo, "binding" | "keys" | "layerIds" | "name">>) {
+    const current = this.profile.combos.find((combo) => combo.id === id);
+    if (!current) return;
+
+    const validKeyIds = new Set(this.profile.keys.map((key) => key.id));
+    const validLayerIds = new Set(this.profile.layers.map((layer) => layer.id));
+    const nextKeys = "keys" in patch ? uniqueValidIds(patch.keys ?? [], validKeyIds) : current.keys;
+    if (nextKeys.length < 2) return;
+
+    const rawLayerIds = "layerIds" in patch ? patch.layerIds : current.layerIds;
+    const nextLayerIds = rawLayerIds ? uniqueValidIds(rawLayerIds, validLayerIds) : undefined;
+    const normalizedLayerIds =
+      nextLayerIds && nextLayerIds.length > 0 && nextLayerIds.length < this.profile.layers.length
+        ? nextLayerIds
+        : undefined;
+    const next: Combo = {
+      ...current,
+      name: "name" in patch ? nonEmptyName(patch.name, current.name) : current.name,
+      binding:
+        "binding" in patch
+          ? normalizeEditorKeycode(patch.binding ?? current.binding)
+          : current.binding,
+      keys: nextKeys,
+      layerIds: normalizedLayerIds,
+    };
+
+    if (comboEquals(current, next)) return;
+    this.commitProfile({
+      ...this.profile,
+      combos: this.profile.combos.map((combo) => (combo.id === id ? next : combo)),
+    });
+  }
+
+  duplicateCombo(id: string): Combo | undefined {
+    const current = this.profile.combos.find((combo) => combo.id === id);
+    if (!current) return undefined;
+
+    const copy: Combo = {
+      ...current,
+      id: uniqueLogicId("combo"),
+      name: copyName(current.name),
+      keys: [...current.keys],
+      layerIds: current.layerIds ? [...current.layerIds] : undefined,
+    };
+    this.commitProfile({
+      ...this.profile,
+      combos: [...this.profile.combos, copy],
+    });
+    return copy;
+  }
+
+  removeCombo(id: string) {
+    if (!this.profile.combos.some((combo) => combo.id === id)) return;
+    this.commitProfile({
+      ...this.profile,
+      combos: this.profile.combos.filter((combo) => combo.id !== id),
+    });
+  }
+
+  updateComboKeys(id: string, keyIds: readonly string[]) {
+    this.updateCombo(id, { keys: [...keyIds] });
+  }
+
+  addTapDance(): TapDance | undefined {
+    const keyId = this.primarySelectedKeyId ?? this.profile.keys[0]?.id;
+    if (!keyId) return undefined;
+
+    const dance: TapDance = {
+      id: uniqueLogicId("td"),
+      keyId,
+      tap: "KC_NO",
+      hold: "KC_NO",
+      doubleTap: "KC_NO",
+    };
+    this.commitProfile({
+      ...this.profile,
+      tapDances: [...this.profile.tapDances, dance],
+    });
+    return dance;
+  }
+
+  updateTapDance(
+    id: string,
+    patch: Partial<Pick<TapDance, "doubleTap" | "hold" | "keyId" | "tap">>,
+  ) {
+    const current = this.profile.tapDances.find((dance) => dance.id === id);
+    if (!current) return;
+
+    const validKeyIds = new Set(this.profile.keys.map((key) => key.id));
+    const next: TapDance = {
+      ...current,
+      keyId:
+        "keyId" in patch && patch.keyId && validKeyIds.has(patch.keyId)
+          ? patch.keyId
+          : current.keyId,
+      tap: "tap" in patch ? normalizeEditorKeycode(patch.tap ?? current.tap) : current.tap,
+      hold: "hold" in patch ? normalizeEditorKeycode(patch.hold ?? current.hold) : current.hold,
+      doubleTap:
+        "doubleTap" in patch
+          ? normalizeEditorKeycode(patch.doubleTap ?? current.doubleTap)
+          : current.doubleTap,
+    };
+
+    if (tapDanceEquals(current, next)) return;
+    this.commitProfile({
+      ...this.profile,
+      tapDances: this.profile.tapDances.map((dance) => (dance.id === id ? next : dance)),
+    });
+  }
+
+  duplicateTapDance(id: string): TapDance | undefined {
+    const current = this.profile.tapDances.find((dance) => dance.id === id);
+    if (!current) return undefined;
+
+    const copy: TapDance = {
+      ...current,
+      id: uniqueLogicId("td"),
+    };
+    this.commitProfile({
+      ...this.profile,
+      tapDances: [...this.profile.tapDances, copy],
+    });
+    return copy;
+  }
+
+  removeTapDance(id: string) {
+    const removedIndex = this.profile.tapDances.findIndex((dance) => dance.id === id);
+    if (removedIndex < 0) return;
+
+    const next = cloneDevice({
+      ...this.profile,
+      tapDances: this.profile.tapDances.filter((dance) => dance.id !== id),
+    });
+    reconcileTapDanceBindings(next, removedIndex);
+    this.commitProfile(next);
+  }
+
+  placeLogicBindingOnKey(intent: EditorLogicPlacementIntent, keyId: string): boolean {
+    if (!this.profile.keys.some((key) => key.id === keyId)) return false;
+
+    if (intent.kind === "macro") {
+      const index = this.profile.macros.findIndex((macro) => macro.id === intent.id);
+      if (index < 0) return false;
+      const result = applyBindingToDevice(
+        this.profile,
+        this.activeLayer,
+        [keyId],
+        macroBindingCode(index),
+        intent.id,
+      );
+      this.selectKey(keyId);
+      this.applyMutation(result);
+      return true;
+    }
+
+    const index = this.profile.tapDances.findIndex((dance) => dance.id === intent.id);
+    if (index < 0) return false;
+    const result = applyBindingToDevice(
+      this.profile,
+      this.activeLayer,
+      [keyId],
+      tapDanceBindingCode(index),
+    );
+    this.selectKey(keyId);
+    this.applyMutation(result);
+    return true;
+  }
+
   async flushPersistence() {
     if (!this.persistEnabled || !browser) return;
     if (this.persistTimer) {
@@ -486,6 +763,12 @@ export class EditorStore {
   private applyMutation(result: EditorMutationResult) {
     if (result.changedKeyIds.length === 0) return;
     this.profile = withUpdatedAt(result.profile);
+    this.queuePersistence();
+  }
+
+  private commitProfile(profile: DeviceProfile) {
+    this.profile = withUpdatedAt(profile);
+    this.selection = sanitizeSelection(this.profile, this.selection);
     this.queuePersistence();
   }
 
@@ -537,6 +820,120 @@ export class EditorStore {
       this.persistenceError = error instanceof Error ? error.message : "Could not save local draft";
     }
   }
+}
+
+const MACRO_BINDING_PATTERN = /^QK_MACRO_(\d+)$/;
+const TAP_DANCE_BINDING_PATTERN = /^TD\((\d+)\)$/;
+
+function uniqueLogicId(prefix: string): string {
+  const random =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${random}`;
+}
+
+function normalizeKeycodeSequence(sequence: readonly string[]): string[] {
+  const normalized = sequence
+    .map((step) => normalizeEditorKeycode(step, ""))
+    .filter((step) => step.length > 0);
+  return normalized.length > 0 ? normalized : ["KC_NO"];
+}
+
+function nonEmptyName(value: string | undefined, fallback: string): string {
+  return value?.trim() || fallback;
+}
+
+function copyName(name: string): string {
+  return `${name} copy`;
+}
+
+function uniqueValidIds(ids: readonly string[], validIds: ReadonlySet<string>): string[] {
+  return [...new Set(ids)].filter((id) => validIds.has(id));
+}
+
+function macroEquals(left: Macro, right: Macro): boolean {
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.trigger === right.trigger &&
+    left.sequence.join("|") === right.sequence.join("|")
+  );
+}
+
+function comboEquals(left: Combo, right: Combo): boolean {
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.binding === right.binding &&
+    left.keys.join("|") === right.keys.join("|") &&
+    (left.layerIds ?? []).join("|") === (right.layerIds ?? []).join("|")
+  );
+}
+
+function tapDanceEquals(left: TapDance, right: TapDance): boolean {
+  return (
+    left.id === right.id &&
+    left.keyId === right.keyId &&
+    left.tap === right.tap &&
+    left.hold === right.hold &&
+    left.doubleTap === right.doubleTap
+  );
+}
+
+function clearCodeForLayerIndex(layerIndex: number): string {
+  return layerIndex === 0 ? "KC_NO" : "KC_TRNS";
+}
+
+function reconcileMacroBindings(profile: DeviceProfile) {
+  const macroIndexById = new Map(profile.macros.map((macro, index) => [macro.id, index]));
+
+  profile.layers.forEach((layer, layerIndex) => {
+    for (const [keyId, binding] of Object.entries(layer.bindings)) {
+      if (!binding.macroId) continue;
+
+      const macroIndex = macroIndexById.get(binding.macroId);
+      if (macroIndex === undefined) {
+        const next = { ...binding };
+        delete next.macroId;
+        if (MACRO_BINDING_PATTERN.test(next.code)) next.code = clearCodeForLayerIndex(layerIndex);
+        layer.bindings[keyId] = next;
+        continue;
+      }
+
+      if (
+        MACRO_BINDING_PATTERN.test(binding.code) &&
+        binding.code !== macroBindingCode(macroIndex)
+      ) {
+        layer.bindings[keyId] = {
+          ...binding,
+          code: macroBindingCode(macroIndex),
+        };
+      }
+    }
+  });
+}
+
+function reconcileTapDanceBindings(profile: DeviceProfile, removedIndex: number) {
+  profile.layers.forEach((layer, layerIndex) => {
+    for (const [keyId, binding] of Object.entries(layer.bindings)) {
+      const match = TAP_DANCE_BINDING_PATTERN.exec(binding.code);
+      if (!match) continue;
+
+      const index = Number(match[1]);
+      if (index === removedIndex) {
+        layer.bindings[keyId] = {
+          ...binding,
+          code: clearCodeForLayerIndex(layerIndex),
+        };
+      } else if (index > removedIndex) {
+        layer.bindings[keyId] = {
+          ...binding,
+          code: tapDanceBindingCode(index - 1),
+        };
+      }
+    }
+  });
 }
 
 export function normalizeEditorKeycode(value: string, fallback = "KC_NO"): string {

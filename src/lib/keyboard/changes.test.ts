@@ -23,4 +23,28 @@ describe("diffProfiles", () => {
       after: "QW Escape edited: k1-1+k1-2+k1-3 -> KC_TAB [base]",
     });
   });
+
+  it("tracks tap dance edits and logic removals", () => {
+    const draft = cloneDevice(sampleKeyboard);
+    draft.tapDances[0] = {
+      ...draft.tapDances[0],
+      doubleTap: "KC_TAB",
+    };
+    draft.macros = draft.macros.slice(1);
+
+    expect(diffProfiles(sampleKeyboard, draft)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tapDance",
+          before: "k2-0: tap KC_ESC hold KC_LCTL double KC_CAPS",
+          after: "k2-0: tap KC_ESC hold KC_LCTL double KC_TAB",
+        }),
+        expect.objectContaining({
+          kind: "macro",
+          path: "macros/Open Terminal",
+          after: "removed",
+        }),
+      ]),
+    );
+  });
 });
