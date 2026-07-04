@@ -1,60 +1,177 @@
 /* QMK/ZMK GUI design system for Svelte. */
-@import url("https://fonts.googleapis.com/css2?family=Departure+Mono&family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin-variable.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Departure Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/departure-mono.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url("/fonts/material-symbols-outlined.woff2") format("woff2");
+}
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens — Tailwind v4 reads `@theme` and emits utilities.
- *   --color-*   ⇒  bg-*, text-*, border-*, ring-*, divide-*, fill-*, stroke-*
- *   --font-*    ⇒  font-*
- *   --shadow-*  ⇒  shadow-*
- *   --radius-*  ⇒  rounded-*
- * Tokens are also available as plain CSS variables (`var(--color-paper)`),
- * so legacy hand-written rules below keep working during the migration.
+ * Design tokens. Raw handoff tokens live on :root; Tailwind v4 reads
+ * @theme and emits utilities that point back to those same variables.
  */
-@theme {
-  --color-paper: #f4efe6;
-  --color-paper-2: #ebe4d5;
-  --color-paper-3: #ddd3bd;
-  --color-surface: #fbf7ee;
-  --color-ink: #181614;
-  --color-ink-2: #4a4640;
-  --color-ink-3: #807868;
-  --color-line: oklch(0.13 0.005 60 / 0.1);
-  --color-line-2: oklch(0.13 0.005 60 / 0.16);
-  --color-coral: oklch(0.72 0.18 30);
-  --color-coral-ink: oklch(0.45 0.16 30);
-  --color-coral-soft: oklch(0.82 0.14 30);
-  --color-teal: oklch(0.72 0.13 195);
-  --color-mint: oklch(0.82 0.13 155);
-  --color-lilac: oklch(0.78 0.12 305);
-  --color-mustard: oklch(0.84 0.13 90);
-  --color-added: oklch(0.62 0.16 150);
-  --color-removed: oklch(0.62 0.2 25);
+@theme static {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-1: var(--ink-1);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-coral: var(--coral);
+  --color-coral-ink: var(--coral-ink);
+  --color-coral-soft: var(--coral-soft);
+  --color-teal: var(--teal);
+  --color-teal-ink: var(--teal-ink);
+  --color-mint: var(--mint);
+  --color-lilac: var(--lilac);
+  --color-mustard: var(--mustard);
+  --color-added: var(--added);
+  --color-removed: var(--removed);
+  --color-danger-hover: var(--danger-hover);
+  --color-diff-left: var(--diff-left);
+  --color-diff-right: var(--diff-right);
+  --color-tag-added: var(--tag-added-bg);
+  --color-tag-removed: var(--tag-removed-bg);
 
-  --font-mono: "Departure Mono", "Cascadia Mono", "JetBrains Mono", ui-monospace, monospace;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --spacing-kb-2: var(--space-2);
+  --spacing-kb-3: var(--space-3);
+  --spacing-kb-4: var(--space-4);
+  --spacing-kb-5: var(--space-5);
+  --spacing-kb-6: var(--space-6);
+  --spacing-kb-7: var(--space-7);
+  --spacing-kb-8: var(--space-8);
+  --spacing-kb-9: var(--space-9);
+  --spacing-kb-10: var(--space-10);
+  --spacing-kb-11: var(--space-11);
+  --spacing-kb-12: var(--space-12);
+  --spacing-kb-13: var(--space-13);
+  --spacing-kb-14: var(--space-14);
+  --spacing-kb-15: var(--space-15);
+  --spacing-kb-16: var(--space-16);
+  --spacing-kb-18: var(--space-18);
+  --spacing-kb-20: var(--space-20);
+  --spacing-kb-22: var(--space-22);
+  --spacing-kb-24: var(--space-24);
+  --spacing-kb-26: var(--space-26);
+  --spacing-kb-28: var(--space-28);
+  --spacing-kb-29: var(--space-29);
+  --spacing-kb-30: var(--space-30);
+  --spacing-kb-34: var(--space-34);
+  --spacing-kb-38: var(--space-38);
+  --spacing-kb-40: var(--space-40);
+  --spacing-kb-44: var(--space-44);
+  --spacing-kb-50: var(--space-50);
+  --spacing-kb-56: var(--space-56);
+  --spacing-kb-58: var(--space-58);
+  --spacing-kb-72: var(--space-72);
+  --spacing-kb-80: var(--space-80);
+  --spacing-kb-92: var(--space-92);
+  --spacing-kb-208: var(--space-208);
+  --spacing-kb-300: var(--space-300);
+  --spacing-kb-320: var(--space-320);
+  --spacing-kb-340: var(--space-340);
+  --spacing-kb-420: var(--space-420);
+  --spacing-kb-560: var(--space-560);
 
-  --radius-cap: 7px;
-  --radius-card: 14px;
-  --radius-pill: 999px;
+  --font-mono: var(--mono);
+  --font-sans: var(--sans);
+  --font-symbols: "Material Symbols Outlined";
+
+  --text-kb-8: 8px;
+  --text-kb-9: 9px;
+  --text-kb-10: 10px;
+  --text-kb-11: 11px;
+  --text-kb-12: 12px;
+  --text-kb-13: 13px;
+  --text-kb-14: 14px;
+  --text-kb-16: 16px;
+  --text-kb-17: 17px;
+  --text-kb-18: 18px;
+  --text-kb-30: 30px;
+  --text-kb-8--line-height: 1;
+  --text-kb-9--line-height: 1;
+  --text-kb-10--line-height: 1.2;
+  --text-kb-11--line-height: 1.2;
+  --text-kb-12--line-height: 1.35;
+  --text-kb-13--line-height: 1.35;
+  --text-kb-14--line-height: 1.45;
+  --text-kb-16--line-height: 1.2;
+  --text-kb-17--line-height: 1.2;
+  --text-kb-18--line-height: 1;
+  --text-kb-30--line-height: 1.1;
+
+  --font-weight-book: 450;
+  --font-weight-ui: 500;
+  --font-weight-strong: 600;
+
+  --leading-key: 1.05;
+  --leading-log: 1.7;
+
+  --radius: var(--r-3);
+  --radius-sm: var(--r-1);
+  --radius-md: var(--r-2);
+  --radius-lg: var(--r-3);
+  --radius-xl: var(--r-4);
+  --radius-kb-1: var(--r-1);
+  --radius-kb-2: var(--r-2);
+  --radius-kb-3: var(--r-3);
+  --radius-kb-4: var(--r-4);
+  --radius-brand: var(--r-brand);
+  --radius-keycap: var(--r-keycap);
+  --radius-big-cap: var(--r-big-cap);
+  --radius-frame: var(--r-frame);
+  --radius-pill: var(--r-pill);
 
   --shadow-cap:
-    0 1px 0 rgba(0, 0, 0, 0.08), 0 2px 0 rgba(0, 0, 0, 0.18), 0 4px 6px rgba(24, 22, 20, 0.1);
-  --shadow-cap-press:
-    0 1px 0 rgba(0, 0, 0, 0.08), 0 1px 0 rgba(0, 0, 0, 0.18), 0 2px 3px rgba(24, 22, 20, 0.1);
-  --shadow-card: 0 1px 0 rgba(24, 22, 20, 0.04), 0 8px 24px -10px rgba(24, 22, 20, 0.1);
+    0 1px 0 rgba(0, 0, 0, 0.09), 0 2px 0 rgba(0, 0, 0, 0.16), 0 4px 7px rgba(27, 25, 23, 0.1);
+  --shadow-cap-press: 0 1px 0 rgba(0, 0, 0, 0.16), 0 1px 3px rgba(27, 25, 23, 0.12);
+  --shadow-card: 0 1px 0 rgba(27, 25, 23, 0.03), 0 10px 26px -14px rgba(27, 25, 23, 0.14);
+  --shadow-keycap-selected:
+    0 0 0 2px var(--coral), 0 2px 0 rgba(0, 0, 0, 0.16),
+    0 8px 14px color-mix(in oklch, var(--coral) 32%, transparent);
+  --shadow-keycap-picked: 0 0 0 2px var(--teal), var(--shadow-cap);
+  --shadow-keycap-glow: var(--shadow-keycap-selected);
+  --shadow-swatch-pressed: 0 0 0 2px var(--ink), inset 0 -2px 3px rgba(0, 0, 0, 0.12);
+  --shadow-popover: 0 16px 44px -14px rgba(0, 0, 0, 0.4);
+  --shadow-toast: 0 10px 30px -8px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 24px 70px -20px rgba(0, 0, 0, 0.5);
+  --shadow-switch-knob: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-sequence-key: 0 1px 0 rgba(0, 0, 0, 0.16);
   --shadow-float:
-    0 1px 0 rgba(24, 22, 20, 0.04), 0 18px 48px -16px rgba(24, 22, 20, 0.28),
-    0 4px 12px -6px rgba(24, 22, 20, 0.12);
-  --shadow-keycap-glow:
-    0 0 0 1px oklch(0.72 0.18 30 / 0.55), 0 0 0 4px oklch(0.72 0.18 30 / 0.18),
-    0 8px 18px -4px oklch(0.72 0.18 30 / 0.4);
+    0 1px 0 rgba(27, 25, 23, 0.03), 0 18px 48px -16px rgba(27, 25, 23, 0.28),
+    0 4px 12px -6px rgba(27, 25, 23, 0.12);
 
-  /* Motion — exposed as CSS vars so hand-written rules and inline styles
-   * share one curve vocabulary. `--ease-spring` is a gentle overshoot. */
   --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
   --ease-spring: linear(0, 0.009, 0.035 2%, 0.141, 0.723 8.1%, 1.01 14%, 1 19%);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -63,62 +180,137 @@
   --dur-slow: 320ms;
   --dur-stagger: 38ms;
 
-  /* Paper texture — fractalNoise SVG, kept tiny. Rendered behind the dot
-   * grid so the surface reads as pressed paper rather than flat color. */
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
 
-  /* shadcn-svelte theme bridge — maps semantic tokens onto the app palette. */
-  --color-background: var(--color-paper);
-  --color-foreground: var(--color-ink);
-  --color-card: var(--color-surface);
-  --color-card-foreground: var(--color-ink);
-  --color-popover: var(--color-surface);
-  --color-popover-foreground: var(--color-ink);
-  --color-primary: var(--color-coral);
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--coral);
   --color-primary-foreground: #1c0a04;
-  --color-secondary: var(--color-paper-2);
-  --color-secondary-foreground: var(--color-ink);
-  --color-muted: var(--color-paper-2);
-  --color-muted-foreground: var(--color-ink-3);
-  --color-accent: var(--color-mint);
-  --color-accent-foreground: var(--color-ink);
-  --color-destructive: var(--color-removed);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--ink-3);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--removed);
   --color-destructive-foreground: #fff8f3;
-  --color-border: var(--color-line-2);
-  --color-input: var(--color-line-2);
-  --color-ring: var(--color-coral);
-  --radius: 10px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --color-border: var(--line-2);
+  --color-input: var(--line-2);
+  --color-ring: var(--coral);
 }
 
-/* Legacy aliases — kept so hand-written CSS that references --paper, --ink,
- * --mono, etc. continues to work while we migrate components to Tailwind. */
 :root {
-  --paper: var(--color-paper);
-  --paper-2: var(--color-paper-2);
-  --paper-3: var(--color-paper-3);
-  --surface: var(--color-surface);
-  --ink: var(--color-ink);
-  --ink-2: var(--color-ink-2);
-  --ink-3: var(--color-ink-3);
-  --line: var(--color-line);
-  --line-2: var(--color-line-2);
-  --coral: var(--color-coral);
-  --coral-ink: var(--color-coral-ink);
-  --teal: var(--color-teal);
-  --mint: var(--color-mint);
-  --lilac: var(--color-lilac);
-  --mustard: var(--color-mustard);
-  --added: var(--color-added);
-  --removed: var(--color-removed);
-  --mono: var(--font-mono);
-  --sans: var(--font-sans);
-  color: var(--color-ink);
-  background: var(--color-paper);
-  font-family: var(--font-sans);
+  --paper: #f2ede3;
+  --surface: #fbf8f2;
+  --surface-2: #ece5d6;
+  --surface-3: #dcd3c1;
+  --paper-2: var(--surface-2);
+  --paper-3: var(--surface-3);
+  --ink: #1b1917;
+  --ink-1: var(--ink);
+  --ink-2: #565149;
+  --ink-3: #8b8475;
+  --line: rgba(27, 25, 23, 0.1);
+  --line-2: rgba(27, 25, 23, 0.16);
+
+  --coral: oklch(0.72 0.17 32);
+  --coral-ink: oklch(from var(--coral) 0.46 0.15 h);
+  --coral-soft: oklch(from var(--coral) 0.82 0.14 h);
+  --teal: oklch(0.72 0.12 195);
+  --teal-ink: oklch(0.44 0.11 195);
+  --mint: oklch(0.8 0.12 155);
+  --lilac: oklch(0.76 0.11 305);
+  --mustard: oklch(0.82 0.12 90);
+  --added: oklch(0.6 0.15 150);
+  --removed: oklch(0.6 0.19 27);
+
+  --accent-solid-hover: oklch(from var(--coral) 0.68 0.18 h);
+  --accent-outline-border: color-mix(in oklch, var(--coral) 55%, transparent);
+  --accent-outline-hover: color-mix(in oklch, var(--coral) 12%, transparent);
+  --danger-hover: oklch(0.93 0.06 27);
+  --keycap-base: linear-gradient(180deg, #fffdf7 0%, #ebe2ce 100%);
+  --keycap-modifier: linear-gradient(180deg, #2c2825 0%, #1b1917 100%);
+  --keycap-accent: linear-gradient(
+    180deg,
+    oklch(from var(--coral) 0.82 0.14 h) 0%,
+    oklch(from var(--coral) 0.7 0.18 h) 100%
+  );
+  --keycap-transparent:
+    repeating-linear-gradient(-45deg, rgba(27, 25, 23, 0.05) 0 4px, transparent 4px 8px), #f7f1e4;
+  --led-off: linear-gradient(180deg, #2a2724 0%, #1b1917 100%);
+  --diff-left: oklch(0.97 0.035 27);
+  --diff-right: oklch(0.97 0.035 150);
+  --tag-added-bg: oklch(0.92 0.06 150);
+  --tag-removed-bg: oklch(0.92 0.06 27);
+  --place-banner-bg: color-mix(in oklch, var(--coral) 18%, var(--surface));
+  --place-banner-border: color-mix(in oklch, var(--coral) 40%, transparent);
+  --pick-bar-bg: color-mix(in oklch, var(--teal) 16%, var(--surface));
+  --pick-bar-border: color-mix(in oklch, var(--teal) 45%, transparent);
+  --rgb-preview: linear-gradient(
+    90deg,
+    oklch(0.7 0.18 var(--h, 32)),
+    oklch(0.7 0.13 calc(var(--h, 32) + 60))
+  );
+
+  --space-2: 2px;
+  --space-3: 3px;
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-7: 7px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
+  --space-13: 13px;
+  --space-14: 14px;
+  --space-15: 15px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-22: 22px;
+  --space-24: 24px;
+  --space-26: 26px;
+  --space-28: 28px;
+  --space-29: 29px;
+  --space-30: 30px;
+  --space-34: 34px;
+  --space-38: 38px;
+  --space-40: 40px;
+  --space-44: 44px;
+  --space-50: 50px;
+  --space-56: 56px;
+  --space-58: 58px;
+  --space-72: 72px;
+  --space-80: 80px;
+  --space-92: 92px;
+  --space-208: 208px;
+  --space-300: 300px;
+  --space-320: 320px;
+  --space-340: 340px;
+  --space-420: 420px;
+  --space-560: 560px;
+
+  --r-1: 6px;
+  --r-2: 9px;
+  --r-3: 13px;
+  --r-4: 20px;
+  --r-brand: 7px;
+  --r-keycap: 8px;
+  --r-big-cap: 9px;
+  --r-frame: 12px;
+  --r-pill: 999px;
+
+  --sans: "Inter", system-ui, sans-serif;
+  --mono: "Departure Mono", ui-monospace, "JetBrains Mono", monospace;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -223,6 +415,29 @@ button:disabled {
 
 .muted {
   color: var(--ink-3);
+}
+
+.material-symbols-outlined {
+  display: inline-block;
+  direction: ltr;
+  font-family: "Material Symbols Outlined";
+  font-feature-settings: "liga";
+  font-size: 18px;
+  font-style: normal;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
+  font-weight: normal;
+  letter-spacing: normal;
+  line-height: 1;
+  text-transform: none;
+  user-select: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
 }
 
 .row {
