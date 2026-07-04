@@ -102,14 +102,11 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
         // params to console.log. That's how we'll see better-auth's
         // INSERT into verification at sign-in vs. SELECT at callback,
         // and diagnose any identifier mismatch / missing row.
-        database: drizzleAdapter(
-          drizzle(this.#agentCtx.storage, { schema: authSchema, logger: true }),
-          {
-            provider: "sqlite",
-            schema: authSchema,
-            camelCase: true,
-          },
-        ),
+        database: drizzleAdapter(drizzle(this.#agentCtx.storage, { logger: true }), {
+          provider: "sqlite",
+          schema: authSchema,
+          camelCase: true,
+        }),
         logger: {
           level: "debug",
           log: (level, message, ...args) => {
