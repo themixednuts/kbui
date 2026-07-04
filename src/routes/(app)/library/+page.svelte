@@ -20,6 +20,7 @@
     tapDanceBindingCode,
   } from "$lib/keyboard/logic-bindings";
   import { keyById, type Combo, type Macro, type TapDance } from "$lib/keyboard/schema";
+  import { cn } from "$lib/utils.js";
 
   type LibraryTab = "macros" | "combos" | "tapDance";
 
@@ -38,6 +39,67 @@
     { value: "combos", label: "Combos", title: "Combos" },
     { value: "tapDance", label: "Tap Dance", title: "Tap dances" },
   ];
+  const libraryRouteClass =
+    "library-route min-h-[calc(100vh-58px)] bg-[radial-gradient(ellipse_82%_52%_at_78%_0%,color-mix(in_oklch,var(--teal)_7%,transparent),transparent_66%),var(--paper)] p-kb-22 max-[640px]:p-kb-12";
+  const libraryGridClass =
+    "library-grid grid min-h-[calc(100vh-102px)] grid-cols-[minmax(0,1fr)_minmax(300px,340px)] items-start gap-kb-16 max-[1080px]:grid-cols-[minmax(0,1fr)] max-[640px]:min-h-[calc(100vh-92px)]";
+  const libraryCardClass =
+    "library-card min-w-0 min-h-[min(650px,calc(100vh-102px))] overflow-hidden";
+  const useCardClass = "use-card min-w-0 overflow-hidden max-[1080px]:max-w-none";
+  const libraryCardHeaderClass =
+    "library-card-header gap-kb-10 max-[640px]:items-start max-[640px]:flex-wrap";
+  const libraryCardBodyClass = "library-card-body p-kb-10";
+  const headerSpacerClass = "header-spacer min-w-[10px] flex-1";
+  const libraryListClass = "library-list grid gap-kb-8";
+  const libraryRowClass =
+    "library-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-keycap border border-transparent bg-paper-2 p-kb-10 transition-[border-color,background,transform] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:-translate-y-px hover:border-line-2 max-[640px]:grid-cols-[minmax(0,1fr)]";
+  const selectedLibraryRowClass =
+    "selected border-[color-mix(in_oklch,var(--coral)_54%,var(--line-2))] bg-[color-mix(in_oklch,var(--coral)_9%,var(--paper-2))] hover:border-[color-mix(in_oklch,var(--coral)_54%,var(--line-2))]";
+  const rowMainClass = "row-main grid min-w-0 gap-kb-6 p-0 text-left";
+  const rowTitleClass = "row-title flex min-w-0 items-center gap-kb-8";
+  const titleTextClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-13 font-strong";
+  const sequenceClass = "seq !mt-0";
+  const draftNoteClass = "draft-note font-mono text-kb-11 text-ink-3";
+  const previewClass = "seq preview !mt-0 pt-kb-8 pb-kb-2";
+  const tapGridClass =
+    "tap-grid !mt-0 !gap-kb-8 max-[640px]:!grid-cols-[minmax(0,1fr)]";
+  const tapCellClass = "grid min-w-0 gap-kb-4";
+  const tapLabelClass = "font-mono text-kb-9 tracking-[0.08em] text-ink-3 uppercase";
+  const usePanelClass = "use-panel grid gap-kb-14";
+  const selectedHeadClass =
+    "selected-head grid grid-cols-[34px_minmax(0,1fr)] items-center gap-kb-10";
+  const selectedHeadMetaClass = "mt-kb-2 block font-mono text-kb-10 text-ink-3";
+  const logicMarkClass =
+    "logic-mark grid size-kb-34 place-items-center rounded-keycap border border-[color-mix(in_oklch,var(--coral)_45%,transparent)] bg-coral font-mono text-kb-13 font-bold text-[#1c0a04] shadow-cap";
+  const comboMarkClass =
+    "combo-mark border-[color-mix(in_oklch,var(--mustard)_50%,transparent)] bg-mustard";
+  const danceMarkClass =
+    "dance-mark border-[color-mix(in_oklch,var(--teal)_50%,transparent)] bg-teal";
+  const fieldClass = "field grid min-w-0 gap-kb-6";
+  const libraryInputClass =
+    "library-input h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 text-kb-13 text-ink [font:inherit] outline-0 focus:border-ink";
+  const monoInputClass = cn(libraryInputClass, "mono font-mono");
+  const choiceRowClass = "choice-row flex flex-wrap gap-kb-6";
+  const choiceButtonClass =
+    "rounded-[7px] border border-line-2 bg-surface px-kb-9 py-kb-4 font-mono text-kb-10 text-ink-2 min-h-kb-28";
+  const comboKeyGridClass =
+    "combo-key-grid grid max-h-[210px] grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-kb-5 overflow-auto pr-kb-2";
+  const comboKeyButtonClass =
+    "grid min-h-[42px] min-w-0 content-center gap-kb-2 rounded-[7px] border border-line-2 bg-surface p-kb-5 font-mono text-ink-2";
+  const choiceSelectedClass = "selected border-[rgba(15,147,140,0.45)] bg-[#9de2d8] text-[#062826]";
+  const comboKeyPrimaryClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap text-kb-11 font-bold text-ink";
+  const comboKeyDetailClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap text-kb-8 text-ink-3";
+  const wideActionClass = "wide-action w-full justify-center";
+  const sideActionsClass =
+    "side-actions grid grid-cols-[repeat(2,minmax(0,1fr))] gap-kb-8 pt-kb-2 max-[640px]:grid-cols-[minmax(0,1fr)]";
+  const chipIconClass = "material-symbols-outlined chip-icon !text-kb-14";
+  const emptyPanelClass =
+    "empty-panel grid min-h-[180px] place-items-center content-center gap-kb-8 font-mono text-kb-12 text-ink-3";
+  const compactEmptyPanelClass = cn(emptyPanelClass, "compact min-h-[120px]");
+  const emptyPanelIconClass = "material-symbols-outlined !text-kb-24";
 
   const selectedMacro = $derived(
     workbench.profile.macros.find((macro) => macro.id === selectedIds.macros),
@@ -218,10 +280,10 @@
   }
 </script>
 
-<section class="library-route">
-  <div class="library-grid">
-    <Card.Root class="library-card">
-      <Card.Header class="library-card-header">
+<section class={libraryRouteClass}>
+  <div class={libraryGridClass}>
+    <Card.Root class={libraryCardClass}>
+      <Card.Header class={libraryCardHeaderClass}>
         <Card.Title>Library</Card.Title>
         <SegmentedNav
           items={tabItems}
@@ -229,7 +291,7 @@
           onselect={(next) => (tab = next)}
           ariaLabel="Library sections"
         />
-        <div class="header-spacer"></div>
+        <div class={headerSpacerClass}></div>
         <Chip title={`${currentCount} entries`}>{currentCount} items</Chip>
         <Button variant="coral" size="sm" onclick={addCurrent}>
           <Plus size={14} aria-hidden="true" />
@@ -237,26 +299,26 @@
         </Button>
       </Card.Header>
 
-      <Card.Content class="library-card-body">
+      <Card.Content class={libraryCardBodyClass}>
         {#if tab === "macros"}
           {#if workbench.profile.macros.length === 0}
-            <div class="empty-panel">
-              <span class="material-symbols-outlined" aria-hidden="true">edit_note</span>
+            <div class={emptyPanelClass}>
+              <span class={emptyPanelIconClass} aria-hidden="true">edit_note</span>
               <strong>No macros</strong>
               <Button variant="ghost" size="sm" onclick={addCurrent}>Create macro</Button>
             </div>
           {:else}
-            <div class="library-list">
+            <div class={libraryListClass}>
               {#each workbench.profile.macros as macro (macro.id)}
-                <div class="library-row" class:selected={selectedIds.macros === macro.id}>
-                  <button type="button" class="row-main" onclick={() => selectItem(macro.id)}>
-                    <span class="row-title">
-                      <strong>{macroTitle(macro)}</strong>
+                <div class={cn(libraryRowClass, selectedIds.macros === macro.id && selectedLibraryRowClass)}>
+                  <button type="button" class={rowMainClass} onclick={() => selectItem(macro.id)}>
+                    <span class={rowTitleClass}>
+                      <strong class={titleTextClass}>{macroTitle(macro)}</strong>
                       <Chip>{macro.trigger || "Unassigned"}</Chip>
                     </span>
-                    <span class="seq">
+                    <span class={sequenceClass}>
                       {#if macro.sequence.length === 0}
-                        <span class="draft-note">Add sequence</span>
+                        <span class={draftNoteClass}>Add sequence</span>
                       {:else}
                         {#each macro.sequence as step, index (`${macro.id}-${index}`)}
                           <span class="seq-key">{displayCode(step)}</span>
@@ -281,23 +343,23 @@
           {/if}
         {:else if tab === "combos"}
           {#if workbench.profile.combos.length === 0}
-            <div class="empty-panel">
-              <span class="material-symbols-outlined" aria-hidden="true">join_inner</span>
+            <div class={emptyPanelClass}>
+              <span class={emptyPanelIconClass} aria-hidden="true">join_inner</span>
               <strong>No combos</strong>
               <Button variant="ghost" size="sm" onclick={addCurrent}>Create combo</Button>
             </div>
           {:else}
-            <div class="library-list">
+            <div class={libraryListClass}>
               {#each workbench.profile.combos as combo (combo.id)}
-                <div class="library-row" class:selected={selectedIds.combos === combo.id}>
-                  <button type="button" class="row-main" onclick={() => selectItem(combo.id)}>
-                    <span class="row-title">
-                      <strong>{comboTitle(combo)}</strong>
+                <div class={cn(libraryRowClass, selectedIds.combos === combo.id && selectedLibraryRowClass)}>
+                  <button type="button" class={rowMainClass} onclick={() => selectItem(combo.id)}>
+                    <span class={rowTitleClass}>
+                      <strong class={titleTextClass}>{comboTitle(combo)}</strong>
                       <Chip>{comboLayerScopeLabel(workbench.profile, combo)}</Chip>
                     </span>
-                    <span class="seq">
+                    <span class={sequenceClass}>
                       {#if combo.keys.length === 0}
-                        <span class="draft-note">Add keys</span>
+                        <span class={draftNoteClass}>Add keys</span>
                       {:else}
                         {#each comboChordLabels(workbench.profile, combo, displayCode, workbench.activeLayer) as keyLabel, index (`${combo.id}-${index}`)}
                           <span class="seq-key">{keyLabel}</span>
@@ -308,7 +370,7 @@
                       {#if combo.binding}
                         <span class="seq-key added-key">{displayCode(combo.binding)}</span>
                       {:else}
-                        <span class="draft-note">Set output</span>
+                        <span class={draftNoteClass}>Set output</span>
                       {/if}
                     </span>
                   </button>
@@ -321,24 +383,24 @@
             </div>
           {/if}
         {:else if workbench.profile.tapDances.length === 0}
-          <div class="empty-panel">
-            <span class="material-symbols-outlined" aria-hidden="true">touch_app</span>
+          <div class={emptyPanelClass}>
+            <span class={emptyPanelIconClass} aria-hidden="true">touch_app</span>
             <strong>No tap dances</strong>
             <Button variant="ghost" size="sm" onclick={addCurrent}>Create tap dance</Button>
           </div>
         {:else}
-          <div class="library-list">
+          <div class={libraryListClass}>
             {#each workbench.profile.tapDances as dance (dance.id)}
-              <div class="library-row" class:selected={selectedIds.tapDance === dance.id}>
-                <button type="button" class="row-main" onclick={() => selectItem(dance.id)}>
-                  <span class="row-title">
-                    <strong>{tapDanceSourceLabel(dance)}</strong>
+              <div class={cn(libraryRowClass, selectedIds.tapDance === dance.id && selectedLibraryRowClass)}>
+                <button type="button" class={rowMainClass} onclick={() => selectItem(dance.id)}>
+                  <span class={rowTitleClass}>
+                    <strong class={titleTextClass}>{tapDanceSourceLabel(dance)}</strong>
                     <Chip>{isCompleteTapDance(dance) ? "tap dance" : "unassigned"}</Chip>
                   </span>
-                  <span class="tap-grid">
-                    <span><small>Tap</small><b class="seq-key">{codeLabel(dance.tap, "Set tap")}</b></span>
-                    <span><small>Hold</small><b class="seq-key">{codeLabel(dance.hold, "Set hold")}</b></span>
-                    <span><small>Double</small><b class="seq-key">{codeLabel(dance.doubleTap, "Set double")}</b></span>
+                  <span class={tapGridClass}>
+                    <span class={tapCellClass}><small class={tapLabelClass}>Tap</small><b class="seq-key">{codeLabel(dance.tap, "Set tap")}</b></span>
+                    <span class={tapCellClass}><small class={tapLabelClass}>Hold</small><b class="seq-key">{codeLabel(dance.hold, "Set hold")}</b></span>
+                    <span class={tapCellClass}><small class={tapLabelClass}>Double</small><b class="seq-key">{codeLabel(dance.doubleTap, "Set double")}</b></span>
                   </span>
                 </button>
                 <Button
@@ -360,49 +422,49 @@
       </Card.Content>
     </Card.Root>
 
-    <Card.Root class="use-card">
+    <Card.Root class={useCardClass}>
       <Card.Header>
         <Card.Title>Use it</Card.Title>
         <Chip title="Placement target">
-          <span class="material-symbols-outlined chip-icon" aria-hidden="true">ads_click</span>
+          <span class={chipIconClass} aria-hidden="true">ads_click</span>
           Place
         </Chip>
       </Card.Header>
 
-      <Card.Content class="use-panel">
+      <Card.Content class={usePanelClass}>
         {#if tab === "macros" && selectedMacro}
-          <div class="selected-head">
-            <span class="logic-mark">M</span>
+          <div class={selectedHeadClass}>
+            <span class={logicMarkClass}>M</span>
             <div>
-              <strong>{macroTitle(selectedMacro)}</strong>
-              <small>{macroPlacementCount(selectedMacro)} placed</small>
+              <strong class={titleTextClass}>{macroTitle(selectedMacro)}</strong>
+              <small class={selectedHeadMetaClass}>{macroPlacementCount(selectedMacro)} placed</small>
             </div>
           </div>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Name</span>
             <input
-              class="library-input"
+              class={libraryInputClass}
               value={selectedMacro.name}
               placeholder="Name this macro"
               oninput={(event) => workbench.updateMacro(selectedMacro.id, { name: inputValue(event) })}
             />
           </label>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Trigger note</span>
             <input
-              class="library-input"
+              class={libraryInputClass}
               value={selectedMacro.trigger}
               oninput={(event) =>
                 workbench.updateMacro(selectedMacro.id, { trigger: inputValue(event) })}
             />
           </label>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Sequence</span>
             <input
-              class="library-input mono"
+              class={monoInputClass}
               spellcheck="false"
               value={selectedMacro.sequence.join(" ")}
               placeholder="KC_LCTL KC_C"
@@ -413,9 +475,9 @@
             />
           </label>
 
-          <div class="seq preview">
+          <div class={previewClass}>
             {#if selectedMacro.sequence.length === 0}
-              <span class="draft-note">Add sequence</span>
+              <span class={draftNoteClass}>Add sequence</span>
             {:else}
               {#each selectedMacro.sequence as step, index (`preview-${selectedMacro.id}-${index}`)}
                 <span class="seq-key">{displayCode(step)}</span>
@@ -425,7 +487,7 @@
 
           <Button
             variant="coral"
-            class="wide-action"
+            class={wideActionClass}
             disabled={!isCompleteMacro(selectedMacro)}
             title={isCompleteMacro(selectedMacro) ? "Place macro" : "Add a sequence before placing"}
             onclick={() => placeMacro(selectedMacro)}
@@ -434,28 +496,28 @@
             Place on a key
           </Button>
         {:else if tab === "combos" && selectedCombo}
-          <div class="selected-head">
-            <span class="logic-mark combo-mark">C</span>
+          <div class={selectedHeadClass}>
+            <span class={cn(logicMarkClass, comboMarkClass)}>C</span>
             <div>
-              <strong>{comboTitle(selectedCombo)}</strong>
-              <small>{selectedCombo.keys.length ? `${selectedCombo.keys.length} members` : "Add keys"}</small>
+              <strong class={titleTextClass}>{comboTitle(selectedCombo)}</strong>
+              <small class={selectedHeadMetaClass}>{selectedCombo.keys.length ? `${selectedCombo.keys.length} members` : "Add keys"}</small>
             </div>
           </div>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Name</span>
             <input
-              class="library-input"
+              class={libraryInputClass}
               value={selectedCombo.name}
               placeholder="Name this combo"
               oninput={(event) => workbench.updateCombo(selectedCombo.id, { name: inputValue(event) })}
             />
           </label>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Output</span>
             <input
-              class="library-input mono"
+              class={monoInputClass}
               spellcheck="false"
               value={selectedCombo.binding}
               placeholder="KC_ESC"
@@ -464,12 +526,12 @@
             />
           </label>
 
-          <div class="field">
+          <div class={fieldClass}>
             <span class="field-label">Layers</span>
-            <div class="choice-row">
+            <div class={choiceRowClass}>
               <button
                 type="button"
-                class:selected={!selectedCombo.layerIds?.length}
+                class={cn(choiceButtonClass, !selectedCombo.layerIds?.length && choiceSelectedClass)}
                 aria-pressed={!selectedCombo.layerIds?.length}
                 onclick={() => setComboLayerScope(selectedCombo, undefined)}
               >
@@ -478,7 +540,7 @@
               {#each workbench.profile.layers as layer (layer.id)}
                 <button
                   type="button"
-                  class:selected={comboUsesLayer(selectedCombo, layer.id)}
+                  class={cn(choiceButtonClass, comboUsesLayer(selectedCombo, layer.id) && choiceSelectedClass)}
                   aria-pressed={comboUsesLayer(selectedCombo, layer.id)}
                   onclick={() => toggleComboLayer(selectedCombo, layer.id)}
                 >
@@ -488,42 +550,42 @@
             </div>
           </div>
 
-          <div class="field">
+          <div class={fieldClass}>
             <span class="field-label">Members</span>
-            <div class="combo-key-grid">
+            <div class={comboKeyGridClass}>
               {#each workbench.profile.keys as key (key.id)}
                 {@const keyLabel = comboKeyLabel(selectedCombo, key.id)}
                 <button
                   type="button"
-                  class:selected={selectedCombo.keys.includes(key.id)}
+                  class={cn(comboKeyButtonClass, selectedCombo.keys.includes(key.id) && choiceSelectedClass)}
                   aria-pressed={selectedCombo.keys.includes(key.id)}
                   title={`${keyLabel.primary} - ${keyLabel.detail}`}
                   onclick={() => toggleComboKey(selectedCombo, key.id)}
                 >
-                  <span>{keyLabel.primary}</span>
-                  <small>{keyLabel.detail}</small>
+                  <span class={comboKeyPrimaryClass}>{keyLabel.primary}</span>
+                  <small class={comboKeyDetailClass}>{keyLabel.detail}</small>
                 </button>
               {/each}
             </div>
           </div>
 
-          <Button variant="coral" class="wide-action" onclick={() => placeCombo(selectedCombo)}>
+          <Button variant="coral" class={wideActionClass} onclick={() => placeCombo(selectedCombo)}>
             <Keyboard size={15} aria-hidden="true" />
             Pick keys on board
           </Button>
         {:else if tab === "tapDance" && selectedTapDance}
-          <div class="selected-head">
-            <span class="logic-mark dance-mark">T</span>
+          <div class={selectedHeadClass}>
+            <span class={cn(logicMarkClass, danceMarkClass)}>T</span>
             <div>
-              <strong>{tapDanceSourceLabel(selectedTapDance)}</strong>
-              <small>{tapDancePlacementCount(selectedTapDance)} placed</small>
+              <strong class={titleTextClass}>{tapDanceSourceLabel(selectedTapDance)}</strong>
+              <small class={selectedHeadMetaClass}>{tapDancePlacementCount(selectedTapDance)} placed</small>
             </div>
           </div>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Source key</span>
             <select
-              class="library-input"
+              class={libraryInputClass}
               value={selectedTapDance.keyId}
               onchange={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { keyId: selectValue(event) })}
@@ -535,10 +597,10 @@
             </select>
           </label>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Tap</span>
             <input
-              class="library-input mono"
+              class={monoInputClass}
               spellcheck="false"
               value={selectedTapDance.tap}
               placeholder="KC_ESC"
@@ -547,10 +609,10 @@
             />
           </label>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Hold</span>
             <input
-              class="library-input mono"
+              class={monoInputClass}
               spellcheck="false"
               value={selectedTapDance.hold}
               placeholder="KC_LCTL"
@@ -559,10 +621,10 @@
             />
           </label>
 
-          <label class="field">
+          <label class={fieldClass}>
             <span class="field-label">Double tap</span>
             <input
-              class="library-input mono"
+              class={monoInputClass}
               spellcheck="false"
               value={selectedTapDance.doubleTap}
               placeholder="KC_CAPS"
@@ -573,7 +635,7 @@
 
           <Button
             variant="coral"
-            class="wide-action"
+            class={wideActionClass}
             disabled={!isCompleteTapDance(selectedTapDance)}
             title={isCompleteTapDance(selectedTapDance)
               ? "Place tap dance"
@@ -584,14 +646,14 @@
             Place on a key
           </Button>
         {:else}
-          <div class="empty-panel compact">
-            <span class="material-symbols-outlined" aria-hidden="true">inventory_2</span>
+          <div class={compactEmptyPanelClass}>
+            <span class={emptyPanelIconClass} aria-hidden="true">inventory_2</span>
             <strong>No selection</strong>
           </div>
         {/if}
 
         {#if currentCount > 0}
-          <div class="side-actions">
+          <div class={sideActionsClass}>
             <Button variant="ghost" size="sm" onclick={duplicateCurrent}>
               <Copy size={14} aria-hidden="true" />
               Duplicate
@@ -606,341 +668,3 @@
     </Card.Root>
   </div>
 </section>
-
-<style>
-  .library-route {
-    min-height: calc(100vh - 58px);
-    padding: 22px;
-    background:
-      radial-gradient(ellipse 82% 52% at 78% 0%, color-mix(in oklch, var(--teal) 7%, transparent), transparent 66%),
-      var(--paper);
-  }
-
-  .library-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
-    gap: 16px;
-    align-items: start;
-    min-height: calc(100vh - 102px);
-  }
-
-  :global(.library-card),
-  :global(.use-card) {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  :global(.library-card) {
-    min-height: min(650px, calc(100vh - 102px));
-  }
-
-  :global(.library-card-header) {
-    gap: 10px;
-  }
-
-  .header-spacer {
-    flex: 1;
-    min-width: 10px;
-  }
-
-  :global(.library-card-body) {
-    padding: 10px;
-  }
-
-  .library-list {
-    display: grid;
-    gap: 8px;
-  }
-
-  .library-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: var(--paper-2);
-    transition:
-      border-color var(--dur-fast) var(--ease-out-soft),
-      background var(--dur-fast) var(--ease-out-soft),
-      transform var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .library-row:hover {
-    border-color: var(--line-2);
-    transform: translateY(-1px);
-  }
-
-  .library-row.selected {
-    border-color: color-mix(in oklch, var(--coral) 54%, var(--line-2));
-    background: color-mix(in oklch, var(--coral) 9%, var(--paper-2));
-  }
-
-  .row-main {
-    display: grid;
-    gap: 6px;
-    min-width: 0;
-    padding: 0;
-    text-align: left;
-  }
-
-  .row-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .row-title strong,
-  .selected-head strong {
-    overflow: hidden;
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .seq {
-    margin-top: 0;
-  }
-
-  .draft-note {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .preview {
-    padding: 8px 0 2px;
-  }
-
-  .tap-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 0;
-  }
-
-  .tap-grid span {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .tap-grid small {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  :global(.use-panel) {
-    display: grid;
-    gap: 14px;
-  }
-
-  .selected-head {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-  }
-
-  .selected-head small {
-    display: block;
-    margin-top: 2px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .logic-mark {
-    display: grid;
-    width: 34px;
-    height: 34px;
-    place-items: center;
-    border: 1px solid color-mix(in oklch, var(--coral) 45%, transparent);
-    border-radius: 8px;
-    color: #1c0a04;
-    background: var(--coral);
-    box-shadow: var(--shadow-cap);
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 700;
-  }
-
-  .combo-mark {
-    border-color: color-mix(in oklch, var(--mustard) 50%, transparent);
-    background: var(--mustard);
-  }
-
-  .dance-mark {
-    border-color: color-mix(in oklch, var(--teal) 50%, transparent);
-    background: var(--teal);
-  }
-
-  .field {
-    display: grid;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .library-input {
-    width: 100%;
-    min-width: 0;
-    height: 34px;
-    padding: 0 10px;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    color: var(--ink);
-    background: var(--surface);
-    font: inherit;
-    font-size: 13px;
-  }
-
-  .library-input:focus {
-    border-color: var(--ink);
-    outline: 0;
-  }
-
-  .mono {
-    font-family: var(--mono);
-  }
-
-  .choice-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .choice-row button,
-  .combo-key-grid button {
-    border: 1px solid var(--line-2);
-    border-radius: 7px;
-    color: var(--ink-2);
-    background: var(--surface);
-    font-family: var(--mono);
-  }
-
-  .choice-row button {
-    min-height: 28px;
-    padding: 4px 9px;
-    font-size: 10px;
-  }
-
-  .choice-row button.selected,
-  .combo-key-grid button.selected {
-    border-color: rgba(15, 147, 140, 0.45);
-    color: #062826;
-    background: #9de2d8;
-  }
-
-  .combo-key-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
-    gap: 5px;
-    max-height: 210px;
-    overflow: auto;
-    padding-right: 2px;
-  }
-
-  .combo-key-grid button {
-    display: grid;
-    align-content: center;
-    gap: 2px;
-    min-width: 0;
-    min-height: 42px;
-    padding: 5px;
-  }
-
-  .combo-key-grid span,
-  .combo-key-grid small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .combo-key-grid span {
-    color: var(--ink);
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .combo-key-grid small {
-    color: var(--ink-3);
-    font-size: 8px;
-  }
-
-  :global(.wide-action) {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .side-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding-top: 2px;
-  }
-
-  .chip-icon {
-    font-size: 14px;
-  }
-
-  .empty-panel {
-    display: grid;
-    min-height: 180px;
-    place-items: center;
-    align-content: center;
-    gap: 8px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .empty-panel.compact {
-    min-height: 120px;
-  }
-
-  .empty-panel .material-symbols-outlined {
-    font-size: 24px;
-  }
-
-  @media (max-width: 1080px) {
-    .library-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    :global(.use-card) {
-      max-width: none;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .library-route {
-      padding: 12px;
-    }
-
-    .library-grid {
-      min-height: calc(100vh - 92px);
-    }
-
-    :global(.library-card-header) {
-      align-items: flex-start;
-      flex-wrap: wrap;
-    }
-
-    .library-row {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .tap-grid,
-    .side-actions {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>
