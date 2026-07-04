@@ -20,6 +20,10 @@
     setWorkbenchContext,
     WorkbenchStore,
   } from "$lib/app/workbench-store.svelte";
+  import {
+    setViaLiveSyncContext,
+    ViaLiveSyncEngine,
+  } from "$lib/app/via-live-sync.svelte";
 
   type AuthSessionData = {
     user?: ShellSessionUser | null;
@@ -37,8 +41,10 @@
 
   const shell = new ShellStore();
   const workbench = new WorkbenchStore();
+  const liveSync = new ViaLiveSyncEngine({ editor: workbench, shell });
   setShellContext(shell);
   setWorkbenchContext(workbench);
+  setViaLiveSyncContext(liveSync);
   const initialAuthUser = untrack(() => data.auth?.user ?? null);
   shell.setSessionUser(initialAuthUser);
   const pathname = $derived(page.url.pathname);
@@ -109,7 +115,12 @@
     });
   });
 
+  $effect(() => {
+    liveSync.processChanges(shell.liveConnection);
+  });
+
   onDestroy(() => {
+    liveSync.destroy();
     void workbench.flushPersistence();
   });
 
@@ -503,6 +514,8 @@
       {:else}
         <Chip tone="warning" title="No connected board">No board</Chip>
       {/if}
+
+      <Chip dot={liveSync.dot} title={liveSync.title}>{liveSync.label}</Chip>
 
       <Chip dot={shell.currentVariant.color} title="Current variant">
         <span class="material-symbols-outlined chip-icon" aria-hidden="true">account_tree</span>

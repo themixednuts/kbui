@@ -122,6 +122,7 @@ export class MockHidKeyboardDevice implements MinimalHidDevice {
   };
   readonly sentReports: Uint8Array[] = [];
   readonly validationResults: ViaValidationResult[] = [];
+  nextReadbackKeycode?: number;
   private readonly listeners = new Set<(event: MinimalHidInputReportEvent) => void>();
 
   constructor(definition: MockKeyboardDefinition = {}) {
@@ -147,6 +148,10 @@ export class MockHidKeyboardDevice implements MinimalHidDevice {
 
   async open() {
     this.opened = true;
+  }
+
+  async close() {
+    this.opened = false;
   }
 
   async sendReport(_reportId: number, data: BufferSource) {
@@ -214,7 +219,9 @@ export class MockHidKeyboardDevice implements MinimalHidDevice {
       const layer = request[1];
       const row = request[2];
       const col = request[3];
-      const keycode = this.definition.keymap[layer]?.[row]?.[col] ?? 0x0000;
+      const keycode =
+        this.nextReadbackKeycode ?? this.definition.keymap[layer]?.[row]?.[col] ?? 0x0000;
+      this.nextReadbackKeycode = undefined;
       response[4] = (keycode >> 8) & 0xff;
       response[5] = keycode & 0xff;
     }

@@ -29,7 +29,7 @@
     repo: string;
     source: "github-api";
   };
-  type BusyAction = "real" | "mock" | "import" | "local";
+  type BusyAction = "real" | "mock" | "import" | "local" | "disconnect";
   type CatalogIdentity = {
     productId?: number;
     productName?: string;
@@ -180,6 +180,21 @@
       return result.message;
     });
   }
+
+  async function disconnectDevice() {
+    if (busyAction) return;
+
+    busyAction = "disconnect";
+    message = null;
+    try {
+      await shell.disconnectDevice();
+      message = "Disconnected device. Edits remain local.";
+    } catch (error) {
+      message = error instanceof Error ? error.message : "Could not disconnect device.";
+    } finally {
+      busyAction = null;
+    }
+  }
 </script>
 
 <section class="connect-view">
@@ -211,6 +226,23 @@
       </div>
 
       <div class="connect-option-list">
+        {#if shell.connected}
+          <button
+            type="button"
+            class="connect-option disconnect"
+            data-testid="disconnect-device"
+            disabled={busy}
+            onclick={disconnectDevice}
+          >
+            <span class="option-icon material-symbols-outlined" aria-hidden="true">cable_off</span>
+            <span class="option-copy">
+              <strong>{busyAction === "disconnect" ? "Disconnecting device" : "Disconnect device"}</strong>
+              <small>Keep the current draft and stop live VIA writes</small>
+            </span>
+            <span class="option-action">{busyAction === "disconnect" ? "..." : "Disconnect"}</span>
+          </button>
+        {/if}
+
         <button
           type="button"
           class="connect-option primary"
@@ -356,6 +388,11 @@
     background: color-mix(in oklch, var(--coral) 13%, var(--paper-2));
   }
 
+  .connect-option.disconnect {
+    border-color: oklch(0.62 0.2 25 / 0.3);
+    background: oklch(0.96 0.035 25);
+  }
+
   .option-icon {
     display: grid;
     width: 42px;
@@ -413,6 +450,11 @@
     border-color: var(--coral);
     background: var(--coral);
     color: #1c0a04;
+  }
+
+  .connect-option.disconnect .option-action {
+    border-color: oklch(0.62 0.2 25 / 0.34);
+    color: oklch(0.4 0.16 25);
   }
 
   .connect-option.stub {

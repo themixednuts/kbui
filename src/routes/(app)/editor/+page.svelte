@@ -3,6 +3,7 @@
   import { Eye, EyeOff, Keyboard, Lightbulb, MousePointer2 } from "@lucide/svelte";
 
   import { getShellContext } from "$lib/app/shell-store.svelte";
+  import { getViaLiveSyncContext } from "$lib/app/via-live-sync.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import {
     type EditorLens,
@@ -25,6 +26,7 @@
 
   const shell = getShellContext();
   const editor = getWorkbenchContext();
+  const liveSync = getViaLiveSyncContext();
 
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
@@ -78,6 +80,10 @@
   const placementMarkedKeys = $derived(
     shell.placeMode?.kind === "combo" ? shell.placeMode.picks : [],
   );
+  const failedPreview = $derived(liveSync.failedLanes.slice(0, 3));
+  const invalidPreview = $derived(liveSync.invalidChanges.slice(0, 3));
+  const rebuildPreview = $derived(liveSync.rebuildRequiredChanges.slice(0, 4));
+  const localOnlyPreview = $derived(liveSync.localOnlyChanges.slice(0, 3));
 
   $effect(() => {
     if (requestedBoardId === editor.activeBoardId) return;
@@ -162,6 +168,23 @@
         <Chip tone="error" title={editor.persistenceError}>Draft save issue</Chip>
       {/if}
 
+      <Chip dot={liveSync.dot} title={liveSync.title} class="editor-sync-chip">
+        {liveSync.label}
+      </Chip>
+
+      {#if liveSync.failedLanes.length > 0}
+        <Button
+          variant="ghost"
+          size="sm"
+          data-testid="retry-via-sync"
+          title="Retry failed VIA sync"
+          onclick={() => liveSync.retryFailed()}
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">sync_problem</span>
+          Retry
+        </Button>
+      {/if}
+
       {#if editor.lens === "lighting"}
         <Chip dot={lightingChipDot} title={`${editor.lightingSelection.count} selected`}>
           {editor.lightingSelection.count} selected
@@ -183,6 +206,70 @@
         </Button>
       {/if}
     </header>
+
+    {#if liveSync.failedLanes.length > 0 || liveSync.rebuildRequiredChanges.length > 0 || liveSync.localOnlyChanges.length > 0 || liveSync.invalidChanges.length > 0}
+      <section class="sync-notices" aria-label="VIA sync status">
+        {#if liveSync.failedLanes.length > 0}
+          <div class="sync-notice failed" data-testid="via-sync-failed">
+            <span class="material-symbols-outlined" aria-hidden="true">error</span>
+            <div>
+              <strong>{liveSync.failedLanes.length} live sync {liveSync.failedLanes.length === 1 ? "write" : "writes"} failed</strong>
+              <ul>
+                {#each failedPreview as lane (lane.laneKey)}
+                  <li>{lane.label} -> {lane.code}{lane.error ? ` · ${lane.error}` : ""}</li>
+                {/each}
+              </ul>
+            </div>
+            <Button variant="ghost" size="sm" onclick={() => liveSync.retryFailed()}>
+              <span class="material-symbols-outlined" aria-hidden="true">replay</span>
+              Retry
+            </Button>
+          </div>
+        {/if}
+
+        {#if liveSync.rebuildRequiredChanges.length > 0}
+          <div class="sync-notice rebuild" data-testid="via-rebuild-required">
+            <span class="material-symbols-outlined" aria-hidden="true">construction</span>
+            <div>
+              <strong>{liveSync.rebuildRequiredChanges.length} {liveSync.rebuildRequiredChanges.length === 1 ? "change needs" : "changes need"} a firmware rebuild</strong>
+              <ul>
+                {#each rebuildPreview as change (change.id)}
+                  <li>{change.path}</li>
+                {/each}
+              </ul>
+            </div>
+          </div>
+        {/if}
+
+        {#if liveSync.localOnlyChanges.length > 0}
+          <div class="sync-notice local" data-testid="via-local-only">
+            <span class="material-symbols-outlined" aria-hidden="true">edit_note</span>
+            <div>
+              <strong>{liveSync.localOnlyChanges.length} {liveSync.localOnlyChanges.length === 1 ? "change is" : "changes are"} local only</strong>
+              <ul>
+                {#each localOnlyPreview as change (change.id)}
+                  <li>{change.path}</li>
+                {/each}
+              </ul>
+            </div>
+          </div>
+        {/if}
+
+        {#if liveSync.invalidChanges.length > 0}
+          <div class="sync-notice failed" data-testid="via-invalid-change">
+            <span class="material-symbols-outlined" aria-hidden="true">report</span>
+            <div>
+              <strong>{liveSync.invalidChanges.length} invalid {liveSync.invalidChanges.length === 1 ? "change" : "changes"}</strong>
+              <ul>
+                {#each invalidPreview as change (change.id)}
+                  <li>{change.path}</li>
+                {/each}
+              </ul>
+            </div>
+          </div>
+        {/if}
+      </section>
+    {/if}
 
     {#if editor.lens === "keys"}
       <section class="board-stage" aria-label="Keyboard editor">
@@ -291,6 +378,74 @@
   .toolbar-spacer {
     flex: 1;
     min-width: 10px;
+  }
+
+  :global(.editor-sync-chip) {
+    max-width: 180px;
+  }
+
+  .sync-notices {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .sync-notice {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in oklch, var(--surface) 78%, transparent);
+    font-size: 12px;
+  }
+
+  .sync-notice.rebuild {
+    border-color: color-mix(in oklch, var(--coral) 38%, var(--line-2));
+    background: color-mix(in oklch, var(--coral) 10%, var(--surface));
+  }
+
+  .sync-notice.failed {
+    border-color: oklch(0.62 0.2 25 / 0.34);
+    background: oklch(0.95 0.04 25);
+  }
+
+  .sync-notice.local {
+    border-color: color-mix(in oklch, var(--ink-3) 35%, var(--line));
+  }
+
+  .sync-notice > .material-symbols-outlined {
+    margin-top: 1px;
+    font-size: 18px;
+  }
+
+  .sync-notice strong {
+    display: block;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .sync-notice ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 12px;
+    margin: 4px 0 0;
+    padding: 0;
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
+    list-style: none;
+  }
+
+  .sync-notice li {
+    min-width: 0;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   :global(.board-switcher) {

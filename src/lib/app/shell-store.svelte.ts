@@ -4,6 +4,7 @@ import {
   DEFAULT_MONKEYTYPE_MODE2,
   type MonkeytypeConnectionStatus,
 } from "$lib/monkeytype/types";
+import type { ConnectionState } from "$lib/keyboard/transport";
 
 export type AppRouteId = "connect" | "editor" | "browse" | "library" | "versions" | "settings";
 
@@ -189,6 +190,8 @@ export class ShellStore {
   });
 
   dirty = $state(0);
+  connection = $state<ConnectionState | null>(null);
+  connectionRevision = $state(0);
 
   monkeytype = $state<ShellMonkeytype>({
     connected: false,
@@ -217,6 +220,11 @@ export class ShellStore {
 
   readonly connected = $derived(this.device.status === "connected");
   readonly connecting = $derived(this.device.status === "connecting");
+  readonly liveConnection = $derived(
+    this.device.status === "connected" && this.connection?.status === "connected"
+      ? this.connection
+      : null,
+  );
   readonly primaryActionLabel = $derived(
     this.connected ? "Connected" : this.connecting ? "Connecting" : "Connect",
   );
@@ -332,9 +340,11 @@ export class ShellStore {
 
   setDevice(device: ShellDevice) {
     this.device = device;
+    if (device.status !== "connected") this.connection = null;
   }
 
   setDisconnected(message = "Local-only editing") {
+    this.connection = null;
     this.device = {
       board: "No device",
       message,
@@ -346,6 +356,7 @@ export class ShellStore {
   }
 
   setConnecting(message = "Waiting for device permission", transport = "WebHID") {
+    this.connection = null;
     this.device = {
       ...this.device,
       board: this.device.board === "No device" ? "Connecting" : this.device.board,
@@ -359,6 +370,7 @@ export class ShellStore {
 
   setConnected(input: {
     board: string;
+    connection?: ConnectionState;
     message?: string;
     productId?: number;
     protocol: string;
@@ -366,6 +378,10 @@ export class ShellStore {
     transport: string;
     vendorId?: number;
   }) {
+    if (input.connection && input.connection !== this.connection) {
+      this.connectionRevision += 1;
+    }
+    this.connection = input.connection ?? this.connection;
     this.device = {
       board: input.board,
       message: input.message ?? "Connected",
@@ -380,6 +396,7 @@ export class ShellStore {
   }
 
   setConnectionError(message: string, transport = this.device.transport) {
+    this.connection = null;
     this.device = {
       ...this.device,
       board: "Connection error",
@@ -388,6 +405,17 @@ export class ShellStore {
       status: "error",
       transport,
     };
+  }
+
+  async disconnectDevice(message = "Device disconnected; edits are local only.") {
+    const connection = this.connection;
+    this.connection = null;
+
+    try {
+      await connection?.hidDevice?.close?.();
+    } finally {
+      this.setDisconnected(message);
+    }
   }
 
   updateConnectedBoard(input: { board: string; protocol: string; transport?: string }) {

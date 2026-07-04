@@ -127,6 +127,7 @@ export async function connectViaAndActivate({
     await activateProfile(workbench, profile);
     shell.setConnected({
       board: profile.name,
+      connection,
       message,
       productId: profile.productId,
       protocol: protocolLabel(profile.protocol),

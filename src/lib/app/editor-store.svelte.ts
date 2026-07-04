@@ -370,6 +370,36 @@ export class EditorStore {
     }
   }
 
+  async markBindingSyncedToBase(layerId: string, keyId: string, binding?: KeyBinding) {
+    const base = cloneDevice(this.baseProfile);
+    const layer = base.layers.find((candidate) => candidate.id === layerId);
+    const draftLayer = this.profile.layers.find((candidate) => candidate.id === layerId);
+    const syncedBinding = binding ?? draftLayer?.bindings[keyId];
+    if (!layer || !syncedBinding) return false;
+
+    layer.bindings[keyId] = { ...syncedBinding };
+    base.updatedAt = new Date().toISOString();
+    this.baseProfile = base;
+
+    if (!this.persistEnabled || !browser) return true;
+
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
+
+    try {
+      await saveLocalDevice(base);
+      await this.persistDraft();
+      this.persistenceError = null;
+    } catch (error) {
+      this.persistenceError =
+        error instanceof Error ? error.message : "Could not advance VIA sync base";
+    }
+
+    return true;
+  }
+
   async loadProfileAsDraft(profile: DeviceProfile) {
     await this.flushPersistence();
 
