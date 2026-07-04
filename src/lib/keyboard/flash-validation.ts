@@ -71,6 +71,8 @@ export function validateFlashReadiness({
     });
   }
 
+  // Mock transports are dev/test-only; this catches accidental flash attempts
+  // from that harness if a mock connection reaches validation.
   if (mockOnline) {
     issues.push({
       code: "mock-target",

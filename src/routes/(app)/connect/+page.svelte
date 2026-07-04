@@ -21,11 +21,6 @@
     type ConnectionState,
   } from "$lib/keyboard/transport";
   import { createWebBluetoothZmkStudioTransport } from "$lib/keyboard/transport-zmk-ble";
-  import { createMockViaTransport, mockViaBoards } from "$lib/keyboard/transport-mock";
-  import {
-    createMockZmkStudioTransport,
-    mockZmkStudioBoards,
-  } from "$lib/keyboard/transport-mock-zmk";
   import { createWebSerialZmkStudioTransport } from "$lib/keyboard/transport-zmk-serial";
 
   import { getViaKeyboardDetail, getViaKeyboardIndex } from "../../keyboards.remote";
@@ -55,8 +50,6 @@
 
   const shell = getShellContext();
   const workbench = getWorkbenchContext();
-  const mockBoard = mockViaBoards.workbench65;
-  const mockZmkBoard = mockZmkStudioBoards.workbench65;
 
   let fileInput = $state<HTMLInputElement | undefined>();
   let busyAction = $state<BusyAction | null>(null);
@@ -161,7 +154,13 @@
   }
 
   function useDemoDevice() {
+    if (!import.meta.env.DEV) return;
+
     void runAction("mock", async () => {
+      const { createMockViaTransport, mockViaBoards } = await import(
+        "$lib/keyboard/transport-mock"
+      );
+      const mockBoard = mockViaBoards.workbench65;
       const result = await connectViaAndActivate({
         shell,
         transport: createMockViaTransport(mockBoard),
@@ -172,7 +171,12 @@
   }
 
   function useDemoZmkDevice() {
+    if (!import.meta.env.DEV) return;
+
     void runAction("zmk-mock", async () => {
+      const { createMockZmkStudioTransport } = await import(
+        "$lib/keyboard/transport-mock-zmk"
+      );
       const result = await connectZmkStudioAndActivate({
         shell,
         transport: createMockZmkStudioTransport(),
@@ -265,8 +269,7 @@
       <span class="eyebrow">Step 1</span>
       <h1><span class="accent-word">Connect</span> a keyboard</h1>
       <p>
-        Pair a VIA board, use the mock Workbench 65, or load a VIA definition
-        to start editing without hardware.
+        Pair a VIA board, connect ZMK Studio, or load a VIA definition to start editing.
       </p>
 
       <div class="connect-status" data-state={shell.device.status}>
@@ -358,35 +361,37 @@
           <span class="option-action">{busyAction === "zmk-usb" ? "..." : webSerialSupported ? "Connect" : "Unavailable"}</span>
         </button>
 
-        <button
-          type="button"
-          class="connect-option"
-          data-testid="use-demo-device"
-          disabled={busy}
-          onclick={useDemoDevice}
-        >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">developer_board</span>
-          <span class="option-copy">
-            <strong>{busyAction === "mock" ? "Starting demo device" : "Use demo device"}</strong>
-            <small>Mock VIA Workbench 65 with protocol, layers, keymap reads, and writes</small>
-          </span>
-          <span class="option-action">{busyAction === "mock" ? "..." : "Demo"}</span>
-        </button>
+        {#if import.meta.env.DEV}
+          <button
+            type="button"
+            class="connect-option"
+            data-testid="use-demo-device"
+            disabled={busy}
+            onclick={useDemoDevice}
+          >
+            <span class="option-icon material-symbols-outlined" aria-hidden="true">developer_board</span>
+            <span class="option-copy">
+              <strong>{busyAction === "mock" ? "Starting demo device" : "Use demo device"}</strong>
+              <small>Mock VIA Workbench 65 with protocol, layers, keymap reads, and writes</small>
+            </span>
+            <span class="option-action">{busyAction === "mock" ? "..." : "Demo"}</span>
+          </button>
 
-        <button
-          type="button"
-          class="connect-option"
-          data-testid="use-demo-zmk-device"
-          disabled={busy}
-          onclick={useDemoZmkDevice}
-        >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">settings_input_antenna</span>
-          <span class="option-copy">
-            <strong>{busyAction === "zmk-mock" ? "Starting ZMK demo" : "Use demo ZMK device"}</strong>
-            <small>Mock ZMK Studio Workbench 65 with RPC keymap reads, writes, and saves</small>
-          </span>
-          <span class="option-action">{busyAction === "zmk-mock" ? "..." : "Demo"}</span>
-        </button>
+          <button
+            type="button"
+            class="connect-option"
+            data-testid="use-demo-zmk-device"
+            disabled={busy}
+            onclick={useDemoZmkDevice}
+          >
+            <span class="option-icon material-symbols-outlined" aria-hidden="true">settings_input_antenna</span>
+            <span class="option-copy">
+              <strong>{busyAction === "zmk-mock" ? "Starting ZMK demo" : "Use demo ZMK device"}</strong>
+              <small>Mock ZMK Studio Workbench 65 with RPC keymap reads, writes, and saves</small>
+            </span>
+            <span class="option-action">{busyAction === "zmk-mock" ? "..." : "Demo"}</span>
+          </button>
+        {/if}
 
         <button
           type="button"
@@ -427,12 +432,12 @@
 
       </div>
 
-      <div class="connect-foot">
-        <span class="material-symbols-outlined" aria-hidden="true">memory</span>
-        <span>
-          Mock targets: {mockBoard.name} VIA / {mockZmkBoard.name} ZMK Studio
-        </span>
-      </div>
+      {#if import.meta.env.DEV}
+        <div class="connect-foot">
+          <span class="material-symbols-outlined" aria-hidden="true">memory</span>
+          <span>Mock targets: Workbench 65 VIA / Workbench ZMK 65 ZMK Studio</span>
+        </div>
+      {/if}
     </div>
   </div>
 </section>

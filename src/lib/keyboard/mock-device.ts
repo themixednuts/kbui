@@ -1,3 +1,5 @@
+// DEV/TEST-ONLY mock. Not shipped in production (dev-gated + tests only).
+// Do not import from shipping code paths.
 import {
   bindingFor,
   keyById,

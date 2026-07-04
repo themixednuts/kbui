@@ -1,3 +1,5 @@
+// DEV/TEST-ONLY mock. Not shipped in production (dev-gated + tests only).
+// Do not import from shipping code paths.
 import type { KeyboardTransport } from "./transport";
 import { getConnectionState } from "./transport";
 import { encodeZmkBinding } from "./zmk-binding";
