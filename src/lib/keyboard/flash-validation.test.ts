@@ -7,7 +7,9 @@ import { flashReadinessSummary, validateFlashReadiness } from "./flash-validatio
 const idleConnection: ConnectionState = {
   message: "Ready",
   status: "idle",
+  webBluetoothSupported: false,
   webHidSupported: true,
+  webSerialSupported: false,
   webUsbSupported: true,
 };
 

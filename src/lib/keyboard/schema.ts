@@ -116,7 +116,7 @@ export interface KeyboardSettings {
 
 export interface DeviceIdentity {
   key: string;
-  transport: "webusb" | "webhid";
+  transport: "webusb" | "webhid" | "webbluetooth" | "webserial";
   vendorId?: number;
   productId?: number;
   productName?: string;

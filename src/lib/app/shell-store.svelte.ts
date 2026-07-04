@@ -413,6 +413,7 @@ export class ShellStore {
 
     try {
       await connection?.hidDevice?.close?.();
+      await connection?.zmkStudio?.close?.();
     } finally {
       this.setDisconnected(message);
     }

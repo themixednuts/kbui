@@ -177,7 +177,7 @@
           variant="ghost"
           size="sm"
           data-testid="retry-via-sync"
-          title="Retry failed VIA sync"
+          title="Retry failed live sync"
           onclick={() => liveSync.retryFailed()}
         >
           <span class="material-symbols-outlined" aria-hidden="true">sync_problem</span>
@@ -208,7 +208,7 @@
     </header>
 
     {#if liveSync.failedLanes.length > 0 || liveSync.rebuildRequiredChanges.length > 0 || liveSync.localOnlyChanges.length > 0 || liveSync.invalidChanges.length > 0}
-      <section class="sync-notices" aria-label="VIA sync status">
+      <section class="sync-notices" aria-label="Live sync status">
         {#if liveSync.failedLanes.length > 0}
           <div class="sync-notice failed" data-testid="via-sync-failed">
             <span class="material-symbols-outlined" aria-hidden="true">error</span>

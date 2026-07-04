@@ -219,7 +219,9 @@ describe("keyboard transports", () => {
           {
             message: "Ready",
             status: "idle",
+            webBluetoothSupported: false,
             webHidSupported: true,
+            webSerialSupported: false,
             webUsbSupported: true,
           },
           { col: 0, keycode: 0x0028, layer: 0, row: 0 },

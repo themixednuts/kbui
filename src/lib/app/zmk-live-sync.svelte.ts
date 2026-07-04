@@ -1,34 +1,29 @@
-import { getContext, setContext } from "svelte";
-
 import type { EditorStore } from "$lib/app/editor-store.svelte";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
 import type { KeyBinding } from "$lib/keyboard/schema";
+import type { ConnectionState } from "$lib/keyboard/transport";
+import { zmkBindingsEqual, type ZmkStudioKeymap } from "$lib/keyboard/zmk-studio";
 import {
-  writeViaKeycode,
-  type ConnectionState,
-  type ViaKeycodeWriteInput,
-  type ViaKeycodeWriteResult,
-} from "$lib/keyboard/transport";
-import {
-  bindingSignature,
-  classifyViaProfileChanges,
-  type ClassifiedViaChange,
-  type ViaLiveWriteTarget,
-} from "$lib/keyboard/via-live";
+  classifyZmkProfileChanges,
+  zmkBindingSignature,
+  type ClassifiedZmkChange,
+  type ZmkLiveWriteTarget,
+} from "$lib/keyboard/zmk-live";
 
-export type ViaLiveSyncStatus =
+export type ZmkLiveSyncStatus =
   | "disconnected"
   | "connecting"
   | "connected"
+  | "locked"
   | "syncing"
   | "synced"
   | "local-only"
   | "rebuild-required"
   | "sync-failed";
 
-export type ViaLaneSyncState = "pending" | "syncing" | "synced" | "sync-failed";
+export type ZmkLaneSyncState = "pending" | "syncing" | "synced" | "sync-failed";
 
-export interface ViaLaneSyncStatus {
+export interface ZmkLaneSyncStatus {
   changeId: string;
   code: string;
   error?: string;
@@ -37,77 +32,27 @@ export interface ViaLaneSyncStatus {
   laneKey: string;
   layerId: string;
   signature: string;
-  state: ViaLaneSyncState;
+  state: ZmkLaneSyncState;
   updatedAt: string;
 }
 
-export interface ViaLiveSyncOptions {
+export interface ZmkLiveSyncOptions {
   debounceMs?: number;
   editor: EditorStore;
   shell: ShellStore;
-  writeKeycode?: (
-    connection: ConnectionState,
-    input: ViaKeycodeWriteInput,
-  ) => Promise<ViaKeycodeWriteResult>;
 }
 
 interface PendingWrite {
-  change: ClassifiedViaChange;
+  change: ClassifiedZmkChange;
   connection: ConnectionState;
   connectionRevision: number;
 }
 
-const VIA_LIVE_SYNC_CONTEXT = Symbol("kbgui.via-live-sync");
-
-export interface LiveSyncLaneStatus {
-  changeId: string;
-  code: string;
-  error?: string;
-  keyId: string;
-  label: string;
-  laneKey: string;
-  layerId: string;
-  signature: string;
-  state: "pending" | "syncing" | "synced" | "sync-failed";
-  updatedAt: string;
-}
-
-export interface LiveSyncChangeNotice {
-  id: string;
-  path: string;
-  reason: string;
-  scope: string;
-}
-
-export interface LiveSyncView {
-  activeLaneCount: number;
-  changes: readonly LiveSyncChangeNotice[];
-  dot: string;
-  failedLanes: readonly LiveSyncLaneStatus[];
-  invalidChanges: readonly LiveSyncChangeNotice[];
-  label: string;
-  laneStatuses: Record<string, LiveSyncLaneStatus>;
-  liveWritableChanges: readonly LiveSyncChangeNotice[];
-  localOnlyChanges: readonly LiveSyncChangeNotice[];
-  paused: boolean;
-  rebuildRequiredChanges: readonly LiveSyncChangeNotice[];
-  status: string;
-  summary: {
-    failed: number;
-    invalid: number;
-    liveWritable: number;
-    localOnly: number;
-    rebuildRequired: number;
-    syncing: number;
-    total: number;
-  };
-  title: string;
-  destroy: () => void;
-  flush: () => Promise<void>;
-  pause: () => void;
-  processChanges: (connection?: ConnectionState | null) => void;
-  resume: () => void;
-  retryFailed: () => void;
+interface SuccessfulWrite {
+  change: ClassifiedZmkChange;
+  connection: ConnectionState;
+  keymap: ZmkStudioKeymap;
+  target: ZmkLiveWriteTarget;
 }
 
 function nowIso() {
@@ -118,14 +63,17 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function currentBinding(editor: EditorStore, target: ViaLiveWriteTarget): KeyBinding | undefined {
-  return editor.profile.layers.find((layer) => layer.id === target.layerId)?.bindings[target.keyId];
+function currentBinding(editor: EditorStore, target: ZmkLiveWriteTarget): KeyBinding | undefined {
+  return editor.profile.layers.find((layer) => layer.id === target.profileLayerId)?.bindings[
+    target.keyId
+  ];
 }
 
-function statusLabel(status: ViaLiveSyncStatus) {
+function statusLabel(status: ZmkLiveSyncStatus) {
   if (status === "disconnected") return "Disconnected";
   if (status === "connecting") return "Connecting";
   if (status === "connected") return "Connected";
+  if (status === "locked") return "Locked";
   if (status === "syncing") return "Syncing";
   if (status === "synced") return "Synced";
   if (status === "local-only") return "Local only";
@@ -133,39 +81,45 @@ function statusLabel(status: ViaLiveSyncStatus) {
   return "Sync failed";
 }
 
-export function viaSyncStatusDot(status: ViaLiveSyncStatus) {
+export function zmkSyncStatusDot(status: ZmkLiveSyncStatus) {
   if (status === "synced" || status === "connected") return "var(--mint)";
   if (status === "syncing" || status === "connecting") return "var(--mustard)";
   if (status === "sync-failed") return "var(--removed)";
-  if (status === "rebuild-required") return "var(--coral)";
+  if (status === "rebuild-required" || status === "locked") return "var(--coral)";
   return "var(--ink-3)";
 }
 
-export function viaSyncStatusTitle(status: ViaLiveSyncStatus) {
-  if (status === "disconnected") return "Edits are local until a VIA device is connected.";
+export function zmkSyncStatusTitle(status: ZmkLiveSyncStatus) {
+  if (status === "disconnected") return "Edits are local until a ZMK Studio device is connected.";
   if (status === "connecting") return "Opening or probing the keyboard connection.";
-  if (status === "connected") return "A VIA keyboard is connected.";
+  if (status === "connected") return "A ZMK Studio keyboard is connected.";
+  if (status === "locked") return "ZMK Studio is locked - unlock on the keyboard to write edits.";
   if (status === "syncing")
-    return "Writing settled live-writable key edits and verifying readback.";
-  if (status === "synced") return "Live-writable keymap edits match the connected device.";
-  if (status === "local-only") return "Some valid edits are not supported by generic VIA writes.";
-  if (status === "rebuild-required") return "Some edits require generated firmware and a build.";
-  return "A VIA write failed; the local edit is preserved.";
+    return "Writing settled ZMK Studio key edits, verifying readback, and saving the batch.";
+  if (status === "synced") return "Live-writable keymap edits match the connected ZMK device.";
+  if (status === "local-only") return "Some valid edits are not supported by this ZMK slice.";
+  if (status === "rebuild-required")
+    return "Some edits require generated ZMK firmware and a build.";
+  return "A ZMK Studio write failed; the local edit is preserved.";
 }
 
-export class ViaLiveSyncEngine {
+export class ZmkLiveSyncEngine {
   readonly debounceMs: number;
   readonly editor: EditorStore;
   readonly shell: ShellStore;
 
-  laneStatuses = $state<Record<string, ViaLaneSyncStatus>>({});
+  laneStatuses = $state<Record<string, ZmkLaneSyncStatus>>({});
   paused = $state(false);
 
   readonly changes = $derived.by(() =>
-    classifyViaProfileChanges(this.editor.baseProfile, this.editor.profile),
+    classifyZmkProfileChanges(
+      this.editor.baseProfile,
+      this.editor.profile,
+      this.shell.liveConnection,
+    ),
   );
   readonly liveWritableChanges = $derived.by(() =>
-    this.changes.filter((change) => change.classification === "liveViaWritable"),
+    this.changes.filter((change) => change.classification === "liveZmkWritable"),
   );
   readonly rebuildRequiredChanges = $derived.by(() =>
     this.changes.filter((change) => change.classification === "firmwareRebuildRequired"),
@@ -187,8 +141,8 @@ export class ViaLiveSyncEngine {
   );
   readonly status = $derived.by(() => this.computeStatus());
   readonly label = $derived(statusLabel(this.status));
-  readonly dot = $derived(viaSyncStatusDot(this.status));
-  readonly title = $derived(viaSyncStatusTitle(this.status));
+  readonly dot = $derived(zmkSyncStatusDot(this.status));
+  readonly title = $derived(zmkSyncStatusTitle(this.status));
   readonly summary = $derived.by(() => ({
     failed: this.failedLanes.length,
     invalid: this.invalidChanges.length,
@@ -199,18 +153,18 @@ export class ViaLiveSyncEngine {
     total: this.changes.length,
   }));
 
-  private readonly writeKeycode: NonNullable<ViaLiveSyncOptions["writeKeycode"]>;
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pendingWrites = new Map<string, PendingWrite>();
+  private readonly readyWrites = new Map<string, PendingWrite>();
   private readonly failedSignatures = new Map<string, string>();
   private lastConnectionRevision = 0;
   private writeQueue: Promise<void> = Promise.resolve();
+  private drainScheduled = false;
 
-  constructor(options: ViaLiveSyncOptions) {
+  constructor(options: ZmkLiveSyncOptions) {
     this.debounceMs = options.debounceMs ?? 160;
     this.editor = options.editor;
     this.shell = options.shell;
-    this.writeKeycode = options.writeKeycode ?? writeViaKeycode;
   }
 
   processChanges(connection = this.shell.liveConnection) {
@@ -269,6 +223,7 @@ export class ViaLiveSyncEngine {
   destroy() {
     this.clearTimers();
     this.pendingWrites.clear();
+    this.readyWrites.clear();
   }
 
   async flush() {
@@ -276,9 +231,13 @@ export class ViaLiveSyncEngine {
     await this.writeQueue;
   }
 
-  private computeStatus(): ViaLiveSyncStatus {
+  private computeStatus(): ZmkLiveSyncStatus {
     if (this.shell.device.status === "connecting") return "connecting";
-    if (!this.canWrite(this.shell.liveConnection)) return "disconnected";
+    const connection = this.shell.liveConnection;
+    if (connection?.protocol === "zmk-studio" && connection.zmkStudio?.lockState === "locked") {
+      return "locked";
+    }
+    if (!this.isZmkConnection(connection)) return "disconnected";
     if (this.failedLanes.length > 0) return "sync-failed";
     if (this.activeLaneCount > 0) return "syncing";
     if (this.rebuildRequiredChanges.length > 0) return "rebuild-required";
@@ -287,11 +246,21 @@ export class ViaLiveSyncEngine {
     return "connected";
   }
 
-  private canWrite(connection: ConnectionState | null | undefined): connection is ConnectionState {
-    return connection?.status === "connected" && connection.transport === "webhid";
+  private isZmkConnection(
+    connection: ConnectionState | null | undefined,
+  ): connection is ConnectionState {
+    return (
+      connection?.status === "connected" &&
+      connection.protocol === "zmk-studio" &&
+      !!connection.zmkStudio
+    );
   }
 
-  private scheduleWrite(change: ClassifiedViaChange, connection: ConnectionState) {
+  private canWrite(connection: ConnectionState | null | undefined): connection is ConnectionState {
+    return this.isZmkConnection(connection) && connection.zmkStudio?.lockState === "unlocked";
+  }
+
+  private scheduleWrite(change: ClassifiedZmkChange, connection: ConnectionState) {
     const target = change.liveWrite;
     if (!target) return;
 
@@ -316,77 +285,135 @@ export class ViaLiveSyncEngine {
     const pending = this.pendingWrites.get(laneKey);
     if (!pending) return;
     this.pendingWrites.delete(laneKey);
+    this.readyWrites.set(laneKey, pending);
     this.setLaneStatus(pending.change, "syncing");
 
-    this.writeQueue = this.writeQueue.then(() => this.writeOne(pending)).catch(() => undefined);
+    if (this.drainScheduled) return;
+    this.drainScheduled = true;
+    this.writeQueue = this.writeQueue.then(() => this.drainReadyWrites()).catch(() => undefined);
   }
 
-  private async writeOne(pending: PendingWrite) {
+  private async drainReadyWrites() {
+    this.drainScheduled = false;
+    const batch = [...this.readyWrites.values()];
+    this.readyWrites.clear();
+    const successes: SuccessfulWrite[] = [];
+
+    for (const pending of batch) {
+      const success = await this.writeOne(pending).catch((error: unknown) => {
+        const target = pending.change.liveWrite;
+        if (target) {
+          this.failedSignatures.set(target.laneKey, target.signature);
+          this.setLaneStatus(pending.change, "sync-failed", errorMessage(error));
+        }
+        return undefined;
+      });
+      if (success) successes.push(success);
+    }
+
+    if (successes.length === 0) return;
+
+    try {
+      const zmk = successes[0].connection.zmkStudio;
+      if (!zmk) throw new Error("ZMK Studio connection disappeared.");
+      const save = await zmk.call({ type: "save_changes" });
+      if (save.type !== "save_changes" || save.status !== "ok") {
+        throw new Error(
+          `ZMK save_changes failed: ${save.type === "save_changes" ? save.status : "bad response"}`,
+        );
+      }
+
+      for (const success of successes) await this.markSuccess(success);
+    } catch (error) {
+      for (const success of successes) {
+        this.failedSignatures.set(success.target.laneKey, success.target.signature);
+        this.setLaneStatus(success.change, "sync-failed", errorMessage(error));
+      }
+    }
+  }
+
+  private async writeOne(pending: PendingWrite): Promise<SuccessfulWrite | undefined> {
     const target = pending.change.liveWrite;
-    if (!target) return;
+    if (!target) return undefined;
 
     if (pending.connectionRevision !== this.shell.connectionRevision) {
       this.removeLaneStatus(target.laneKey);
-      return;
+      return undefined;
+    }
+
+    if (!this.canWrite(pending.connection)) {
+      this.removeLaneStatus(target.laneKey);
+      return undefined;
     }
 
     const binding = currentBinding(this.editor, target);
-    if (bindingSignature(binding) !== target.signature) {
+    if (zmkBindingSignature(binding) !== target.signature) {
       this.removeLaneStatus(target.laneKey);
-      return;
+      return undefined;
     }
 
-    try {
-      await this.writeKeycode(pending.connection, {
-        col: target.col,
-        keycode: target.keycode,
-        layer: target.layerIndex,
-        row: target.row,
-      });
-      this.patchConnectionKeymap(pending.connection, target);
-      this.failedSignatures.delete(target.laneKey);
+    const zmk = pending.connection.zmkStudio;
+    if (!zmk) throw new Error("ZMK Studio connection handle is unavailable.");
 
-      const latestBinding = currentBinding(this.editor, target);
-      if (bindingSignature(latestBinding) === target.signature) {
-        await this.editor.markBindingSyncedToBase(target.layerId, target.keyId, latestBinding);
-        this.setLaneStatus(pending.change, "synced");
-      } else {
-        this.removeLaneStatus(target.laneKey);
-        this.processChanges();
-      }
-    } catch (error) {
-      this.failedSignatures.set(target.laneKey, target.signature);
-      this.setLaneStatus(pending.change, "sync-failed", errorMessage(error));
+    const response = await zmk.call({
+      type: "set_layer_binding",
+      layerId: target.studioLayerId,
+      keyPosition: target.keyPosition,
+      binding: target.encodedBinding,
+    });
+    if (response.type !== "set_layer_binding" || response.status !== "ok") {
+      throw new Error(
+        `ZMK set_layer_binding failed: ${response.type === "set_layer_binding" ? response.status : "bad response"}`,
+      );
     }
-  }
 
-  private patchConnectionKeymap(connection: ConnectionState, target: ViaLiveWriteTarget) {
-    if (connection !== this.shell.connection) return;
+    const readback = await zmk.call({ type: "get_keymap" });
+    if (readback.type !== "get_keymap") throw new Error("ZMK get_keymap response mismatch.");
 
-    const detection = connection.detection;
-    const keymap = detection?.keymap;
-    if (!detection || !keymap?.[target.layerIndex]?.[target.row]) return;
+    const layer = readback.keymap.layers.find((candidate) => candidate.id === target.studioLayerId);
+    const verified = layer?.bindings[target.keyPosition];
+    if (!verified || !zmkBindingsEqual(verified, target.encodedBinding)) {
+      throw new Error("ZMK readback mismatch after set_layer_binding.");
+    }
 
-    const nextKeymap = keymap.map((layerRows, layerIndex) =>
-      layerIndex === target.layerIndex
-        ? layerRows.map((cols, rowIndex) =>
-            rowIndex === target.row
-              ? cols.map((value, colIndex) => (colIndex === target.col ? target.keycode : value))
-              : [...cols],
-          )
-        : layerRows.map((cols) => [...cols]),
-    );
-
-    this.shell.connection = {
-      ...connection,
-      detection: {
-        ...detection,
-        keymap: nextKeymap,
-      },
+    return {
+      change: pending.change,
+      connection: pending.connection,
+      keymap: readback.keymap,
+      target,
     };
   }
 
-  private setLaneStatus(change: ClassifiedViaChange, state: ViaLaneSyncState, error?: string) {
+  private async markSuccess(success: SuccessfulWrite) {
+    this.patchConnectionKeymap(success.keymap);
+    this.failedSignatures.delete(success.target.laneKey);
+
+    const latestBinding = currentBinding(this.editor, success.target);
+    if (zmkBindingSignature(latestBinding) === success.target.signature) {
+      await this.editor.markBindingSyncedToBase(
+        success.target.profileLayerId,
+        success.target.keyId,
+        latestBinding,
+      );
+      this.setLaneStatus(success.change, "synced");
+    } else {
+      this.removeLaneStatus(success.target.laneKey);
+      this.processChanges();
+    }
+  }
+
+  private patchConnectionKeymap(keymap: ZmkStudioKeymap) {
+    const connection = this.shell.connection;
+    if (!connection?.zmkStudio) return;
+
+    connection.zmkStudio.keymap = keymap;
+    this.shell.connection = {
+      ...connection,
+      zmkStudio: connection.zmkStudio,
+    };
+  }
+
+  private setLaneStatus(change: ClassifiedZmkChange, state: ZmkLaneSyncState, error?: string) {
     const target = change.liveWrite;
     if (!target) return;
 
@@ -399,7 +426,7 @@ export class ViaLiveSyncEngine {
         keyId: target.keyId,
         label: `${target.layerName} ${target.keyLabel}`,
         laneKey: target.laneKey,
-        layerId: target.layerId,
+        layerId: target.profileLayerId,
         signature: target.signature,
         state,
         updatedAt: nowIso(),
@@ -412,7 +439,7 @@ export class ViaLiveSyncEngine {
     this.laneStatuses = rest;
   }
 
-  private pruneResolvedLanes(liveChanges: readonly ClassifiedViaChange[]) {
+  private pruneResolvedLanes(liveChanges: readonly ClassifiedZmkChange[]) {
     const liveLanes = new Set(
       liveChanges.map((change) => change.liveWrite?.laneKey).filter(Boolean),
     );
@@ -420,6 +447,7 @@ export class ViaLiveSyncEngine {
       if (!liveLanes.has(laneKey)) {
         this.failedSignatures.delete(laneKey);
         this.pendingWrites.delete(laneKey);
+        this.readyWrites.delete(laneKey);
         const timer = this.timers.get(laneKey);
         if (timer) clearTimeout(timer);
         this.timers.delete(laneKey);
@@ -432,13 +460,6 @@ export class ViaLiveSyncEngine {
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
     this.pendingWrites.clear();
+    this.readyWrites.clear();
   }
-}
-
-export function setViaLiveSyncContext(sync: LiveSyncView) {
-  setContext(VIA_LIVE_SYNC_CONTEXT, sync);
-}
-
-export function getViaLiveSyncContext(): LiveSyncView {
-  return getContext<LiveSyncView>(VIA_LIVE_SYNC_CONTEXT);
 }

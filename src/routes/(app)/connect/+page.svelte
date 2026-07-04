@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import {
+    connectZmkStudioAndActivate,
     connectViaAndActivate,
     continueWithoutDevice,
     importViaJsonAndActivate,
@@ -19,6 +21,10 @@
     type ConnectionState,
   } from "$lib/keyboard/transport";
   import { createMockViaTransport, mockViaBoards } from "$lib/keyboard/transport-mock";
+  import {
+    createMockZmkStudioTransport,
+    mockZmkStudioBoards,
+  } from "$lib/keyboard/transport-mock-zmk";
 
   import { getViaKeyboardDetail, getViaKeyboardIndex } from "../../keyboards.remote";
 
@@ -29,7 +35,15 @@
     repo: string;
     source: "github-api";
   };
-  type BusyAction = "real" | "mock" | "import" | "local" | "disconnect";
+  type BusyAction =
+    | "real"
+    | "mock"
+    | "zmk-mock"
+    | "zmk-ble"
+    | "zmk-usb"
+    | "import"
+    | "local"
+    | "disconnect";
   type CatalogIdentity = {
     productId?: number;
     productName?: string;
@@ -40,6 +54,7 @@
   const shell = getShellContext();
   const workbench = getWorkbenchContext();
   const mockBoard = mockViaBoards.workbench65;
+  const mockZmkBoard = mockZmkStudioBoards.workbench65;
 
   let fileInput = $state<HTMLInputElement | undefined>();
   let busyAction = $state<BusyAction | null>(null);
@@ -59,6 +74,8 @@
   const activeProfileSummary = $derived(
     `${workbench.profile.keys.length} keys, ${workbench.profile.layers.length} layers`,
   );
+  const webBluetoothSupported = $derived(browser && Boolean(navigator.bluetooth));
+  const webSerialSupported = $derived(browser && Boolean(navigator.serial));
 
   function currentFilters() {
     return [
@@ -150,6 +167,25 @@
       });
       return result.message;
     });
+  }
+
+  function useDemoZmkDevice() {
+    void runAction("zmk-mock", async () => {
+      const result = await connectZmkStudioAndActivate({
+        shell,
+        transport: createMockZmkStudioTransport(),
+        workbench,
+      });
+      return result.message;
+    });
+  }
+
+  function showZmkScaffold(kind: "bluetooth" | "usb") {
+    const supported = kind === "bluetooth" ? webBluetoothSupported : webSerialSupported;
+    const label = kind === "bluetooth" ? "Web Bluetooth" : "Web Serial";
+    message = supported
+      ? `Real ZMK Studio over ${label} lands in Wave 4c-ii and needs a board for protocol verification.`
+      : `${label} is unavailable in this browser; real ZMK Studio connection still lands in Wave 4c-ii.`;
   }
 
   function chooseViaJson() {
@@ -261,6 +297,44 @@
         <button
           type="button"
           class="connect-option"
+          data-testid="connect-zmk-ble"
+          disabled={busy}
+          onclick={() => showZmkScaffold("bluetooth")}
+        >
+          <span class="option-icon material-symbols-outlined" aria-hidden="true">bluetooth</span>
+          <span class="option-copy">
+            <strong>Connect over Bluetooth (ZMK)</strong>
+            <small>
+              {webBluetoothSupported
+                ? "Feature detected; real ZMK Studio BLE lands in the next wave"
+                : "Web Bluetooth unavailable in this browser"}
+            </small>
+          </span>
+          <span class="option-action">{webBluetoothSupported ? "Next wave" : "Unavailable"}</span>
+        </button>
+
+        <button
+          type="button"
+          class="connect-option"
+          data-testid="connect-zmk-usb"
+          disabled={busy}
+          onclick={() => showZmkScaffold("usb")}
+        >
+          <span class="option-icon material-symbols-outlined" aria-hidden="true">usb</span>
+          <span class="option-copy">
+            <strong>Connect over USB (ZMK)</strong>
+            <small>
+              {webSerialSupported
+                ? "Feature detected; real ZMK Studio USB serial lands in the next wave"
+                : "Web Serial unavailable in this browser"}
+            </small>
+          </span>
+          <span class="option-action">{webSerialSupported ? "Next wave" : "Unavailable"}</span>
+        </button>
+
+        <button
+          type="button"
+          class="connect-option"
           data-testid="use-demo-device"
           disabled={busy}
           onclick={useDemoDevice}
@@ -271,6 +345,21 @@
             <small>Mock VIA Workbench 65 with protocol, layers, keymap reads, and writes</small>
           </span>
           <span class="option-action">{busyAction === "mock" ? "..." : "Demo"}</span>
+        </button>
+
+        <button
+          type="button"
+          class="connect-option"
+          data-testid="use-demo-zmk-device"
+          disabled={busy}
+          onclick={useDemoZmkDevice}
+        >
+          <span class="option-icon material-symbols-outlined" aria-hidden="true">settings_input_antenna</span>
+          <span class="option-copy">
+            <strong>{busyAction === "zmk-mock" ? "Starting ZMK demo" : "Use demo ZMK device"}</strong>
+            <small>Mock ZMK Studio Workbench 65 with RPC keymap reads, writes, and saves</small>
+          </span>
+          <span class="option-action">{busyAction === "zmk-mock" ? "..." : "Demo"}</span>
         </button>
 
         <button
@@ -322,7 +411,9 @@
 
       <div class="connect-foot">
         <span class="material-symbols-outlined" aria-hidden="true">memory</span>
-        <span>Mock target: {mockBoard.name} / 0xFEED:0x6060 / VIA protocol 12</span>
+        <span>
+          Mock targets: {mockBoard.name} VIA / {mockZmkBoard.name} ZMK Studio
+        </span>
       </div>
     </div>
   </div>

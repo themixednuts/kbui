@@ -3,6 +3,7 @@ import { Effect } from "effect";
 
 import type { Capability, DeviceProfile, KeyboardDetection } from "./schema";
 import { viaCommand, viaReportSize } from "./via-protocol";
+import type { ZmkStudioConnection } from "./zmk-studio";
 
 export type MinimalUsbDevice = {
   manufacturerName?: string;
@@ -62,12 +63,15 @@ export type HidController = {
 
 declare global {
   interface Navigator {
+    bluetooth?: unknown;
     usb?: UsbController;
     hid?: HidController;
+    serial?: unknown;
   }
 }
 
-export type TransportKind = "webusb" | "webhid";
+export type TransportKind = "webusb" | "webhid" | "webbluetooth" | "webserial";
+export type KeyboardProtocol = "via-v3" | "zmk-studio";
 
 export interface KeyboardTransportConnectOptions extends TransportOptions {
   filters?: Array<{ vendorId?: number; productId?: number }>;
@@ -99,8 +103,10 @@ interface HidDeviceFilter {
 
 export interface TransportEnvironment {
   isBrowser: boolean;
+  bluetooth?: unknown;
   usb?: UsbController;
   hid?: HidController;
+  serial?: unknown;
 }
 
 export interface TransportOptions {
@@ -120,7 +126,9 @@ export interface TransportOptions {
 export interface ConnectionState {
   status: "idle" | "unsupported" | "requesting" | "connected" | "error";
   transport?: TransportKind;
+  protocol?: KeyboardProtocol;
   hidDevice?: MinimalHidDevice;
+  zmkStudio?: ZmkStudioConnection;
   deviceKey?: string;
   productName?: string;
   vendorId?: number;
@@ -128,6 +136,8 @@ export interface ConnectionState {
   serialNumber?: string;
   detection?: KeyboardDetection;
   message: string;
+  webBluetoothSupported: boolean;
+  webSerialSupported: boolean;
   webUsbSupported: boolean;
   webHidSupported: boolean;
 }
@@ -135,8 +145,10 @@ export interface ConnectionState {
 function browserTransportEnvironment(): TransportEnvironment {
   return {
     isBrowser: browser,
+    bluetooth: browser ? navigator.bluetooth : undefined,
     usb: browser ? navigator.usb : undefined,
     hid: browser ? navigator.hid : undefined,
+    serial: browser ? navigator.serial : undefined,
   };
 }
 
@@ -145,13 +157,20 @@ export function getConnectionState(
 ): ConnectionState {
   const webUsbSupported = environment.isBrowser && Boolean(environment.usb);
   const webHidSupported = environment.isBrowser && Boolean(environment.hid);
+  const webBluetoothSupported = environment.isBrowser && Boolean(environment.bluetooth);
+  const webSerialSupported = environment.isBrowser && Boolean(environment.serial);
 
   return {
-    status: webUsbSupported || webHidSupported ? "idle" : "unsupported",
+    status:
+      webUsbSupported || webHidSupported || webBluetoothSupported || webSerialSupported
+        ? "idle"
+        : "unsupported",
     message:
-      webUsbSupported || webHidSupported
+      webUsbSupported || webHidSupported || webBluetoothSupported || webSerialSupported
         ? "Plug in to begin"
-        : "Browser does not support WebHID/USB",
+        : "Browser does not support WebHID/USB/Bluetooth/Serial",
+    webBluetoothSupported,
+    webSerialSupported,
     webUsbSupported,
     webHidSupported,
   };
@@ -233,10 +252,16 @@ function claimableUsbInterface(device: MinimalUsbDevice) {
 
 function connectionErrorMessage(error: unknown, transport: TransportKind) {
   if (!(error instanceof Error)) return "Connection failed";
-  if (error.name === "NotFoundError")
-    return `No ${transport === "webusb" ? "WebUSB" : "WebHID"} keyboard selected`;
-  if (error.name === "SecurityError")
-    return `${transport === "webusb" ? "WebUSB" : "WebHID"} permission was blocked`;
+  const label =
+    transport === "webusb"
+      ? "WebUSB"
+      : transport === "webhid"
+        ? "WebHID"
+        : transport === "webbluetooth"
+          ? "Web Bluetooth"
+          : "Web Serial";
+  if (error.name === "NotFoundError") return `No ${label} keyboard selected`;
+  if (error.name === "SecurityError") return `${label} permission was blocked`;
   return error.message;
 }
 
@@ -278,6 +303,7 @@ async function connectUsbDevice(
     ...getConnectionState(environment),
     status: "connected",
     transport: "webusb",
+    protocol: "via-v3",
     deviceKey: deviceKey(device),
     productName: device.productName ?? "QMK device",
     vendorId: device.vendorId,
@@ -324,6 +350,7 @@ async function connectHidDevice(
     ...getConnectionState(environment),
     status: "connected",
     transport: "webhid",
+    protocol: "via-v3",
     hidDevice: device,
     deviceKey: detection.identity.key,
     productName: device.productName ?? "HID keyboard",
@@ -594,6 +621,16 @@ export function connectKeyboardEffect(
 
         const device = await environment.usb.requestDevice({ filters: webUsbFilters(filters) });
         return connectUsbDevice(device, environment);
+      }
+
+      if (transport === "webbluetooth" || transport === "webserial") {
+        return {
+          ...getConnectionState(environment),
+          status: "unsupported" as const,
+          transport,
+          protocol: "zmk-studio" as const,
+          message: "Real ZMK Studio transport lands in Wave 4c-ii.",
+        };
       }
 
       if (!environment.hid) {

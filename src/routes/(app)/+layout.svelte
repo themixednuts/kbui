@@ -20,9 +20,9 @@
     setWorkbenchContext,
     WorkbenchStore,
   } from "$lib/app/workbench-store.svelte";
+  import { KeyboardLiveSyncEngine } from "$lib/app/live-sync-coordinator.svelte";
   import {
     setViaLiveSyncContext,
-    ViaLiveSyncEngine,
   } from "$lib/app/via-live-sync.svelte";
 
   type AuthSessionData = {
@@ -41,7 +41,7 @@
 
   const shell = new ShellStore();
   const workbench = new WorkbenchStore();
-  const liveSync = new ViaLiveSyncEngine({ editor: workbench, shell });
+  const liveSync = new KeyboardLiveSyncEngine({ editor: workbench, shell });
   setShellContext(shell);
   setWorkbenchContext(workbench);
   setViaLiveSyncContext(liveSync);
