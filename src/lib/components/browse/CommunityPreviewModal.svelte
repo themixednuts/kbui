@@ -13,6 +13,7 @@
   import { Button, Chip } from "$lib/components/ui";
   import type { CommunityKeymapDetail } from "$lib/community/types";
   import { decodeDeviceProfileFromStorage } from "$lib/keyboard/schema";
+  import { cn } from "$lib/utils.js";
 
   interface Props {
     detail: CommunityKeymapDetail | null;
@@ -48,6 +49,50 @@
     onsignin,
   }: Props = $props();
 
+  const modalBackdropClass =
+    "modal-backdrop fixed inset-0 z-30 grid place-items-center bg-[rgba(20,18,16,0.5)] p-kb-22 backdrop-blur-[10px] max-[620px]:p-kb-10";
+  const previewModalClass =
+    "preview-modal grid max-h-[min(780px,calc(100vh-44px))] min-h-[min(680px,calc(100vh-44px))] w-[min(1120px,calc(100vw-44px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line-2 bg-surface shadow-modal max-[900px]:min-h-0 max-[620px]:max-h-[calc(100vh-20px)] max-[620px]:w-[calc(100vw-20px)]";
+  const modalHeaderClass =
+    "modal-header grid min-w-0 grid-cols-[minmax(0,1fr)_34px] items-center gap-kb-14 border-b border-line px-kb-18 py-kb-16 max-[620px]:p-kb-12";
+  const modalTitleClass = "modal-title grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-kb-12";
+  const authorAvatarClass =
+    "author-avatar grid size-kb-40 place-items-center rounded-[8px] border border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] bg-coral font-mono text-[12px] font-bold text-[#1c0a04]";
+  const modalHeadingClass =
+    "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[20px] leading-[1.15] max-[620px]:text-[16px]";
+  const modalBylineClass =
+    "m-0 mt-kb-4 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-11 text-ink-3";
+  const closeButtonClass =
+    "close-button grid size-kb-34 place-items-center rounded-[8px] border border-line bg-paper-2 text-ink-2 hover:border-line-2 hover:text-ink";
+  const modalContentClass =
+    "modal-content grid min-h-0 grid-cols-[minmax(0,1fr)_300px] max-[900px]:grid-cols-[minmax(0,1fr)] max-[900px]:overflow-auto";
+  const boardPanelClass =
+    "board-panel flex min-h-0 min-w-0 border-r border-line max-[900px]:min-h-[380px] max-[900px]:border-r-0 max-[900px]:border-b";
+  const previewBoardClass =
+    "community-preview-board [&_.keyboard-board-viewport]:min-h-0 [&_.keyboard-board-viewport]:p-kb-24";
+  const detailPanelClass =
+    "detail-panel flex min-h-0 min-w-0 flex-col gap-kb-14 overflow-auto p-kb-16 max-[900px]:overflow-visible";
+  const wrapRowClass = "flex flex-wrap gap-kb-6";
+  const noteClass = "note m-0 text-[13px] leading-[1.5] text-ink-2";
+  const tagPillClass =
+    "inline-flex min-h-kb-24 items-center rounded-pill border border-line bg-paper-2 px-kb-8 py-0 font-mono text-kb-10 text-ink-2";
+  const signalGridClass = "signal-grid m-0 grid grid-cols-1 gap-kb-8";
+  const signalBlockClass =
+    "grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-[8px] border border-line bg-paper-2 px-kb-10 py-kb-9";
+  const signalTermClass = "inline-flex items-center gap-kb-7 font-mono text-kb-11 text-ink-2";
+  const signalValueClass = "m-0 font-mono text-[13px] font-bold";
+  const actionFeedbackClass = "action-feedback m-0 rounded-[8px] px-kb-10 py-kb-8 text-[12px] leading-[1.35]";
+  const actionFeedbackErrorClass =
+    "error border border-[oklch(0.62_0.2_25_/_0.26)] bg-[oklch(0.95_0.04_25)] text-[oklch(0.42_0.15_25)]";
+  const actionFeedbackSuccessClass =
+    "success border border-[color-mix(in_oklch,var(--mint)_46%,var(--line-2))] bg-[color-mix(in_oklch,var(--mint)_15%,var(--surface))] text-[oklch(0.35_0.12_150)]";
+  const actionStackClass = "action-stack mt-auto grid gap-kb-8 pt-kb-8";
+  const actionButtonClass = "w-full justify-center";
+  const likedActionClass =
+    "liked border-[color-mix(in_oklch,var(--coral)_56%,var(--line-2))] bg-[color-mix(in_oklch,var(--coral)_82%,var(--surface))] text-[#1c0a04]";
+  const modalStateClass =
+    "flex min-h-[340px] items-center justify-center gap-kb-8 p-kb-24 font-mono text-[12px] text-ink-3";
+
   let boardZoom = $state(0.78);
   let boardPan = $state({ x: 0, y: 0 });
 
@@ -80,9 +125,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="modal-backdrop" role="presentation" onclick={onclose}>
+<div class={modalBackdropClass} role="presentation" onclick={onclose}>
   <div
-    class="preview-modal"
+    class={previewModalClass}
     role="dialog"
     aria-modal="true"
     aria-label={detail ? `Preview ${detail.title}` : "Preview community keymap"}
@@ -90,15 +135,15 @@
     onclick={(event) => event.stopPropagation()}
     onkeydown={(event) => event.stopPropagation()}
   >
-    <header class="modal-header">
-      <div class="modal-title">
+    <header class={modalHeaderClass}>
+      <div class={modalTitleClass}>
         {#if detail}
-          <span class="author-avatar" aria-hidden="true">
+          <span class={authorAvatarClass} aria-hidden="true">
             {detail.author.displayName.slice(0, 2).toUpperCase()}
           </span>
           <div>
-            <h2>{detail.title}</h2>
-            <p>
+            <h2 class={modalHeadingClass}>{detail.title}</h2>
+            <p class={modalBylineClass}>
               {authorLabel} · {detail.boardName} ·
               {#if isOfficial}
                 Official curated layout
@@ -109,41 +154,41 @@
           </div>
         {:else}
           <div>
-            <h2>{loading ? "Loading preview" : "Preview unavailable"}</h2>
-            <p>{error ?? "Community keymap detail could not be loaded."}</p>
+            <h2 class={modalHeadingClass}>{loading ? "Loading preview" : "Preview unavailable"}</h2>
+            <p class={modalBylineClass}>{error ?? "Community keymap detail could not be loaded."}</p>
           </div>
         {/if}
       </div>
 
-      <button type="button" class="close-button" aria-label="Close preview" onclick={onclose}>
+      <button type="button" class={closeButtonClass} aria-label="Close preview" onclick={onclose}>
         <X size={18} aria-hidden="true" />
       </button>
     </header>
 
     {#if error}
-      <div class="modal-error" role="status">
+      <div class={cn("modal-error", modalStateClass, "text-[oklch(0.42_0.15_25)]")} role="status">
         <AlertTriangle size={16} aria-hidden="true" />
         {error}
       </div>
     {:else if loading || !detail || !profile}
-      <div class="modal-loading" role="status">
+      <div class={cn("modal-loading", modalStateClass)} role="status">
         <span class="material-symbols-outlined" aria-hidden="true">hourglass_empty</span>
         Loading keymap
       </div>
     {:else}
-      <div class="modal-content">
-        <div class="board-panel">
+      <div class={modalContentClass}>
+        <div class={boardPanelClass}>
           <KeyboardBoard
             {profile}
             lens="keys"
             bind:zoom={boardZoom}
             bind:pan={boardPan}
-            class="community-preview-board"
+            class={previewBoardClass}
           />
         </div>
 
-        <aside class="detail-panel">
-          <div class="badge-row">
+        <aside class={detailPanelClass}>
+          <div class={cn("badge-row", wrapRowClass)}>
             {#if isOfficial}
               <Chip tone="warning" title="First-party curated keymap">
                 <ShieldCheck size={13} aria-hidden="true" />
@@ -152,38 +197,39 @@
             {/if}
           </div>
 
-          <p class="note">{detail.note}</p>
+          <p class={noteClass}>{detail.note}</p>
 
-          <div class="tag-row">
+          <div class={cn("tag-row", wrapRowClass)}>
             {#each detail.tags as tag (tag)}
-              <span>#{tag}</span>
+              <span class={tagPillClass}>#{tag}</span>
             {/each}
           </div>
 
-          <dl class="signal-grid">
-            <div>
-              <dt><Layers size={14} aria-hidden="true" />Layers</dt>
-              <dd>{detail.layersCount}</dd>
+          <dl class={signalGridClass}>
+            <div class={signalBlockClass}>
+              <dt class={signalTermClass}><Layers size={14} aria-hidden="true" />Layers</dt>
+              <dd class={signalValueClass}>{detail.layersCount}</dd>
             </div>
-            <div>
-              <dt><Heart size={14} aria-hidden="true" />Likes</dt>
-              <dd>{detail.likesCount.toLocaleString()}</dd>
+            <div class={signalBlockClass}>
+              <dt class={signalTermClass}><Heart size={14} aria-hidden="true" />Likes</dt>
+              <dd class={signalValueClass}>{detail.likesCount.toLocaleString()}</dd>
             </div>
-            <div>
-              <dt><GitFork size={14} aria-hidden="true" />Adoptions</dt>
-              <dd>{detail.adoptionsCount.toLocaleString()}</dd>
+            <div class={signalBlockClass}>
+              <dt class={signalTermClass}><GitFork size={14} aria-hidden="true" />Adoptions</dt>
+              <dd class={signalValueClass}>{detail.adoptionsCount.toLocaleString()}</dd>
             </div>
           </dl>
 
           {#if actionError}
-            <p class="action-feedback error" role="status">{actionError}</p>
+            <p class={cn(actionFeedbackClass, actionFeedbackErrorClass)} role="status">{actionError}</p>
           {:else if actionNotice}
-            <p class="action-feedback success" role="status">{actionNotice}</p>
+            <p class={cn(actionFeedbackClass, actionFeedbackSuccessClass)} role="status">{actionNotice}</p>
           {/if}
 
-          <div class="action-stack" aria-label="Community actions">
+          <div class={actionStackClass} aria-label="Community actions">
             <Button
               variant="coral"
+              class={actionButtonClass}
               disabled={adoptBusy}
               title={signedIn ? "Adopt as a local variant" : "Sign in to adopt this keymap"}
               onclick={() => (signedIn ? onadopt?.(detail) : onsignin?.())}
@@ -196,7 +242,7 @@
               disabled={likeBusy}
               title={signedIn ? "Toggle like" : "Sign in to like this keymap"}
               aria-pressed={detail.likedByViewer}
-              class={`like-action ${detail.likedByViewer ? "liked" : ""}`}
+              class={cn("like-action", actionButtonClass, detail.likedByViewer && likedActionClass)}
               onclick={() => (signedIn ? onlike?.(detail) : onsignin?.())}
             >
               <Heart size={15} aria-hidden="true" />
@@ -204,6 +250,7 @@
             </Button>
             <Button
               variant="ghost"
+              class={actionButtonClass}
               disabled={reportBusy}
               title={signedIn ? "Report this keymap" : "Sign in to report this keymap"}
               onclick={() => (signedIn ? onreport?.(detail) : onsignin?.())}
@@ -218,283 +265,3 @@
   </div>
 </div>
 
-<style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-    display: grid;
-    place-items: center;
-    padding: 22px;
-    background: rgba(20, 18, 16, 0.5);
-    backdrop-filter: blur(10px);
-  }
-
-  .preview-modal {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    width: min(1120px, calc(100vw - 44px));
-    max-height: min(780px, calc(100vh - 44px));
-    min-height: min(680px, calc(100vh - 44px));
-    overflow: hidden;
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    background: var(--surface);
-    box-shadow: var(--shadow-modal);
-  }
-
-  .modal-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 34px;
-    gap: 14px;
-    align-items: center;
-    min-width: 0;
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .modal-title {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .author-avatar {
-    display: grid;
-    width: 40px;
-    height: 40px;
-    place-items: center;
-    border: 1px solid color-mix(in oklch, var(--coral) 45%, var(--line-2));
-    border-radius: 8px;
-    color: #1c0a04;
-    background: var(--coral);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  h2,
-  p {
-    margin: 0;
-  }
-
-  h2 {
-    overflow: hidden;
-    font-size: 20px;
-    line-height: 1.15;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .modal-title p {
-    margin-top: 4px;
-    overflow: hidden;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .close-button {
-    display: grid;
-    width: 34px;
-    height: 34px;
-    place-items: center;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    color: var(--ink-2);
-    background: var(--paper-2);
-  }
-
-  .close-button:hover {
-    color: var(--ink);
-    border-color: var(--line-2);
-  }
-
-  .modal-content {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    min-height: 0;
-  }
-
-  .board-panel {
-    display: flex;
-    min-width: 0;
-    min-height: 0;
-    border-right: 1px solid var(--line);
-  }
-
-  :global(.community-preview-board .keyboard-board-viewport) {
-    min-height: 0;
-    padding: 24px;
-  }
-
-  .detail-panel {
-    display: flex;
-    min-width: 0;
-    min-height: 0;
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px;
-    overflow: auto;
-  }
-
-  .badge-row,
-  .tag-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .note {
-    color: var(--ink-2);
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
-  .tag-row span {
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-    padding: 0 8px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--ink-2);
-    background: var(--paper-2);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .signal-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-    margin: 0;
-  }
-
-  .signal-grid div {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    min-height: 42px;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  dt {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  dd {
-    margin: 0;
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 700;
-  }
-
-  .action-stack {
-    display: grid;
-    gap: 8px;
-    margin-top: auto;
-    padding-top: 8px;
-  }
-
-  .action-stack :global(button) {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .action-stack :global(.like-action.liked) {
-    border-color: color-mix(in oklch, var(--coral) 56%, var(--line-2));
-    color: #1c0a04;
-    background: color-mix(in oklch, var(--coral) 82%, var(--surface));
-  }
-
-  .action-feedback {
-    margin: 0;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .action-feedback.error {
-    border: 1px solid oklch(0.62 0.2 25 / 0.26);
-    color: oklch(0.42 0.15 25);
-    background: oklch(0.95 0.04 25);
-  }
-
-  .action-feedback.success {
-    border: 1px solid color-mix(in oklch, var(--mint) 46%, var(--line-2));
-    color: oklch(0.35 0.12 150);
-    background: color-mix(in oklch, var(--mint) 15%, var(--surface));
-  }
-
-  .modal-loading,
-  .modal-error {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 340px;
-    padding: 24px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .modal-error {
-    color: oklch(0.42 0.15 25);
-  }
-
-  @media (max-width: 900px) {
-    .preview-modal {
-      min-height: 0;
-    }
-
-    .modal-content {
-      grid-template-columns: minmax(0, 1fr);
-      overflow: auto;
-    }
-
-    .board-panel {
-      min-height: 380px;
-      border-right: 0;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .detail-panel {
-      overflow: visible;
-    }
-  }
-
-  @media (max-width: 620px) {
-    .modal-backdrop {
-      padding: 10px;
-    }
-
-    .preview-modal {
-      width: calc(100vw - 20px);
-      max-height: calc(100vh - 20px);
-    }
-
-    .modal-header {
-      padding: 12px;
-    }
-
-    h2 {
-      font-size: 16px;
-    }
-  }
-</style>

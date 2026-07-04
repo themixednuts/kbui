@@ -3,6 +3,7 @@
 
   import { Button, Chip } from "$lib/components/ui";
   import type { CommunityKeymapCard } from "$lib/community/types";
+  import { cn } from "$lib/utils.js";
 
   interface Props {
     card: CommunityKeymapCard;
@@ -11,6 +12,33 @@
   }
 
   let { card, onpreview, ontag }: Props = $props();
+
+  const communityCardClass =
+    "community-card grid min-w-0 grid-rows-[132px_minmax(0,1fr)] overflow-hidden rounded-[8px] border border-line-2 bg-surface shadow-card";
+  const previewPlaneClass =
+    "preview-plane grid min-h-0 min-w-0 place-items-center border-b border-line bg-[linear-gradient(to_right,oklch(0.13_0.01_60_/_0.045)_1px,transparent_1px),linear-gradient(to_bottom,oklch(0.13_0.01_60_/_0.045)_1px,transparent_1px),color-mix(in_oklch,var(--paper-2)_76%,var(--surface))] p-kb-16 [background-size:18px_18px] hover:[&_.preview-key.lit]:-translate-y-px";
+  const previewGridClass =
+    "preview-grid grid w-[min(100%,320px)] grid-cols-[repeat(var(--cols),minmax(4px,1fr))] gap-kb-3";
+  const previewKeyClass =
+    "preview-key aspect-[1.45] min-w-0 rounded-[4px] border border-[rgba(24,22,20,0.12)] bg-[linear-gradient(180deg,#fffdf7_0%,#e9dfca_100%)] shadow-[0_1px_0_rgba(0,0,0,0.12)] transition-transform duration-[var(--dur-fast)] ease-[var(--ease-out-soft)]";
+  const previewKeyLitClass =
+    "lit border-[color-mix(in_oklch,var(--key-c)_60%,rgba(24,22,20,0.14))] bg-[color-mix(in_oklch,var(--key-c)_54%,#fffdf7)]";
+  const cardBodyClass = "card-body grid min-w-0 gap-kb-10 p-kb-14";
+  const titleRowClass = "title-row flex min-w-0 items-start gap-kb-8";
+  const titleClass =
+    "m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[14px] leading-[1.25] font-bold";
+  const authorRowClass = "author-row flex min-w-0 items-center gap-kb-7 font-mono text-kb-11 text-ink-3";
+  const authorTextClass = "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap";
+  const avatarClass =
+    "avatar grid size-kb-24 shrink-0 place-items-center rounded-[7px] border border-[color-mix(in_oklch,var(--coral)_42%,var(--line-2))] bg-coral text-kb-9 font-bold text-[#1c0a04]";
+  const dotClass = "dot size-[3px] shrink-0 rounded-pill bg-ink-3";
+  const noteClass =
+    "m-0 min-h-kb-38 overflow-hidden text-[12px] leading-[1.45] text-ink-2 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2]";
+  const tagRowClass = "tag-row flex flex-wrap gap-kb-5";
+  const tagClass =
+    "tag min-h-kb-24 rounded-pill border border-line bg-paper-2 px-kb-8 py-0 font-mono text-kb-10 text-ink-2";
+  const signalRowClass = "signal-row flex flex-wrap gap-kb-7 font-mono text-kb-10 text-ink-2";
+  const signalItemClass = "inline-flex min-h-kb-22 items-center gap-kb-4";
 
   const cells = $derived(previewCells(card));
   const isOfficial = $derived(card.source === "official");
@@ -41,20 +69,20 @@
   }
 </script>
 
-<article class="community-card">
-  <button type="button" class="preview-plane" aria-label={`Preview ${card.title}`} onclick={() => onpreview(card.id)}>
-    <span class="preview-grid" style={`--cols: ${cells[0]?.length ?? 1}`}>
+<article class={communityCardClass}>
+  <button type="button" class={previewPlaneClass} aria-label={`Preview ${card.title}`} onclick={() => onpreview(card.id)}>
+    <span class={previewGridClass} style={`--cols: ${cells[0]?.length ?? 1}`}>
       {#each cells as row, rowIndex (`row-${card.id}-${rowIndex}`)}
         {#each row as cell (cell.id)}
-          <span class="preview-key" class:lit={Boolean(cell.color)} style={cell.color ? `--key-c: ${cell.color}` : ""}></span>
+          <span class={cn(previewKeyClass, cell.color && previewKeyLitClass)} style={cell.color ? `--key-c: ${cell.color}` : ""}></span>
         {/each}
       {/each}
     </span>
   </button>
 
-  <div class="card-body">
-    <div class="title-row">
-      <h3>{card.title}</h3>
+  <div class={cardBodyClass}>
+    <div class={titleRowClass}>
+      <h3 class={titleClass}>{card.title}</h3>
       {#if isOfficial}
         <Chip tone="warning" title="First-party curated keymap">
           <ShieldCheck size={13} aria-hidden="true" />
@@ -63,216 +91,44 @@
       {/if}
     </div>
 
-    <div class="author-row">
-      <span class="avatar" aria-hidden="true">{initials}</span>
-      <span>{authorLabel}</span>
-      <span class="dot" aria-hidden="true"></span>
-      <span>{card.boardName}</span>
+    <div class={authorRowClass}>
+      <span class={avatarClass} aria-hidden="true">{initials}</span>
+      <span class={authorTextClass}>{authorLabel}</span>
+      <span class={dotClass} aria-hidden="true"></span>
+      <span class={authorTextClass}>{card.boardName}</span>
     </div>
 
-    <p>{card.note}</p>
+    <p class={noteClass}>{card.note}</p>
 
-    <div class="tag-row" aria-label="Tags">
+    <div class={tagRowClass} aria-label="Tags">
       {#each card.tags as tag (tag)}
-        <button type="button" class="tag" onclick={() => ontag?.(tag)}>#{tag}</button>
+        <button type="button" class={tagClass} onclick={() => ontag?.(tag)}>#{tag}</button>
       {/each}
     </div>
 
-    <div class="signal-row" aria-label="Community signals">
-      <span title={`${card.layersCount} layers`}>
+    <div class={signalRowClass} aria-label="Community signals">
+      <span class={signalItemClass} title={`${card.layersCount} layers`}>
         <Layers size={13} aria-hidden="true" />
         {card.layersCount}
       </span>
-      <span class:liked={card.likedByViewer} title={`${card.likesCount} likes`}>
+      <span class={cn(signalItemClass, card.likedByViewer && "liked text-coral-ink")} title={`${card.likesCount} likes`}>
         <Heart size={13} aria-hidden="true" />
         {formatCount(card.likesCount)}
       </span>
-      <span title={`${card.adoptionsCount} adoptions`}>
+      <span class={signalItemClass} title={`${card.adoptionsCount} adoptions`}>
         <GitFork size={13} aria-hidden="true" />
         {formatCount(card.adoptionsCount)}
       </span>
-      <span title={`${card.keyCount} keys`}>
+      <span class={signalItemClass} title={`${card.keyCount} keys`}>
         <Keyboard size={13} aria-hidden="true" />
         {card.keyCount}
       </span>
     </div>
 
-    <Button variant="ghost" size="sm" class="preview-action" onclick={() => onpreview(card.id)}>
+    <Button variant="ghost" size="sm" class="preview-action justify-self-start" onclick={() => onpreview(card.id)}>
       <Eye size={14} aria-hidden="true" />
       Preview
     </Button>
   </div>
 </article>
 
-<style>
-  .community-card {
-    display: grid;
-    grid-template-rows: 132px minmax(0, 1fr);
-    min-width: 0;
-    overflow: hidden;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    background: var(--surface);
-    box-shadow: var(--shadow-card);
-  }
-
-  .preview-plane {
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    place-items: center;
-    padding: 16px;
-    border-bottom: 1px solid var(--line);
-    background:
-      linear-gradient(to right, oklch(0.13 0.01 60 / 0.045) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.13 0.01 60 / 0.045) 1px, transparent 1px),
-      color-mix(in oklch, var(--paper-2) 76%, var(--surface));
-    background-size: 18px 18px;
-  }
-
-  .preview-plane:hover .preview-key.lit {
-    transform: translateY(-1px);
-  }
-
-  .preview-grid {
-    display: grid;
-    grid-template-columns: repeat(var(--cols), minmax(4px, 1fr));
-    gap: 3px;
-    width: min(100%, 320px);
-  }
-
-  .preview-key {
-    aspect-ratio: 1.45;
-    min-width: 0;
-    border: 1px solid rgba(24, 22, 20, 0.12);
-    border-radius: 4px;
-    background: linear-gradient(180deg, #fffdf7 0%, #e9dfca 100%);
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
-    transition: transform var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .preview-key.lit {
-    border-color: color-mix(in oklch, var(--key-c) 60%, rgba(24, 22, 20, 0.14));
-    background: color-mix(in oklch, var(--key-c) 54%, #fffdf7);
-  }
-
-  .card-body {
-    display: grid;
-    gap: 10px;
-    min-width: 0;
-    padding: 14px;
-  }
-
-  .title-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  h3 {
-    flex: 1;
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    font-family: var(--mono);
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .author-row {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .author-row span:not(.avatar, .dot) {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .avatar {
-    display: grid;
-    width: 24px;
-    height: 24px;
-    flex: 0 0 auto;
-    place-items: center;
-    border: 1px solid color-mix(in oklch, var(--coral) 42%, var(--line-2));
-    border-radius: 7px;
-    color: #1c0a04;
-    background: var(--coral);
-    font-size: 9px;
-    font-weight: 700;
-  }
-
-  .dot {
-    width: 3px;
-    height: 3px;
-    flex: 0 0 auto;
-    border-radius: 999px;
-    background: var(--ink-3);
-  }
-
-  p {
-    display: -webkit-box;
-    min-height: 38px;
-    margin: 0;
-    overflow: hidden;
-    color: var(--ink-2);
-    font-size: 12px;
-    line-height: 1.45;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-
-  .tag-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-
-  .tag {
-    min-height: 24px;
-    padding: 0 8px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--ink-2);
-    background: var(--paper-2);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .signal-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .signal-row span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 22px;
-  }
-
-  .signal-row .liked {
-    color: var(--coral-ink);
-  }
-
-  :global(.preview-action) {
-    justify-self: start;
-  }
-</style>

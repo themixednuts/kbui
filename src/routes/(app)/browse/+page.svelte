@@ -18,6 +18,7 @@
   } from "$lib/community/types";
   import type { SegmentItem } from "$lib/components/ui/types";
   import { decodeDeviceProfileFromStorage, profileDisplayName } from "$lib/keyboard/schema";
+  import { cn } from "$lib/utils.js";
   import { newId } from "$lib/util/id";
 
   import type { PageData } from "./$types";
@@ -39,6 +40,48 @@
     { value: "new", label: "New", title: "Sort by newest", icon: Clock3 },
     { value: "adoptions", label: "Adoptions", title: "Sort by adoptions", icon: GitFork },
   ];
+  const browseRouteClass =
+    "browse-route min-h-[calc(100vh-58px)] bg-[radial-gradient(ellipse_82%_52%_at_84%_0%,color-mix(in_oklch,var(--coral)_8%,transparent),transparent_64%),radial-gradient(ellipse_70%_44%_at_0%_16%,color-mix(in_oklch,var(--teal)_8%,transparent),transparent_62%),var(--paper)] p-kb-22 max-[640px]:p-kb-12";
+  const browseShellClass = "browse-shell grid min-w-0 gap-kb-16";
+  const browseHeaderClass =
+    "browse-header grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] items-end gap-kb-16 max-[940px]:grid-cols-[minmax(0,1fr)]";
+  const headlineClass = "headline grid min-w-0 gap-kb-4";
+  const eyebrowClass = "font-mono text-kb-10 tracking-[0.12em] text-ink-3 uppercase";
+  const searchBoxClass =
+    "search-box grid h-kb-38 min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-[8px] border border-line-2 bg-surface px-kb-12 py-0 shadow-card";
+  const filterPanelClass =
+    "filter-panel grid min-w-0 gap-kb-10 rounded-[8px] border border-line-2 bg-[color-mix(in_oklch,var(--surface)_86%,transparent)] p-kb-12 shadow-card";
+  const filterGroupClass = "flex min-w-0 flex-wrap items-center gap-kb-8";
+  const filterRowClass = `${filterGroupClass} max-[640px]:items-start`;
+  const filterButtonClass =
+    "min-h-[28px] rounded-pill border border-line bg-paper-2 px-kb-10 py-0 font-mono text-kb-11 text-ink-2 hover:border-line-2 hover:text-ink";
+  const activeFilterButtonClass =
+    "active border-[color-mix(in_oklch,var(--coral)_55%,var(--line-2))] bg-coral text-[#1c0a04]";
+  const toggleFilterClass =
+    "toggle-filter inline-flex min-h-kb-30 items-center gap-kb-8 font-mono text-kb-11 text-ink-2";
+  const sortControlClass =
+    "sort-control ml-auto inline-flex items-center gap-kb-8 max-[940px]:ml-0 max-[940px]:w-full max-[940px]:justify-between max-[640px]:flex-col max-[640px]:items-start";
+  const listErrorClass =
+    "list-error flex min-h-kb-44 items-center gap-kb-10 rounded-[8px] border border-[oklch(0.62_0.2_25_/_0.32)] bg-[oklch(0.95_0.04_25)] px-kb-12 py-kb-10 text-[12px] text-[oklch(0.42_0.15_25)]";
+  const cardGridClass =
+    "card-grid grid min-w-0 grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-kb-14 aria-busy:opacity-[0.62] max-[640px]:grid-cols-[minmax(0,1fr)]";
+  const emptyPanelClass =
+    "empty-panel grid min-h-[260px] place-items-center content-center gap-kb-10 rounded-[8px] border border-dashed border-line-2 bg-[color-mix(in_oklch,var(--surface)_64%,transparent)] font-mono text-[12px] text-ink-3";
+  const reportBackdropClass =
+    "report-backdrop fixed inset-0 z-40 grid place-items-center bg-[rgba(20,18,16,0.48)] p-kb-18 backdrop-blur-[8px]";
+  const reportModalClass =
+    "report-modal grid w-[min(420px,calc(100vw-36px))] gap-kb-14 rounded-[10px] border border-line-2 bg-surface p-kb-16 shadow-modal";
+  const reportHeaderClass =
+    "grid grid-cols-[minmax(0,1fr)_32px] items-start gap-kb-10";
+  const reportLabelTextClass = "font-mono text-kb-10 tracking-[0.1em] text-ink-3 uppercase";
+  const reportCloseButtonClass =
+    "grid size-[32px] place-items-center rounded-[8px] border border-line bg-paper-2 text-ink-2";
+  const reportFieldClass = "grid gap-kb-6";
+  const reportFieldControlClass =
+    "w-full min-w-0 rounded-[8px] border border-line bg-paper-2 text-[13px] text-ink";
+  const reportErrorClass =
+    "report-error m-0 rounded-[8px] border border-[oklch(0.62_0.2_25_/_0.26)] bg-[oklch(0.95_0.04_25)] px-kb-10 py-kb-8 text-[12px] text-[oklch(0.42_0.15_25)]";
+  const reportActionsClass = "report-actions flex justify-end gap-kb-8";
 
   const initialCards = untrack(() => data.initialCards);
 
@@ -322,17 +365,18 @@
 
 </script>
 
-<section class="browse-route">
-  <div class="browse-shell">
-    <header class="browse-header">
-      <div class="headline">
-        <span>Community</span>
-        <h2>Browse keymaps</h2>
+<section class={browseRouteClass}>
+  <div class={browseShellClass}>
+    <header class={browseHeaderClass}>
+      <div class={headlineClass}>
+        <span class={eyebrowClass}>Community</span>
+        <h2 class="m-0 text-kb-30">Browse keymaps</h2>
       </div>
 
-      <div class="search-box">
-        <span class="search-icon" aria-hidden="true"><Search size={15} /></span>
+      <div class={searchBoxClass}>
+        <span class="search-icon grid place-items-center text-ink-3" aria-hidden="true"><Search size={15} /></span>
         <input
+          class="min-w-0 border-0 bg-transparent text-[13px] text-ink outline-0 placeholder:text-ink-3"
           type="search"
           placeholder="Search title, author, board, tag"
           bind:value={search}
@@ -341,11 +385,11 @@
       </div>
     </header>
 
-    <section class="filter-panel" aria-label="Browse filters">
-      <div class="tag-strip" aria-label="Tag filters">
+    <section class={filterPanelClass} aria-label="Browse filters">
+      <div class={cn("tag-strip", filterGroupClass)} aria-label="Tag filters">
         <button
           type="button"
-          class:active={!activeTag}
+          class={cn(filterButtonClass, !activeTag && activeFilterButtonClass)}
           aria-pressed={!activeTag}
           onclick={() => setTag(undefined)}
         >
@@ -354,7 +398,7 @@
         {#each tagBank as tag (tag)}
           <button
             type="button"
-            class:active={activeTag === tag}
+            class={cn(filterButtonClass, activeTag === tag && activeFilterButtonClass)}
             aria-pressed={activeTag === tag}
             onclick={() => setTag(activeTag === tag ? undefined : tag)}
           >
@@ -363,24 +407,23 @@
         {/each}
       </div>
 
-      <div class="filter-row">
-        <label class="toggle-filter">
+      <div class={filterRowClass}>
+        <label class={toggleFilterClass}>
           <Switch bind:checked={compatibleOnly} size="sm" aria-label="Compatible with my board" />
           <span>Compatible with {currentBoardName}</span>
         </label>
 
         <button
           type="button"
-          class="official-filter"
-          class:active={officialOnly}
+          class={cn("official-filter", filterButtonClass, officialOnly && activeFilterButtonClass)}
           aria-pressed={officialOnly}
           onclick={() => (officialOnly = !officialOnly)}
         >
           Official only
         </button>
 
-        <div class="sort-control">
-          <span>Sort</span>
+        <div class={sortControlClass}>
+          <span class={eyebrowClass}>Sort</span>
           <SegmentedNav
             items={sortItems}
             value={sort}
@@ -394,7 +437,7 @@
     </section>
 
     {#if listError}
-      <div class="list-error" role="status">
+      <div class={listErrorClass} role="status">
         <span class="material-symbols-outlined" aria-hidden="true">warning</span>
         {listError}
         <Button variant="ghost" size="sm" onclick={() => refreshList(listInput, listKey)}>Retry</Button>
@@ -402,13 +445,13 @@
     {/if}
 
     {#if cards.length === 0 && !loading}
-      <div class="empty-panel">
-        <span class="material-symbols-outlined" aria-hidden="true">explore_off</span>
+      <div class={emptyPanelClass}>
+        <span class="material-symbols-outlined !text-[28px]" aria-hidden="true">explore_off</span>
         <strong>No matching keymaps</strong>
         <Button variant="ghost" size="sm" onclick={clearFilters}>Clear filters</Button>
       </div>
     {:else}
-      <div class="card-grid" aria-busy={loading}>
+      <div class={cardGridClass} aria-busy={loading}>
         {#each cards as card (card.id)}
           <CommunityKeymapCard {card} onpreview={openPreview} ontag={setTag} />
         {/each}
@@ -437,9 +480,9 @@
 {/if}
 
 {#if reportTarget}
-  <div class="report-backdrop" role="presentation" onclick={closeReport}>
+  <div class={reportBackdropClass} role="presentation" onclick={closeReport}>
     <div
-      class="report-modal"
+      class={reportModalClass}
       role="dialog"
       aria-modal="true"
       aria-label={`Report ${reportTarget.title}`}
@@ -448,25 +491,25 @@
       onkeydown={(event) => event.stopPropagation()}
     >
       <form
-        class="report-form"
+        class="report-form contents"
         onsubmit={(event) => {
           event.preventDefault();
           void submitReport();
         }}
       >
-        <header>
+        <header class={reportHeaderClass}>
           <div>
-            <span>Report keymap</span>
-            <h3>{reportTarget.title}</h3>
+            <span class={reportLabelTextClass}>Report keymap</span>
+            <h3 class="m-0 mt-kb-4 overflow-hidden text-ellipsis whitespace-nowrap text-kb-16">{reportTarget.title}</h3>
           </div>
-          <button type="button" aria-label="Close report dialog" onclick={closeReport}>
+          <button class={reportCloseButtonClass} type="button" aria-label="Close report dialog" onclick={closeReport}>
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </header>
 
-        <label>
-          <span>Reason</span>
-          <select bind:value={reportReason}>
+        <label class={reportFieldClass}>
+          <span class={reportLabelTextClass}>Reason</span>
+          <select class={cn(reportFieldControlClass, "h-[36px] px-kb-10 py-0")} bind:value={reportReason}>
             <option value="spam">Spam</option>
             <option value="unsafe">Unsafe</option>
             <option value="misleading">Misleading</option>
@@ -476,9 +519,10 @@
           </select>
         </label>
 
-        <label>
-          <span>Detail</span>
+        <label class={reportFieldClass}>
+          <span class={reportLabelTextClass}>Detail</span>
           <textarea
+            class={cn(reportFieldControlClass, "min-h-kb-92 resize-y p-kb-10 leading-[1.45]")}
             bind:value={reportDetail}
             maxlength="500"
             rows="4"
@@ -487,10 +531,10 @@
         </label>
 
         {#if reportError}
-          <p class="report-error" role="status">{reportError}</p>
+          <p class={reportErrorClass} role="status">{reportError}</p>
         {/if}
 
-        <div class="report-actions">
+        <div class={reportActionsClass}>
           <Button variant="ghost" type="button" onclick={closeReport}>Cancel</Button>
           <Button variant="coral" type="submit" disabled={reportBusyId === reportTarget.id}>
             {reportBusyId === reportTarget.id ? "Sending" : "Send report"}
@@ -501,321 +545,3 @@
   </div>
 {/if}
 
-<style>
-  .browse-route {
-    min-height: calc(100vh - 58px);
-    padding: 22px;
-    background:
-      radial-gradient(ellipse 82% 52% at 84% 0%, color-mix(in oklch, var(--coral) 8%, transparent), transparent 64%),
-      radial-gradient(ellipse 70% 44% at 0% 16%, color-mix(in oklch, var(--teal) 8%, transparent), transparent 62%),
-      var(--paper);
-  }
-
-  .browse-shell {
-    display: grid;
-    gap: 16px;
-    min-width: 0;
-  }
-
-  .browse-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
-    gap: 16px;
-    align-items: end;
-  }
-
-  .headline {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .headline span,
-  .sort-control > span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  h2 {
-    margin: 0;
-    font-size: 30px;
-    line-height: 1.1;
-  }
-
-  .search-box {
-    display: grid;
-    grid-template-columns: 18px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    min-width: 0;
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    background: var(--surface);
-    box-shadow: var(--shadow-card);
-  }
-
-  .search-icon {
-    display: grid;
-    place-items: center;
-    color: var(--ink-3);
-  }
-
-  .search-box input {
-    min-width: 0;
-    border: 0;
-    outline: 0;
-    color: var(--ink);
-    background: transparent;
-    font-size: 13px;
-  }
-
-  .search-box input::placeholder {
-    color: var(--ink-3);
-  }
-
-  .filter-panel {
-    display: grid;
-    gap: 10px;
-    min-width: 0;
-    padding: 12px;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--surface) 86%, transparent);
-    box-shadow: var(--shadow-card);
-  }
-
-  .tag-strip,
-  .filter-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .tag-strip button,
-  .official-filter {
-    min-height: 28px;
-    padding: 0 10px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--ink-2);
-    background: var(--paper-2);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .tag-strip button:hover,
-  .official-filter:hover {
-    border-color: var(--line-2);
-    color: var(--ink);
-  }
-
-  .tag-strip button.active,
-  .official-filter.active {
-    border-color: color-mix(in oklch, var(--coral) 55%, var(--line-2));
-    color: #1c0a04;
-    background: var(--coral);
-  }
-
-  .toggle-filter {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 30px;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .sort-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-  }
-
-  .list-error {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    padding: 10px 12px;
-    border: 1px solid oklch(0.62 0.2 25 / 0.32);
-    border-radius: 8px;
-    color: oklch(0.42 0.15 25);
-    background: oklch(0.95 0.04 25);
-    font-size: 12px;
-  }
-
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 14px;
-    min-width: 0;
-  }
-
-  .card-grid[aria-busy="true"] {
-    opacity: 0.62;
-  }
-
-  .empty-panel {
-    display: grid;
-    min-height: 260px;
-    place-items: center;
-    align-content: center;
-    gap: 10px;
-    border: 1px dashed var(--line-2);
-    border-radius: 8px;
-    color: var(--ink-3);
-    background: color-mix(in oklch, var(--surface) 64%, transparent);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .empty-panel .material-symbols-outlined {
-    font-size: 28px;
-  }
-
-  .report-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    display: grid;
-    place-items: center;
-    padding: 18px;
-    background: rgba(20, 18, 16, 0.48);
-    backdrop-filter: blur(8px);
-  }
-
-  .report-modal {
-    display: grid;
-    gap: 14px;
-    width: min(420px, calc(100vw - 36px));
-    padding: 16px;
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    background: var(--surface);
-    box-shadow: var(--shadow-modal);
-  }
-
-  .report-form {
-    display: contents;
-  }
-
-  .report-modal header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 32px;
-    gap: 10px;
-    align-items: start;
-  }
-
-  .report-modal header span,
-  .report-modal label span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .report-modal h3 {
-    margin: 4px 0 0;
-    overflow: hidden;
-    font-size: 16px;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .report-modal header button {
-    display: grid;
-    width: 32px;
-    height: 32px;
-    place-items: center;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    color: var(--ink-2);
-    background: var(--paper-2);
-  }
-
-  .report-modal label {
-    display: grid;
-    gap: 6px;
-  }
-
-  .report-modal select,
-  .report-modal textarea {
-    width: 100%;
-    min-width: 0;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    color: var(--ink);
-    background: var(--paper-2);
-    font-size: 13px;
-  }
-
-  .report-modal select {
-    height: 36px;
-    padding: 0 10px;
-  }
-
-  .report-modal textarea {
-    resize: vertical;
-    min-height: 92px;
-    padding: 10px;
-    line-height: 1.45;
-  }
-
-  .report-error {
-    margin: 0;
-    padding: 8px 10px;
-    border: 1px solid oklch(0.62 0.2 25 / 0.26);
-    border-radius: 8px;
-    color: oklch(0.42 0.15 25);
-    background: oklch(0.95 0.04 25);
-    font-size: 12px;
-  }
-
-  .report-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  @media (max-width: 940px) {
-    .browse-header {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .sort-control {
-      width: 100%;
-      margin-left: 0;
-      justify-content: space-between;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .browse-route {
-      padding: 12px;
-    }
-
-    .filter-row {
-      align-items: flex-start;
-    }
-
-    .sort-control {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
-    .card-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>
