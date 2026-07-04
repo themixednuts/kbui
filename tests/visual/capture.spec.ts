@@ -39,6 +39,26 @@ const targets: CaptureTarget[] = [
     route: "/editor",
   },
   {
+    name: "flash-overlay.png",
+    prepare: async (page) => {
+      await page
+        .getByRole("navigation", { name: "Selected key inspector" })
+        .getByRole("button", { name: "Hold-Tap" })
+        .click();
+      await page.getByLabel("Hold").fill("KC_LCTL");
+      await page.getByRole("button", { name: "Apply behavior" }).click();
+      await expect(page.getByTestId("via-rebuild-required")).toBeVisible();
+      await page.getByRole("button", { name: "Build firmware" }).click();
+      await expect(page.getByTestId("flash-overlay")).toBeVisible();
+      await expect(page.getByRole("dialog", { name: /^Flash to / })).toBeVisible();
+    },
+    ready: async (page) => {
+      await expect(page.locator(".editor-route.split")).toBeVisible();
+      await expect(page.getByRole("region", { name: "Keyboard board viewport" })).toBeVisible();
+    },
+    route: "/editor?board=split",
+  },
+  {
     name: "editor-split.png",
     ready: async (page) => {
       await expect(page.locator(".editor-route.split")).toBeVisible();

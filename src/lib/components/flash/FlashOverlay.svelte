@@ -37,6 +37,7 @@
     type Uf2VerifyResult,
   } from "$lib/keyboard/uf2-flash";
   import { encodeViaCommandReport } from "$lib/keyboard/via-protocol";
+  import { cn } from "$lib/utils.js";
 
   type Props = {
     changes?: readonly LiveSyncChangeNotice[];
@@ -67,6 +68,117 @@
     "verify",
     "done",
   ];
+
+  const overlayClass =
+    "flash-overlay fixed inset-0 z-40 grid place-items-center p-[20px] max-[720px]:items-end max-[720px]:p-[10px]";
+  const scrimClass =
+    "flash-scrim absolute inset-0 ![background-color:rgba(27,25,23,0.46)] backdrop-blur-[5px]";
+  const modalClass =
+    "flash-modal relative grid w-[min(720px,calc(100vw-28px))] max-h-[min(860px,calc(100vh-28px))] gap-[14px] overflow-auto rounded-[20px] border border-[color-mix(in_oklch,var(--surface)_42%,var(--line-2))] bg-surface p-[22px] shadow-modal max-[720px]:w-full max-[720px]:max-h-[calc(100vh-20px)] max-[720px]:rounded-[16px] max-[720px]:p-[16px]";
+  const modalHeadClass =
+    "modal-head grid grid-cols-[22px_minmax(0,1fr)_30px] items-start gap-[10px]";
+  const modalBoltClass = "material-symbols-outlined modal-bolt !text-[22px] text-coral";
+  const modalTitleClass = "m-0 text-[15px] leading-[1.25] [overflow-wrap:anywhere]";
+  const modalSubtitleClass =
+    "mt-[3px] mb-0 font-mono text-[11px] text-ink-3 [overflow-wrap:anywhere]";
+  const modalCloseClass =
+    "modal-close grid size-[30px] place-items-center rounded-[8px] !text-ink-3 hover:bg-paper-2 hover:!text-ink";
+  const flashStepsClass =
+    "flash-steps grid grid-cols-[repeat(3,minmax(0,1fr))] gap-x-[10px] gap-y-[8px] max-[720px]:grid-cols-[minmax(0,1fr)]";
+  const flashStepClass = "flash-step flex min-w-0 items-center gap-[8px] text-[12px] text-ink-3";
+  const flashStepActiveClass = "active text-ink [&_.material-symbols-outlined]:text-coral";
+  const flashStepDoneClass = "done [&_.material-symbols-outlined]:text-added";
+  const flashStepIconClass = "material-symbols-outlined flex-none !text-[19px]";
+  const flashStepLabelClass = "overflow-hidden text-ellipsis whitespace-nowrap";
+  const sourceFactsClass =
+    "source-facts grid grid-cols-[repeat(5,minmax(0,1fr))] gap-[8px] max-[720px]:grid-cols-[minmax(0,1fr)]";
+  const sourceFactClass =
+    "grid min-w-0 gap-[3px] rounded-[8px] border border-line bg-paper-2 px-[10px] py-[9px]";
+  const sourceFactBlockedClass =
+    "source-blocked border-[oklch(0.62_0.2_25_/_0.36)] bg-[oklch(0.95_0.04_25)]";
+  const microLabelClass =
+    "font-mono text-[9px] tracking-[0.08em] text-ink-3 uppercase";
+  const sourceFactValueClass =
+    "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px]";
+  const diagnosticBannerClass =
+    "diagnostic-banner grid min-w-0 gap-[9px] rounded-[10px] border border-line px-[12px] py-[11px]";
+  const diagnosticBannerErrorClass =
+    "error border-[oklch(0.62_0.2_25_/_0.36)] bg-[oklch(0.95_0.04_25)]";
+  const diagnosticBannerWarningClass =
+    "warning border-[color-mix(in_oklch,var(--mustard)_48%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_14%,var(--surface))]";
+  const diagnosticTitleClass =
+    "diagnostic-title grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-[9px]";
+  const diagnosticIconClass =
+    "material-symbols-outlined !grid size-[26px] place-items-center rounded-[8px] border border-[color-mix(in_oklch,currentColor_30%,var(--surface))] bg-surface !text-[17px]";
+  const diagnosticIconErrorClass = "text-[oklch(0.42_0.15_25)]";
+  const diagnosticIconWarningClass =
+    "text-[color-mix(in_oklch,var(--mustard)_72%,var(--ink))]";
+  const diagnosticTitleStrongClass =
+    "block min-w-0 font-mono text-[12px] leading-[1.35] text-ink [overflow-wrap:anywhere]";
+  const diagnosticTitleSmallClass =
+    "mt-[3px] block min-w-0 text-[11px] leading-[1.35] text-ink-3 [overflow-wrap:anywhere]";
+  const diagnosticListClass = "diagnostic-list m-0 grid list-none gap-[6px] p-0";
+  const diagnosticListItemClass =
+    "grid min-w-0 grid-cols-[minmax(110px,0.42fr)_minmax(0,1fr)] items-start gap-[8px] rounded-[8px] border border-[color-mix(in_oklch,var(--surface)_55%,var(--line))] bg-[color-mix(in_oklch,var(--surface)_70%,transparent)] px-[8px] py-[7px]";
+  const diagnosticListTargetClass =
+    "min-w-0 font-mono text-[10px] leading-[1.35] text-ink-3 [overflow-wrap:anywhere]";
+  const diagnosticListMessageClass = "m-0 min-w-0 text-[11px] leading-[1.35] text-ink-2";
+  const flashPanelsClass =
+    "flash-panels grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[10px] max-[720px]:grid-cols-[minmax(0,1fr)]";
+  const flashPanelClass =
+    "flash-panel grid min-w-0 gap-[10px] rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--paper-2)_62%,transparent)] p-[12px]";
+  const copyPanelClass =
+    "copy-panel grid min-w-0 gap-[11px] rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--paper-2)_62%,transparent)] p-[12px]";
+  const panelHeadClass =
+    "panel-head grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-[9px]";
+  const supportRowClass =
+    "support-row grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-[9px] data-[supported=true]:[&>.material-symbols-outlined]:border-[oklch(0.62_0.16_150_/_0.28)] data-[supported=true]:[&>.material-symbols-outlined]:text-[oklch(0.35_0.12_150)]";
+  const panelIconClass =
+    "material-symbols-outlined !grid size-[26px] place-items-center rounded-[8px] border border-line-2 bg-surface !text-[17px] text-coral-ink";
+  const panelTitleClass =
+    "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px]";
+  const panelSmallClass =
+    "mt-[2px] block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-ink-3";
+  const panelCopyClass = "panel-copy m-0 text-[12px] leading-[1.45] text-ink-2";
+  const artifactMetaClass = "artifact-meta m-0 grid gap-[5px]";
+  const artifactMetaRowClass =
+    "grid min-w-0 grid-cols-[58px_minmax(0,1fr)] items-center gap-[8px]";
+  const artifactMetaDescriptionClass =
+    "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px]";
+  const browserBuildCalloutClass =
+    "browser-build-callout grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-[10px] rounded-[8px] border border-[color-mix(in_oklch,var(--coral)_35%,var(--line))] bg-[color-mix(in_oklch,var(--coral)_8%,var(--surface))] p-[9px]";
+  const browserBuildTitleClass =
+    "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px]";
+  const browserBuildSmallClass =
+    "mt-[2px] block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink-3";
+  const browserBuildMetaClass = "browser-build-meta pt-[2px]";
+  const manualStepsClass =
+    "manual-steps m-0 grid gap-[3px] pl-[18px] text-[12px] leading-[1.35] text-ink-2";
+  const buttonRowClass = "button-row flex flex-wrap gap-[7px]";
+  const volumeHintsClass = "volume-hints flex flex-wrap gap-[7px]";
+  const volumeHintClass =
+    "min-h-[22px] rounded-[6px] border border-line bg-surface px-[7px] py-[4px] font-mono text-[10px] text-ink-2";
+  const progressBlockClass = "progress-block grid gap-[6px]";
+  const progressLabelClass =
+    "progress-label flex items-center justify-between gap-[10px] font-mono text-[11px]";
+  const progressTrackClass = "progress-track h-[8px] overflow-hidden rounded-[999px] bg-line";
+  const progressTrackBarClass =
+    "block h-full rounded-[inherit] bg-coral [transition:width_160ms_ease]";
+  const verifyMessageClass =
+    "verify-message m-0 rounded-[8px] px-[10px] py-[8px] font-mono text-[11px] leading-[1.35]";
+  const verifyOkClass = "verify-ok bg-[oklch(0.94_0.05_150)] text-[oklch(0.35_0.12_150)]";
+  const verifyErrorClass =
+    "verify-error bg-[oklch(0.95_0.04_25)] text-[oklch(0.42_0.15_25)]";
+  const commandLogClass =
+    "command-log m-0 min-h-[170px] max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[10px] bg-ink px-[16px] py-[14px] font-mono text-[11px] leading-[1.65] text-paper";
+  const hardwareNoteClass = "hardware-note mt-[-4px] mb-0 text-[11px] leading-[1.4] text-ink-3";
+  const copyErrorClass =
+    "copy-error mt-[-4px] mb-0 text-[11px] leading-[1.4] text-[oklch(0.42_0.15_25)]";
+  const copyActionsClass = "copy-actions max-[720px]:grid max-[720px]:grid-cols-[minmax(0,1fr)]";
+  const modalActionsClass =
+    "modal-actions flex flex-wrap justify-end gap-[8px] max-[720px]:grid max-[720px]:grid-cols-[minmax(0,1fr)]";
+  const hiddenFileInputClass =
+    "hidden-file-input pointer-events-none absolute size-px overflow-hidden opacity-0";
 
   let { changes = [], onclose, open = $bindable(false), profile }: Props = $props();
 
@@ -671,69 +783,76 @@
 </script>
 
 {#if open && result}
-  <div class="flash-overlay" data-testid="flash-overlay">
-    <button type="button" class="flash-scrim" aria-label="Close firmware flash overlay" onclick={close}></button>
+  <div class={overlayClass} data-testid="flash-overlay">
+    <button type="button" class={scrimClass} aria-label="Close firmware flash overlay" onclick={close}></button>
 
-    <div class="flash-modal" role="dialog" aria-modal="true" aria-labelledby="flash-overlay-title">
-      <header class="modal-head">
-        <span class="material-symbols-outlined modal-bolt" aria-hidden="true">bolt</span>
+    <div class={modalClass} role="dialog" aria-modal="true" aria-labelledby="flash-overlay-title">
+      <header class={modalHeadClass}>
+        <span class={modalBoltClass} aria-hidden="true">bolt</span>
         <div>
-          <h2 id="flash-overlay-title">Flash to {profileDisplayName(profile)}</h2>
-          <p>{targetLabel} source export · UF2 guided flash</p>
+          <h2 id="flash-overlay-title" class={modalTitleClass}>Flash to {profileDisplayName(profile)}</h2>
+          <p class={modalSubtitleClass}>{targetLabel} source export · UF2 guided flash</p>
         </div>
-        <button type="button" class="modal-close" aria-label="Close" onclick={close}>
+        <button type="button" class={modalCloseClass} aria-label="Close" onclick={close}>
           <span class="material-symbols-outlined" aria-hidden="true">close</span>
         </button>
       </header>
 
-      <div class="flash-steps" aria-label="Firmware flash steps">
+      <div class={flashStepsClass} aria-label="Firmware flash steps">
         {#each flashSteps as step (step.key)}
-          <div class={`flash-step ${step.status}`}>
-            <span class="material-symbols-outlined" aria-hidden="true">
+          <div
+            class={cn(
+              flashStepClass,
+              step.status,
+              step.status === "active" && flashStepActiveClass,
+              step.status === "done" && flashStepDoneClass,
+            )}
+          >
+            <span class={flashStepIconClass} aria-hidden="true">
               {step.status === "done" ? "check_circle" : step.status === "active" ? "progress_activity" : "radio_button_unchecked"}
             </span>
-            <span>{step.label}</span>
+            <span class={flashStepLabelClass}>{step.label}</span>
           </div>
         {/each}
       </div>
 
-      <div class="source-facts" aria-label="Generated source and UF2 summary">
-        <div>
-          <span>Target</span>
-          <strong>{targetLabel}</strong>
+      <div class={sourceFactsClass} aria-label="Generated source and UF2 summary">
+        <div class={sourceFactClass}>
+          <span class={microLabelClass}>Target</span>
+          <strong class={sourceFactValueClass}>{targetLabel}</strong>
         </div>
-        <div>
-          <span>Source files</span>
-          <strong>{result.artifacts.length}</strong>
+        <div class={sourceFactClass}>
+          <span class={microLabelClass}>Source files</span>
+          <strong class={sourceFactValueClass}>{result.artifacts.length}</strong>
         </div>
-        <div>
-          <span>Source hash</span>
-          <strong>{result.sourceHash}</strong>
+        <div class={sourceFactClass}>
+          <span class={microLabelClass}>Source hash</span>
+          <strong class={sourceFactValueClass}>{result.sourceHash}</strong>
         </div>
-        <div class:source-blocked={!result.buildReady}>
-          <span>Source status</span>
-          <strong>{result.buildReady ? "build-ready" : "not build-ready"}</strong>
+        <div class={cn(sourceFactClass, !result.buildReady && sourceFactBlockedClass)}>
+          <span class={microLabelClass}>Source status</span>
+          <strong class={sourceFactValueClass}>{result.buildReady ? "build-ready" : "not build-ready"}</strong>
         </div>
-        <div>
-          <span>UF2</span>
-          <strong>{uf2Plan ? formatBytes(uf2Plan.artifact.size) : "not selected"}</strong>
+        <div class={sourceFactClass}>
+          <span class={microLabelClass}>UF2</span>
+          <strong class={sourceFactValueClass}>{uf2Plan ? formatBytes(uf2Plan.artifact.size) : "not selected"}</strong>
         </div>
       </div>
 
       {#if errorDiagnostics.length > 0}
-        <section class="diagnostic-banner error" aria-label="Build readiness errors">
-          <div class="diagnostic-title">
-            <span class="material-symbols-outlined" aria-hidden="true">report</span>
+        <section class={cn(diagnosticBannerClass, diagnosticBannerErrorClass)} aria-label="Build readiness errors">
+          <div class={diagnosticTitleClass}>
+            <span class={cn(diagnosticIconClass, diagnosticIconErrorClass)} aria-hidden="true">report</span>
             <div>
-              <strong>Not build-ready - missing: {diagnosticSummary(errorDiagnostics)}</strong>
-              <small>Fill these required inputs before compiling, browser-building, or flashing firmware generated from this source.</small>
+              <strong class={diagnosticTitleStrongClass}>Not build-ready - missing: {diagnosticSummary(errorDiagnostics)}</strong>
+              <small class={diagnosticTitleSmallClass}>Fill these required inputs before compiling, browser-building, or flashing firmware generated from this source.</small>
             </div>
           </div>
-          <ul class="diagnostic-list">
+          <ul class={diagnosticListClass}>
             {#each errorDiagnostics as item (`${item.code}:${diagnosticTarget(item)}`)}
-              <li>
-                <span>{diagnosticTarget(item)}</span>
-                <p>{item.message}</p>
+              <li class={diagnosticListItemClass}>
+                <span class={diagnosticListTargetClass}>{diagnosticTarget(item)}</span>
+                <p class={diagnosticListMessageClass}>{item.message}</p>
               </li>
             {/each}
           </ul>
@@ -741,43 +860,43 @@
       {/if}
 
       {#if warningDiagnostics.length > 0}
-        <section class="diagnostic-banner warning" aria-label="Incomplete source coverage warnings">
-          <div class="diagnostic-title">
-            <span class="material-symbols-outlined" aria-hidden="true">warning</span>
+        <section class={cn(diagnosticBannerClass, diagnosticBannerWarningClass)} aria-label="Incomplete source coverage warnings">
+          <div class={diagnosticTitleClass}>
+            <span class={cn(diagnosticIconClass, diagnosticIconWarningClass)} aria-hidden="true">warning</span>
             <div>
-              <strong>Incomplete coverage - review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
-              <small>These source sections compile to fallbacks, TODOs, or board-specific review points.</small>
+              <strong class={diagnosticTitleStrongClass}>Incomplete coverage - review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
+              <small class={diagnosticTitleSmallClass}>These source sections compile to fallbacks, TODOs, or board-specific review points.</small>
             </div>
           </div>
-          <ul class="diagnostic-list">
+          <ul class={diagnosticListClass}>
             {#each warningDiagnostics as item (`${item.code}:${diagnosticTarget(item)}`)}
-              <li>
-                <span>{diagnosticTarget(item)}</span>
-                <p>{item.message}</p>
+              <li class={diagnosticListItemClass}>
+                <span class={diagnosticListTargetClass}>{diagnosticTarget(item)}</span>
+                <p class={diagnosticListMessageClass}>{item.message}</p>
               </li>
             {/each}
           </ul>
         </section>
       {/if}
 
-      <section class="flash-panels" aria-label="UF2 guided flash controls">
-        <div class="flash-panel">
-          <div class="panel-head">
-            <span class="material-symbols-outlined" aria-hidden="true">draft</span>
+      <section class={flashPanelsClass} aria-label="UF2 guided flash controls">
+        <div class={flashPanelClass}>
+          <div class={panelHeadClass}>
+            <span class={panelIconClass} aria-hidden="true">draft</span>
             <div>
-              <strong>Firmware artifact</strong>
-              <small>{uf2Plan ? uf2Plan.artifact.fileName : "Select a compiled .uf2 from a local build"}</small>
+              <strong class={panelTitleClass}>Firmware artifact</strong>
+              <small class={panelSmallClass}>{uf2Plan ? uf2Plan.artifact.fileName : "Select a compiled .uf2 from a local build"}</small>
             </div>
           </div>
 
           {#if uf2Plan}
-            <dl class="artifact-meta">
-              <div><dt>Family</dt><dd>{uf2Plan.artifact.familyIdHex ?? "not declared"}</dd></div>
-              <div><dt>Range</dt><dd>{formatRange(uf2Plan.artifact.targetAddressRange)}</dd></div>
-              <div><dt>Hash</dt><dd>{uf2Plan.artifact.hash}</dd></div>
+            <dl class={artifactMetaClass}>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Family</dt><dd class={artifactMetaDescriptionClass}>{uf2Plan.artifact.familyIdHex ?? "not declared"}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Range</dt><dd class={artifactMetaDescriptionClass}>{formatRange(uf2Plan.artifact.targetAddressRange)}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Hash</dt><dd class={artifactMetaDescriptionClass}>{uf2Plan.artifact.hash}</dd></div>
             </dl>
           {:else}
-            <p class="panel-copy">
+            <p class={panelCopyClass}>
               {result.buildReady
                 ? "Build externally for now, then bring the UF2 back here."
                 : "Resolve the source diagnostics before compiling or flashing firmware from this export. The zip remains available so you can fill the required metadata."}
@@ -785,14 +904,14 @@
           {/if}
 
           {#if uf2Error}
-            <p class="copy-error" role="status">{uf2Error}</p>
+            <p class={copyErrorClass} role="status">{uf2Error}</p>
           {/if}
 
           {#if browserBuildAvailable}
-            <div class="browser-build-callout" aria-label="Experimental browser firmware build">
+            <div class={browserBuildCalloutClass} aria-label="Experimental browser firmware build">
               <div>
-                <strong>Experimental browser build</strong>
-                <small>WASM LLVM · OPFS cache · RP2040 UF2 output</small>
+                <strong class={browserBuildTitleClass}>Experimental browser build</strong>
+                <small class={browserBuildSmallClass}>WASM LLVM · OPFS cache · RP2040 UF2 output</small>
               </div>
               <Button variant="coral" size="sm" disabled={browserBuilding} onclick={buildFirmwareInBrowser}>
                 <span class="material-symbols-outlined" aria-hidden="true">memory</span>
@@ -802,20 +921,20 @@
           {/if}
 
           {#if browserBuildError}
-            <p class="copy-error" role="status">{browserBuildError}</p>
+            <p class={copyErrorClass} role="status">{browserBuildError}</p>
           {/if}
 
           {#if browserBuildResult}
-            <dl class="artifact-meta browser-build-meta">
-              <div><dt>Browser build</dt><dd>{browserBuildResult.ok ? "ok" : browserBuildResult.error.code}</dd></div>
-              <div><dt>Total</dt><dd>{browserBuildResult.timings?.totalMs ?? 0} ms</dd></div>
+            <dl class={cn(artifactMetaClass, browserBuildMetaClass)}>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Browser build</dt><dd class={artifactMetaDescriptionClass}>{browserBuildResult.ok ? "ok" : browserBuildResult.error.code}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Total</dt><dd class={artifactMetaDescriptionClass}>{browserBuildResult.timings?.totalMs ?? 0} ms</dd></div>
               {#if browserBuildResult.ok}
-                <div><dt>Artifact</dt><dd>{browserBuildResult.artifact.fileName}</dd></div>
+                <div class={artifactMetaRowClass}><dt class={microLabelClass}>Artifact</dt><dd class={artifactMetaDescriptionClass}>{browserBuildResult.artifact.fileName}</dd></div>
               {/if}
             </dl>
           {/if}
 
-          <div class="button-row">
+          <div class={buttonRowClass}>
             <Button variant="ghost" size="sm" onclick={chooseUf2File}>
               <span class="material-symbols-outlined" aria-hidden="true">upload_file</span>
               {uf2Plan ? "Replace UF2" : "Select UF2"}
@@ -828,24 +947,24 @@
 
           <input
             bind:this={uf2Input}
-            class="hidden-file-input"
+            class={hiddenFileInputClass}
             type="file"
             accept=".uf2,application/octet-stream,application/x-uf2"
             onchange={loadUf2File}
           />
         </div>
 
-        <div class="flash-panel">
-          <div class="panel-head">
-            <span class="material-symbols-outlined" aria-hidden="true">usb</span>
+        <div class={flashPanelClass}>
+          <div class={panelHeadClass}>
+            <span class={panelIconClass} aria-hidden="true">usb</span>
             <div>
-              <strong>Bootloader volume</strong>
-              <small>{uf2Plan ? uf2Plan.targetBootloader.name : "UF2 mass-storage target"}</small>
+              <strong class={panelTitleClass}>Bootloader volume</strong>
+              <small class={panelSmallClass}>{uf2Plan ? uf2Plan.targetBootloader.name : "UF2 mass-storage target"}</small>
             </div>
           </div>
 
           {#if viaJumpAvailable}
-            <p class="panel-copy">
+            <p class={panelCopyClass}>
               A VIA keyboard is connected. You can request bootloader mode, then choose the mounted UF2 volume.
             </p>
             <Button variant="coral" size="sm" disabled={!uf2Plan || jumping} onclick={enterBootloaderVia}>
@@ -853,53 +972,53 @@
               {jumping ? "Sending..." : "Enter bootloader"}
             </Button>
           {:else}
-            <p class="panel-copy">
+            <p class={panelCopyClass}>
               Put the board into bootloader mode manually, then wait for the UF2 drive to mount.
             </p>
-            <ol class="manual-steps">
+            <ol class={manualStepsClass}>
               <li>Unplug if needed.</li>
               <li>Hold BOOT/RESET, BOOTSEL, or double-tap reset for this board.</li>
               <li>Look for a volume like {uf2Plan?.targetBootloader.expectedVolumeHints[0] ?? "RPI-RP2"}.</li>
             </ol>
           {/if}
 
-          <div class="volume-hints" aria-label="Expected UF2 volume names">
+          <div class={volumeHintsClass} aria-label="Expected UF2 volume names">
             {#each (uf2Plan?.targetBootloader.expectedVolumeHints ?? volumeHintsFor(profile)) as hint (hint)}
-              <code>{hint}</code>
+              <code class={volumeHintClass}>{hint}</code>
             {/each}
           </div>
         </div>
       </section>
 
       {#if uf2Plan}
-        <section class="copy-panel" aria-label="UF2 copy and verify">
-          <div class="support-row" data-supported={fsSupport.supported}>
-            <span class="material-symbols-outlined" aria-hidden="true">{fsSupport.supported ? "folder_managed" : "download"}</span>
+        <section class={copyPanelClass} aria-label="UF2 copy and verify">
+          <div class={supportRowClass} data-supported={fsSupport.supported}>
+            <span class={panelIconClass} aria-hidden="true">{fsSupport.supported ? "folder_managed" : "download"}</span>
             <div>
-              <strong>{fsSupport.supported ? "Browser copy available" : "Manual copy fallback"}</strong>
-              <small>{fsSupport.supported ? "Choose the mounted bootloader volume and kbgui will copy the UF2 file." : fsSupport.reason}</small>
+              <strong class={panelTitleClass}>{fsSupport.supported ? "Browser copy available" : "Manual copy fallback"}</strong>
+              <small class={panelSmallClass}>{fsSupport.supported ? "Choose the mounted bootloader volume and kbgui will copy the UF2 file." : fsSupport.reason}</small>
             </div>
           </div>
 
           {#if flashProgress}
-            <div class="progress-block" aria-label="UF2 copy progress">
-              <div class="progress-label">
-                <span>{flashProgress.phase}</span>
+            <div class={progressBlockClass} aria-label="UF2 copy progress">
+              <div class={progressLabelClass}>
+                <span class={microLabelClass}>{flashProgress.phase}</span>
                 <strong>{progressPercent(flashProgress)}%</strong>
               </div>
-              <div class="progress-track">
-                <span style={`width: ${progressPercent(flashProgress)}%`}></span>
+              <div class={progressTrackClass}>
+                <span class={progressTrackBarClass} style={`width: ${progressPercent(flashProgress)}%`}></span>
               </div>
             </div>
           {/if}
 
           {#if verifyResult}
-            <p class:verify-ok={verifyResult.ok} class:verify-error={!verifyResult.ok} class="verify-message">
+            <p class={cn(verifyMessageClass, verifyResult.ok ? verifyOkClass : verifyErrorClass)}>
               {verifyResult.message}
             </p>
           {/if}
 
-          <div class="button-row copy-actions">
+          <div class={cn(buttonRowClass, copyActionsClass)}>
             <Button variant="coral" size="sm" disabled={flashing} onclick={chooseBootloaderVolume}>
               <span class="material-symbols-outlined" aria-hidden="true">drive_folder_upload</span>
               {flashing ? "Copying..." : fsSupport.supported ? "Choose UF2 volume" : "Download UF2"}
@@ -920,17 +1039,17 @@
         </section>
       {/if}
 
-      <pre class="command-log">{commandLog}</pre>
+      <pre class={commandLogClass}>{commandLog}</pre>
 
-      <p class="hardware-note">
+      <p class={hardwareNoteClass}>
         Real device flashing is hardware-unverified in this wave. VIA firmware may keep using existing EEPROM keymaps after a default keymap flash; a reset VIA EEPROM flow is still future work.
       </p>
 
       {#if copyError}
-        <p class="copy-error" role="status">{copyError}</p>
+        <p class={copyErrorClass} role="status">{copyError}</p>
       {/if}
 
-      <footer class="modal-actions">
+      <footer class={modalActionsClass}>
         <Button variant="ghost" onclick={copyLog}>
           <span class="material-symbols-outlined" aria-hidden="true">{copied ? "check" : "content_copy"}</span>
           {copied ? "Copied" : "Copy log"}
@@ -947,548 +1066,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  .flash-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    display: grid;
-    place-items: center;
-    padding: 20px;
-  }
-
-  .flash-scrim {
-    position: absolute;
-    inset: 0;
-    background: rgba(27, 25, 23, 0.46);
-    backdrop-filter: blur(5px);
-  }
-
-  .flash-modal {
-    position: relative;
-    display: grid;
-    width: min(720px, calc(100vw - 28px));
-    max-height: min(860px, calc(100vh - 28px));
-    gap: 14px;
-    overflow: auto;
-    padding: 22px;
-    border: 1px solid color-mix(in oklch, var(--surface) 42%, var(--line-2));
-    border-radius: 20px;
-    background: var(--surface);
-    box-shadow: var(--shadow-modal);
-  }
-
-  .modal-head {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) 30px;
-    gap: 10px;
-    align-items: start;
-  }
-
-  .modal-bolt {
-    color: var(--coral);
-    font-size: 22px;
-  }
-
-  .modal-head h2,
-  .modal-head p {
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .modal-head h2 {
-    font-size: 15px;
-    line-height: 1.25;
-  }
-
-  .modal-head p {
-    margin-top: 3px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .modal-close {
-    display: grid;
-    width: 30px;
-    height: 30px;
-    place-items: center;
-    border-radius: 8px;
-    color: var(--ink-3);
-  }
-
-  .modal-close:hover {
-    color: var(--ink);
-    background: var(--paper-2);
-  }
-
-  .flash-steps {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px 10px;
-  }
-
-  .flash-step {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    gap: 8px;
-    color: var(--ink-3);
-    font-size: 12px;
-  }
-
-  .flash-step span:last-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .flash-step .material-symbols-outlined {
-    flex: none;
-    font-size: 19px;
-  }
-
-  .flash-step.done .material-symbols-outlined {
-    color: var(--added);
-  }
-
-  .flash-step.active {
-    color: var(--ink);
-  }
-
-  .flash-step.active .material-symbols-outlined {
-    color: var(--coral);
-  }
-
-  .source-facts {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .source-facts div {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  .source-facts span,
-  .artifact-meta dt,
-  .progress-label span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .source-facts strong {
-    min-width: 0;
-    overflow: hidden;
-    font-family: var(--mono);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .source-facts .source-blocked {
-    border-color: oklch(0.62 0.2 25 / 0.36);
-    background: oklch(0.95 0.04 25);
-  }
-
-  .diagnostic-banner {
-    display: grid;
-    gap: 9px;
-    min-width: 0;
-    padding: 11px 12px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-  }
-
-  .diagnostic-banner.error {
-    border-color: oklch(0.62 0.2 25 / 0.36);
-    background: oklch(0.95 0.04 25);
-  }
-
-  .diagnostic-banner.warning {
-    border-color: color-mix(in oklch, var(--mustard) 48%, var(--line-2));
-    background: color-mix(in oklch, var(--mustard) 14%, var(--surface));
-  }
-
-  .diagnostic-title {
-    display: grid;
-    grid-template-columns: 26px minmax(0, 1fr);
-    gap: 9px;
-    align-items: start;
-    min-width: 0;
-  }
-
-  .diagnostic-title > .material-symbols-outlined {
-    display: grid;
-    width: 26px;
-    height: 26px;
-    place-items: center;
-    border: 1px solid color-mix(in oklch, currentColor 30%, var(--surface));
-    border-radius: 8px;
-    background: var(--surface);
-    font-size: 17px;
-  }
-
-  .diagnostic-banner.error .diagnostic-title > .material-symbols-outlined {
-    color: oklch(0.42 0.15 25);
-  }
-
-  .diagnostic-banner.warning .diagnostic-title > .material-symbols-outlined {
-    color: color-mix(in oklch, var(--mustard) 72%, var(--ink));
-  }
-
-  .diagnostic-title strong,
-  .diagnostic-title small {
-    display: block;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .diagnostic-title strong {
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .diagnostic-title small {
-    margin-top: 3px;
-    color: var(--ink-3);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .diagnostic-list {
-    display: grid;
-    gap: 6px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .diagnostic-list li {
-    display: grid;
-    grid-template-columns: minmax(110px, 0.42fr) minmax(0, 1fr);
-    gap: 8px;
-    align-items: start;
-    min-width: 0;
-    padding: 7px 8px;
-    border: 1px solid color-mix(in oklch, var(--surface) 55%, var(--line));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--surface) 70%, transparent);
-  }
-
-  .diagnostic-list span {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    line-height: 1.35;
-  }
-
-  .diagnostic-list p {
-    min-width: 0;
-    margin: 0;
-    color: var(--ink-2);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .flash-panels {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .flash-panel,
-  .copy-panel {
-    display: grid;
-    gap: 10px;
-    min-width: 0;
-    padding: 12px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: color-mix(in oklch, var(--paper-2) 62%, transparent);
-  }
-
-  .panel-head,
-  .support-row {
-    display: grid;
-    grid-template-columns: 26px minmax(0, 1fr);
-    gap: 9px;
-    align-items: start;
-    min-width: 0;
-  }
-
-  .panel-head > .material-symbols-outlined,
-  .support-row > .material-symbols-outlined {
-    display: grid;
-    width: 26px;
-    height: 26px;
-    place-items: center;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    color: var(--coral-ink);
-    background: var(--surface);
-    font-size: 17px;
-  }
-
-  .panel-head strong,
-  .panel-head small,
-  .support-row strong,
-  .support-row small {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .panel-head strong,
-  .support-row strong {
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .panel-head small,
-  .support-row small {
-    margin-top: 2px;
-    color: var(--ink-3);
-    font-size: 11px;
-  }
-
-  .panel-copy {
-    margin: 0;
-    color: var(--ink-2);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .artifact-meta {
-    display: grid;
-    gap: 5px;
-    margin: 0;
-  }
-
-  .artifact-meta div {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .artifact-meta dd {
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    font-family: var(--mono);
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .browser-build-callout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    min-width: 0;
-    padding: 9px;
-    border: 1px solid color-mix(in oklch, var(--coral) 35%, var(--line));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--coral) 8%, var(--surface));
-  }
-
-  .browser-build-callout strong,
-  .browser-build-callout small {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .browser-build-callout strong {
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .browser-build-callout small {
-    margin-top: 2px;
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .browser-build-meta {
-    padding-top: 2px;
-  }
-
-  .manual-steps {
-    display: grid;
-    gap: 3px;
-    margin: 0;
-    padding-left: 18px;
-    color: var(--ink-2);
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .volume-hints,
-  .button-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-  }
-
-  .volume-hints code {
-    min-height: 22px;
-    padding: 4px 7px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--ink-2);
-    background: var(--surface);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .copy-panel {
-    gap: 11px;
-  }
-
-  .support-row[data-supported="true"] > .material-symbols-outlined {
-    color: oklch(0.35 0.12 150);
-    border-color: oklch(0.62 0.16 150 / 0.28);
-  }
-
-  .progress-block {
-    display: grid;
-    gap: 6px;
-  }
-
-  .progress-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .progress-track {
-    height: 8px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--line);
-  }
-
-  .progress-track span {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--coral);
-    transition: width 160ms ease;
-  }
-
-  .verify-message {
-    margin: 0;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .verify-ok {
-    color: oklch(0.35 0.12 150);
-    background: oklch(0.94 0.05 150);
-  }
-
-  .verify-error {
-    color: oklch(0.42 0.15 25);
-    background: oklch(0.95 0.04 25);
-  }
-
-  .command-log {
-    min-height: 170px;
-    max-height: 220px;
-    margin: 0;
-    overflow: auto;
-    padding: 14px 16px;
-    border-radius: 10px;
-    color: var(--paper);
-    background: var(--ink);
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.65;
-    white-space: pre-wrap;
-  }
-
-  .hardware-note,
-  .copy-error {
-    margin: -4px 0 0;
-    font-size: 11px;
-    line-height: 1.4;
-  }
-
-  .hardware-note {
-    color: var(--ink-3);
-  }
-
-  .copy-error {
-    color: oklch(0.42 0.15 25);
-  }
-
-  .modal-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-
-  .hidden-file-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  @media (max-width: 720px) {
-    .flash-overlay {
-      align-items: end;
-      padding: 10px;
-    }
-
-    .flash-modal {
-      width: 100%;
-      max-height: calc(100vh - 20px);
-      padding: 16px;
-      border-radius: 16px;
-    }
-
-    .flash-steps,
-    .source-facts,
-    .flash-panels {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .modal-actions,
-    .copy-actions {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>
