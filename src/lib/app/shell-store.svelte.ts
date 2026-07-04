@@ -32,7 +32,7 @@ export interface ShellMonkeytype {
   tests: number;
 }
 
-export type ShellAccountStatus = "loading" | "signed-in" | "signed-out" | "error";
+export type ShellAccountStatus = "loading" | "signed-in" | "signed-out";
 
 export interface ShellAccount {
   status: ShellAccountStatus;
@@ -41,6 +41,7 @@ export interface ShellAccount {
   email?: string;
   image?: string | null;
   initials: string;
+  githubProfileUrl?: string;
   message?: string;
 }
 
@@ -111,7 +112,30 @@ function initialsFor(name: string) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+function githubHandleFrom(value: string | null | undefined) {
+  const candidate = value?.trim();
+  if (!candidate) return null;
+  if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(candidate)) return null;
+  return candidate;
+}
+
+function githubHandleFromEmail(email: string | null | undefined) {
+  const candidate = email?.trim();
+  if (!candidate) return null;
+
+  const noreply = candidate.match(/^(?:\d+\+)?([a-zA-Z0-9-]+)@users\.noreply\.github\.com$/);
+  if (noreply?.[1]) return githubHandleFrom(noreply[1]);
+
+  return githubHandleFrom(candidate.split("@")[0]);
+}
+
+function githubHandleFor(user: ShellSessionUser) {
+  return githubHandleFromEmail(user.email) ?? githubHandleFrom(user.name);
+}
+
 function loginFor(user: ShellSessionUser, name: string) {
+  const handle = githubHandleFor(user);
+  if (handle) return handle;
   if (user.email) return user.email.split("@")[0] ?? name;
   if (user.id) return user.id.slice(0, 12);
   return (
@@ -120,6 +144,11 @@ function loginFor(user: ShellSessionUser, name: string) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "github"
   );
+}
+
+function githubProfileUrlFor(user: ShellSessionUser) {
+  const handle = githubHandleFor(user);
+  return handle ? `https://github.com/${handle}` : undefined;
 }
 
 export class ShellStore {
@@ -141,7 +170,7 @@ export class ShellStore {
   dirty = $state(0);
 
   monkeytype = $state<ShellMonkeytype>({
-    connected: true,
+    connected: false,
     wpm: 98,
     accuracy: 96.4,
     consistency: 82,
@@ -188,22 +217,23 @@ export class ShellStore {
       email: user.email ?? undefined,
       image: user.image ?? null,
       initials: initialsFor(name),
+      githubProfileUrl: githubProfileUrlFor(user),
     };
   }
 
-  setSignedOut() {
+  setSignedOut(message?: string) {
     this.account = {
       status: "signed-out",
       name: "Local draft",
       login: "not signed in",
       initials: "LD",
+      message,
     };
-    this.profileOpen = false;
   }
 
   setAuthError(message: string) {
     this.account = {
-      status: "error",
+      status: "signed-out",
       name: "Local draft",
       login: "auth unavailable",
       initials: "LD",

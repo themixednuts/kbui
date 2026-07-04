@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { browser } from "$app/environment";
+  import { browser, dev } from "$app/environment";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { Accent, runApp } from "$lib/app";
   import { authClient } from "$lib/auth-client";
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import AvatarButton from "$lib/components/ui/AvatarButton.svelte";
   import Brand from "$lib/components/ui/Brand.svelte";
   import Button from "$lib/components/ui/Button.svelte";
@@ -21,24 +21,43 @@
     WorkbenchStore,
   } from "$lib/app/workbench-store.svelte";
 
-  let { children } = $props();
+  type AuthSessionData = {
+    user?: ShellSessionUser | null;
+  } | null;
+  type AuthClientError = {
+    code?: string;
+    message?: string;
+    status?: number;
+    statusText?: string;
+  };
+
+  const workerAuthHint = "Run `vp run dev:worker` to sign in with GitHub.";
+
+  let { children, data } = $props();
 
   const shell = new ShellStore();
   const workbench = new WorkbenchStore();
   setShellContext(shell);
   setWorkbenchContext(workbench);
+  const initialAuthUser = untrack(() => data.auth?.user ?? null);
+  shell.setSessionUser(initialAuthUser);
   const pathname = $derived(page.url.pathname);
   const routeTitle = $derived(routeTitleFromPath(pathname));
-  const accountAvatar = $derived(
-    shell.account.image ??
-      (shell.account.status === "signed-in"
-        ? `https://github.com/${shell.account.login}.png`
-        : null),
-  );
+  const accountAvatar = $derived(shell.account.image ?? null);
 
   let authRequested = $state(false);
   let accentRequested = $state(false);
   let previousPathname = $state("");
+  let lastSsrUserKey = $state(sessionUserKey(initialAuthUser));
+  let authBusy = $state(false);
+
+  $effect(() => {
+    const user = data.auth?.user ?? null;
+    const userKey = sessionUserKey(user);
+    if (userKey === lastSsrUserKey) return;
+    lastSsrUserKey = userKey;
+    shell.setSessionUser(user);
+  });
 
   $effect(() => {
     if (pathname === previousPathname) return;
@@ -78,24 +97,99 @@
   });
 
   async function refreshSession() {
-    shell.setAuthLoading();
-
     try {
       const result = await authClient.getSession();
-      const data = result.data as { user?: ShellSessionUser } | null;
-      shell.setSessionUser(data?.user);
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        shell.setAuthError(authMessage(error, "Auth unavailable"));
+        return;
+      }
+
+      const session = result.data as AuthSessionData;
+      shell.setSessionUser(session?.user);
     } catch (error) {
-      shell.setAuthError(error instanceof Error ? error.message : "Auth unavailable");
+      shell.setAuthError(authMessage(error, "Auth unavailable"));
+    }
+  }
+
+  async function signInGithub() {
+    if (authBusy) return;
+    authBusy = true;
+
+    try {
+      const result = await authClient.signIn.social({
+        provider: "github",
+        callbackURL: "/",
+        disableRedirect: true,
+      });
+
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        shell.setAuthError(authMessage(error, "GitHub sign-in failed"));
+        return;
+      }
+
+      const signInData = result.data as { url?: string } | null;
+      if (!signInData?.url) {
+        shell.setAuthError("GitHub sign-in did not return an authorize URL.");
+        return;
+      }
+
+      globalThis.location.assign(signInData.url);
+    } catch (error) {
+      shell.setAuthError(authMessage(error, "GitHub sign-in failed"));
+    } finally {
+      authBusy = false;
     }
   }
 
   async function signOut() {
+    if (authBusy) return;
+    authBusy = true;
+
     try {
-      await authClient.signOut();
+      const result = await authClient.signOut();
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        shell.setAuthError(authMessage(error, "Sign out failed"));
+        return;
+      }
+
       shell.setSignedOut();
+      await refreshSession();
     } catch (error) {
-      shell.setAuthError(error instanceof Error ? error.message : "Sign out failed");
+      shell.setAuthError(authMessage(error, "Sign out failed"));
+    } finally {
+      authBusy = false;
     }
+  }
+
+  function sessionUserKey(user: ShellSessionUser | null | undefined) {
+    return [user?.id ?? "", user?.name ?? "", user?.email ?? "", user?.image ?? ""].join("|");
+  }
+
+  function errorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error) return error.message || fallback;
+    if (error && typeof error === "object") {
+      const authError = error as AuthClientError;
+      if (authError.message) return authError.message;
+      if (authError.statusText) return authError.statusText;
+      if (authError.status) return `Auth request failed (${authError.status})`;
+      if (authError.code) return authError.code;
+    }
+    return fallback;
+  }
+
+  function authMessage(error: unknown, fallback: string) {
+    const message = errorMessage(error, fallback);
+    if (message.includes("vp run dev:worker")) return message;
+    if (
+      dev ||
+      /authagent|binding|configured|github|provider|social|unavailable|503/i.test(message)
+    ) {
+      return `${message} ${workerAuthHint}`;
+    }
+    return message;
   }
 
   function isActive(href: string) {
@@ -153,49 +247,36 @@
               <div class="profile-identity">
                 <strong>{shell.account.name}</strong>
                 <span>@{shell.account.login} · GitHub</span>
+                {#if shell.account.email}
+                  <span class="profile-email">{shell.account.email}</span>
+                {/if}
               </div>
             </div>
 
             <div class="profile-divider"></div>
 
-            {#if shell.monkeytype.connected}
-              <div class="monkeytype-block">
-                <div class="monkeytype-head">
-                  <span class="material-symbols-outlined" aria-hidden="true">keyboard_alt</span>
-                  <span>Monkeytype</span>
-                  <a
-                    href={`https://monkeytype.com/profile/${shell.account.login}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    open
-                  </a>
-                </div>
-                <div class="monkeytype-grid">
-                  <div>
-                    <strong>{shell.monkeytype.wpm}</strong>
-                    <span>wpm avg</span>
-                  </div>
-                  <div>
-                    <strong>{shell.monkeytype.accuracy}%</strong>
-                    <span>accuracy</span>
-                  </div>
-                  <div>
-                    <strong>{shell.monkeytype.pb}</strong>
-                    <span>pb wpm</span>
-                  </div>
-                  <div>
-                    <strong>{shell.monkeytype.tests.toLocaleString()}</strong>
-                    <span>tests</span>
-                  </div>
-                </div>
+            <div class="profile-actions">
+              <a
+                class="profile-link"
+                href={shell.account.githubProfileUrl ?? "https://github.com/settings/profile"}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                View GitHub profile
+              </a>
+            </div>
+
+            <div class="profile-divider"></div>
+
+            <section class="monkeytype-block" aria-label="Monkeytype">
+              <div class="monkeytype-head">
+                <span class="material-symbols-outlined" aria-hidden="true">keyboard_alt</span>
+                <span>Monkeytype</span>
+                <span class="monkeytype-soon">Wave 3b</span>
               </div>
-            {:else}
-              <Button variant="ghost" size="sm" class="m-3 w-[calc(100%-24px)] justify-start">
-                <span class="material-symbols-outlined" aria-hidden="true">link</span>
-                Connect Monkeytype
-              </Button>
-            {/if}
+              <div class="monkeytype-slot" aria-hidden="true"></div>
+            </section>
 
             <div class="profile-divider"></div>
 
@@ -204,9 +285,10 @@
               size="sm"
               class="m-3 w-[calc(100%-24px)] justify-start"
               onclick={signOut}
+              disabled={authBusy}
             >
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
-              Sign out
+              {authBusy ? "Signing out" : "Sign out"}
             </Button>
           {:else}
             <div class="profile-head">
@@ -218,14 +300,18 @@
             </div>
             <div class="profile-divider"></div>
             <Button
-              variant="ghost"
+              variant="coral"
               size="sm"
               class="m-3 w-[calc(100%-24px)] justify-start"
-              disabled
+              onclick={signInGithub}
+              disabled={authBusy || shell.account.status === "loading"}
             >
               <span class="material-symbols-outlined" aria-hidden="true">login</span>
-              Sign in with GitHub
+              {authBusy ? "Opening GitHub" : "Sign in with GitHub"}
             </Button>
+            {#if shell.account.message}
+              <p class="auth-hint">{shell.account.message}</p>
+            {/if}
           {/if}
         </section>
       {/if}
@@ -491,10 +577,53 @@
     font-size: 11px;
   }
 
+  .profile-identity .profile-email {
+    margin-top: 1px;
+    color: var(--ink-2);
+  }
+
   .profile-divider {
     height: 1px;
     margin: 0 12px;
     background: var(--line);
+  }
+
+  .profile-actions {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .profile-link {
+    display: inline-grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    min-height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink);
+    background: var(--paper-2);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .profile-link:hover {
+    border-color: var(--line-2);
+    background: color-mix(in oklch, var(--coral) 10%, var(--paper-2));
+  }
+
+  .profile-link .material-symbols-outlined {
+    font-size: 15px;
+  }
+
+  .auth-hint {
+    margin: -4px 12px 12px;
+    color: var(--ink-3);
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .monkeytype-block {
@@ -519,41 +648,19 @@
     font-size: 15px;
   }
 
-  .monkeytype-head a {
-    color: var(--coral-ink);
-    text-decoration: none;
-    text-transform: none;
-  }
-
-  .monkeytype-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .monkeytype-grid div {
-    min-width: 0;
-    padding: 8px 9px;
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  .monkeytype-grid strong,
-  .monkeytype-grid span {
-    display: block;
-  }
-
-  .monkeytype-grid strong {
-    font-family: var(--mono);
-    font-size: 19px;
-    font-weight: 600;
-    line-height: 1;
-  }
-
-  .monkeytype-grid span {
-    margin-top: 4px;
+  .monkeytype-soon {
     color: var(--ink-3);
-    font-size: 10px;
+    font-size: 9px;
+    text-align: right;
+  }
+
+  .monkeytype-slot {
+    min-height: 58px;
+    border: 1px dashed var(--line-2);
+    border-radius: 8px;
+    background:
+      linear-gradient(90deg, color-mix(in oklch, var(--surface-2) 66%, transparent), transparent),
+      var(--paper-2);
   }
 
   .account-strip {
