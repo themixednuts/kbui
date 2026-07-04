@@ -19,6 +19,7 @@
   import KeyInspectorPanel from "$lib/components/keymap/KeyInspectorPanel.svelte";
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
+  import type { LiveSyncLocalOnlyReasonSummary } from "$lib/keyboard/live-sync-classification";
   import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
   import {
     sampleBoardIdFromParam,
@@ -92,7 +93,13 @@
   const failedPreview = $derived(liveSync.failedLanes.slice(0, 3));
   const invalidPreview = $derived(liveSync.invalidChanges.slice(0, 3));
   const rebuildPreview = $derived(liveSync.rebuildRequiredChanges.slice(0, 4));
-  const localOnlyPreview = $derived(liveSync.localOnlyChanges.slice(0, 3));
+  const connectedLocalOnlyChanges = $derived(shell.connected ? liveSync.localOnlyChanges : []);
+  const localOnlyReasonPreview = $derived(
+    shell.connected ? liveSync.localOnlySummary.reasons.slice(0, 4) : [],
+  );
+  const localOnlyCategorySummary = $derived(
+    shell.connected ? localOnlyCategoryText(liveSync.localOnlySummary.reasons) : "",
+  );
 
   $effect(() => {
     if (requestedBoardId === null) return;
@@ -150,6 +157,11 @@
 
     const query = params.toString();
     return `${page.url.pathname}${query ? `?${query}` : ""}`;
+  }
+
+  function localOnlyCategoryText(reasons: readonly LiveSyncLocalOnlyReasonSummary[]) {
+    const labels = [...new Set(reasons.map((reason) => reason.label))];
+    return labels.join(", ");
   }
 </script>
 
@@ -218,7 +230,7 @@
       {/if}
     </header>
 
-    {#if liveSync.failedLanes.length > 0 || liveSync.rebuildRequiredChanges.length > 0 || liveSync.localOnlyChanges.length > 0 || liveSync.invalidChanges.length > 0}
+    {#if liveSync.failedLanes.length > 0 || liveSync.rebuildRequiredChanges.length > 0 || connectedLocalOnlyChanges.length > 0 || liveSync.invalidChanges.length > 0}
       <section class="sync-notices" aria-label="Live sync status">
         {#if liveSync.failedLanes.length > 0}
           <div class="sync-notice failed" data-testid="via-sync-failed">
@@ -256,14 +268,21 @@
           </div>
         {/if}
 
-        {#if liveSync.localOnlyChanges.length > 0}
-          <div class="sync-notice local" data-testid="via-local-only">
+        {#if connectedLocalOnlyChanges.length > 0}
+          <div class="sync-notice local" data-testid="live-sync-local-only" role="status">
             <span class="material-symbols-outlined" aria-hidden="true">edit_note</span>
             <div>
-              <strong>{liveSync.localOnlyChanges.length} {liveSync.localOnlyChanges.length === 1 ? "change is" : "changes are"} local only</strong>
+              <strong>
+                {connectedLocalOnlyChanges.length}
+                {connectedLocalOnlyChanges.length === 1 ? "change applied" : "changes applied"}
+                locally - not written to device{localOnlyCategorySummary ? `: ${localOnlyCategorySummary}` : ""}
+              </strong>
               <ul>
-                {#each localOnlyPreview as change (change.id)}
-                  <li>{change.path}</li>
+                {#each localOnlyReasonPreview as reason (`${reason.category}:${reason.reason}`)}
+                  <li>
+                    <span class="notice-category">{reason.label}</span>
+                    {reason.reason}{reason.count > 1 ? ` (${reason.count})` : ""}
+                  </li>
                 {/each}
               </ul>
             </div>
@@ -435,7 +454,8 @@
   }
 
   .sync-notice.local {
-    border-color: color-mix(in oklch, var(--ink-3) 35%, var(--line));
+    border-color: color-mix(in oklch, var(--mustard) 46%, var(--line-2));
+    background: color-mix(in oklch, var(--mustard) 13%, var(--surface));
   }
 
   .sync-notice > .material-symbols-outlined {
@@ -467,6 +487,31 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .sync-notice.local ul {
+    display: grid;
+    gap: 4px;
+  }
+
+  .sync-notice.local li {
+    max-width: none;
+    overflow: visible;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.35;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .notice-category {
+    margin-right: 5px;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
   }
 
   :global(.board-switcher) {

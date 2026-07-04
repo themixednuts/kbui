@@ -1,4 +1,9 @@
 import { diffProfiles } from "./changes";
+import {
+  defaultLiveSyncLocalOnlyCategory,
+  type LiveSyncChangeOutcome,
+  type LiveSyncLocalOnlyCategory,
+} from "./live-sync-classification";
 import { incompleteLogicBindingReason } from "./logic-bindings";
 import { encodeZmkBinding } from "./zmk-binding";
 import { type ChangeRecord, type DeviceProfile, type KeyBinding, type KeyboardKey } from "./schema";
@@ -8,7 +13,7 @@ import type { ZmkBehaviorBinding } from "./zmk-studio";
 export type ZmkChangeClassification =
   | "liveZmkWritable"
   | "firmwareRebuildRequired"
-  | "sourceOnlyUnsupported"
+  | "localOnly"
   | "invalid";
 
 export type ZmkClassifiedChangeKind =
@@ -39,7 +44,10 @@ export interface ClassifiedZmkChange {
   classification: ZmkChangeClassification;
   id: string;
   kind: ZmkClassifiedChangeKind;
+  live: boolean;
   liveWrite?: ZmkLiveWriteTarget;
+  localOnlyCategory?: LiveSyncLocalOnlyCategory;
+  outcome: LiveSyncChangeOutcome;
   path: string;
   reason: string;
   scope: string;
@@ -127,18 +135,37 @@ function withClassification(
   reason: string,
   kind: ZmkClassifiedChangeKind = change.kind,
   liveWrite?: ZmkLiveWriteTarget,
+  localOnlyCategory = defaultLiveSyncLocalOnlyCategory(kind),
 ): ClassifiedZmkChange {
+  const outcome = zmkOutcomeFor(classification, reason, localOnlyCategory);
+
   return {
     after: change.after,
     before: change.before,
     classification,
     id: change.id,
     kind,
+    live: outcome.live,
     liveWrite,
+    localOnlyCategory: outcome.status === "local-only" ? outcome.category : undefined,
+    outcome,
     path: change.path,
     reason,
     scope: change.scope,
   };
+}
+
+function zmkOutcomeFor(
+  classification: ZmkChangeClassification,
+  reason: string,
+  localOnlyCategory: LiveSyncLocalOnlyCategory,
+): LiveSyncChangeOutcome {
+  if (classification === "liveZmkWritable") return { live: true, reason, status: "live" };
+  if (classification === "firmwareRebuildRequired") {
+    return { live: false, reason, status: "rebuild-required" };
+  }
+  if (classification === "invalid") return { live: false, reason, status: "invalid" };
+  return { category: localOnlyCategory, live: false, reason, status: "local-only" };
 }
 
 function classifyBindingChange(
@@ -171,10 +198,13 @@ function classifyBindingChange(
     const localOnly = changedFields.every((field) => field === "notes");
     return withClassification(
       change,
-      localOnly ? "sourceOnlyUnsupported" : "firmwareRebuildRequired",
+      localOnly ? "localOnly" : "firmwareRebuildRequired",
       localOnly
-        ? "Binding notes are profile metadata and are not written through ZMK Studio."
+        ? "Binding notes are local profile metadata and are not written to the device."
         : "Binding hold/tap/macro metadata needs generated ZMK source.",
+      change.kind,
+      undefined,
+      localOnly ? "metadata" : "bindings",
     );
   }
 
@@ -187,8 +217,11 @@ function classifyBindingChange(
   if (draft.firmware !== "zmk" || draft.protocol !== "zmk-studio") {
     return withClassification(
       change,
-      "sourceOnlyUnsupported",
-      "The active profile is not a ZMK Studio live-edit profile.",
+      "localOnly",
+      "This profile is not a ZMK Studio live-edit profile, so the edit stays local only.",
+      change.kind,
+      undefined,
+      "metadata",
     );
   }
 
@@ -204,10 +237,14 @@ function classifyBindingChange(
   if (!code) return withClassification(change, "invalid", "Binding code is missing.");
 
   if (/^ZMK_BEHAVIOR\(/i.test(code.trim())) {
+    const behavior = zmkBehaviorLabel(code);
     return withClassification(
       change,
-      "sourceOnlyUnsupported",
-      "Unknown ZMK behavior bindings are preserved but not edited live in this slice.",
+      "localOnly",
+      `ZMK behavior ${behavior} is not live-editable yet.`,
+      change.kind,
+      undefined,
+      "behaviors",
     );
   }
 
@@ -225,8 +262,11 @@ function classifyBindingChange(
   if (!encodedBinding) {
     return withClassification(
       change,
-      "sourceOnlyUnsupported",
-      `${code} is not supported by the first ZMK Studio binding codec slice.`,
+      "localOnly",
+      `ZMK binding ${code} is not supported by the live-edit codec yet.`,
+      change.kind,
+      undefined,
+      "behaviors",
     );
   }
 
@@ -341,12 +381,19 @@ export function classifyZmkChange(
   if (change.kind === "lighting") {
     return withClassification(
       change,
-      "sourceOnlyUnsupported",
-      "ZMK lighting writes are outside the first ZMK Studio live-edit slice.",
+      "localOnly",
+      "ZMK lighting is not written live.",
+      change.kind,
+      undefined,
+      "lighting",
     );
   }
 
-  return withClassification(change, "sourceOnlyUnsupported", "Change is local to the profile.");
+  return withClassification(
+    change,
+    "localOnly",
+    "This change is local profile data and is not written to the device.",
+  );
 }
 
 export function classifyZmkProfileChanges(
@@ -420,9 +467,12 @@ export function summarizeZmkClassifications(changes: readonly ClassifiedZmkChang
     ).length,
     invalid: changes.filter((change) => change.classification === "invalid").length,
     liveZmkWritable: changes.filter((change) => change.classification === "liveZmkWritable").length,
-    sourceOnlyUnsupported: changes.filter(
-      (change) => change.classification === "sourceOnlyUnsupported",
-    ).length,
+    localOnly: changes.filter((change) => change.classification === "localOnly").length,
     total: changes.length,
   };
+}
+
+function zmkBehaviorLabel(code: string) {
+  const match = code.trim().match(/^ZMK_BEHAVIOR\(([^,)]+)/i);
+  return match?.[1]?.trim() || code.trim();
 }

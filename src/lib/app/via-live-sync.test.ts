@@ -69,6 +69,40 @@ describe("VIA live sync engine", () => {
     expect(engine.status).toBe("rebuild-required");
   });
 
+  it("reports connected VIA lighting edits as local-only without device writes", async () => {
+    const { engine, hidDevice, workbench } = await createLiveSyncHarness();
+    const beforeWrites = setKeycodeWrites(hidDevice).length;
+    const baseBrightness = workbench.baseProfile.lighting.brightness;
+
+    workbench.setBrightness(baseBrightness === 35 ? 36 : 35);
+    engine.processChanges();
+    await engine.flush();
+
+    expect(setKeycodeWrites(hidDevice).length).toBe(beforeWrites);
+    expect(workbench.baseProfile.lighting.brightness).toBe(baseBrightness);
+    expect(engine.status).toBe("local-only");
+    expect(engine.localOnlyChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: "localOnly",
+          localOnlyCategory: "lighting",
+          reason: "VIA lighting is not writable over this transport.",
+        }),
+      ]),
+    );
+    expect(engine.localOnlySummary).toMatchObject({
+      count: 1,
+      reasons: [
+        {
+          category: "lighting",
+          count: 1,
+          label: "lighting",
+          reason: "VIA lighting is not writable over this transport.",
+        },
+      ],
+    });
+  });
+
   it("preserves local edits on readback failure and retries on user action", async () => {
     const { engine, hidDevice, workbench } = await createLiveSyncHarness();
     const originalBaseCode = workbench.baseProfile.layers[0].bindings["k2-4"].code;

@@ -13,6 +13,11 @@ describe("VIA live change classification", () => {
 
     expect(binding).toMatchObject({
       classification: "liveViaWritable",
+      live: true,
+      outcome: {
+        live: true,
+        status: "live",
+      },
       liveWrite: {
         code: "KC_G",
         col: 4,
@@ -33,7 +38,16 @@ describe("VIA live change classification", () => {
     );
 
     expect(binding).toMatchObject({
-      classification: "sourceOnlyUnsupported",
+      classification: "localOnly",
+      live: false,
+      localOnlyCategory: "bindings",
+      outcome: {
+        category: "bindings",
+        live: false,
+        status: "local-only",
+      },
+      reason:
+        "CUSTOM_SAFE_RANGE cannot be encoded as a VIA keycode, so it was applied locally only.",
     });
     expect(binding?.liveWrite).toBeUndefined();
   });
@@ -49,6 +63,11 @@ describe("VIA live change classification", () => {
 
     expect(binding).toMatchObject({
       classification: "invalid",
+      live: false,
+      outcome: {
+        live: false,
+        status: "invalid",
+      },
       reason: expect.stringContaining("incomplete macro"),
     });
     expect(binding?.liveWrite).toBeUndefined();
@@ -127,7 +146,38 @@ describe("VIA live change classification", () => {
     );
 
     expect(binding).toMatchObject({
-      classification: "sourceOnlyUnsupported",
+      classification: "localOnly",
+      live: false,
+      localOnlyCategory: "metadata",
+      outcome: {
+        category: "metadata",
+        live: false,
+        status: "local-only",
+      },
+      reason: "Binding notes are local profile metadata and are not written to the device.",
     });
+  });
+
+  it("marks VIA lighting edits as local-only and not written to the device", () => {
+    const draft = cloneDevice(sampleKeyboard);
+    draft.lighting.brightness = 35;
+
+    const lighting = classifyViaProfileChanges(sampleKeyboard, draft).find(
+      (change) => change.id === "lighting:brightness",
+    );
+
+    expect(lighting).toMatchObject({
+      classification: "localOnly",
+      live: false,
+      localOnlyCategory: "lighting",
+      outcome: {
+        category: "lighting",
+        live: false,
+        reason: "VIA lighting is not writable over this transport.",
+        status: "local-only",
+      },
+      reason: "VIA lighting is not writable over this transport.",
+    });
+    expect(lighting?.liveWrite).toBeUndefined();
   });
 });

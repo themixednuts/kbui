@@ -1,5 +1,6 @@
 import type { EditorStore } from "$lib/app/editor-store.svelte";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
+import { summarizeLiveSyncLocalOnly } from "$lib/keyboard/live-sync-classification";
 import type { KeyBinding } from "$lib/keyboard/schema";
 import type { ConnectionState } from "$lib/keyboard/transport";
 import { zmkBindingsEqual, type ZmkStudioKeymap } from "$lib/keyboard/zmk-studio";
@@ -19,6 +20,7 @@ export type ZmkLiveSyncStatus =
   | "synced"
   | "local-only"
   | "rebuild-required"
+  | "invalid"
   | "sync-failed";
 
 export type ZmkLaneSyncState = "pending" | "syncing" | "synced" | "sync-failed";
@@ -78,14 +80,17 @@ function statusLabel(status: ZmkLiveSyncStatus) {
   if (status === "synced") return "Synced";
   if (status === "local-only") return "Local only";
   if (status === "rebuild-required") return "Rebuild required";
+  if (status === "invalid") return "Invalid";
   return "Sync failed";
 }
 
 export function zmkSyncStatusDot(status: ZmkLiveSyncStatus) {
   if (status === "synced" || status === "connected") return "var(--mint)";
-  if (status === "syncing" || status === "connecting") return "var(--mustard)";
+  if (status === "syncing" || status === "connecting" || status === "local-only")
+    return "var(--mustard)";
   if (status === "sync-failed") return "var(--removed)";
-  if (status === "rebuild-required" || status === "locked") return "var(--coral)";
+  if (status === "rebuild-required" || status === "locked" || status === "invalid")
+    return "var(--coral)";
   return "var(--ink-3)";
 }
 
@@ -97,9 +102,11 @@ export function zmkSyncStatusTitle(status: ZmkLiveSyncStatus) {
   if (status === "syncing")
     return "Writing settled ZMK Studio key edits, verifying readback, and saving the batch.";
   if (status === "synced") return "Live-writable keymap edits match the connected ZMK device.";
-  if (status === "local-only") return "Some valid edits are not supported by this ZMK slice.";
+  if (status === "local-only")
+    return "Some edits were applied locally and were not written to the connected ZMK device.";
   if (status === "rebuild-required")
     return "Some edits require generated ZMK firmware and a build.";
+  if (status === "invalid") return "Some edits are incomplete or invalid and were not written.";
   return "A ZMK Studio write failed; the local edit is preserved.";
 }
 
@@ -125,7 +132,7 @@ export class ZmkLiveSyncEngine {
     this.changes.filter((change) => change.classification === "firmwareRebuildRequired"),
   );
   readonly localOnlyChanges = $derived.by(() =>
-    this.changes.filter((change) => change.classification === "sourceOnlyUnsupported"),
+    this.changes.filter((change) => change.classification === "localOnly"),
   );
   readonly invalidChanges = $derived.by(() =>
     this.changes.filter((change) => change.classification === "invalid"),
@@ -152,6 +159,7 @@ export class ZmkLiveSyncEngine {
     syncing: this.activeLaneCount,
     total: this.changes.length,
   }));
+  readonly localOnlySummary = $derived.by(() => summarizeLiveSyncLocalOnly(this.localOnlyChanges));
 
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pendingWrites = new Map<string, PendingWrite>();
@@ -241,7 +249,8 @@ export class ZmkLiveSyncEngine {
     if (this.failedLanes.length > 0) return "sync-failed";
     if (this.activeLaneCount > 0) return "syncing";
     if (this.rebuildRequiredChanges.length > 0) return "rebuild-required";
-    if (this.invalidChanges.length > 0 || this.localOnlyChanges.length > 0) return "local-only";
+    if (this.invalidChanges.length > 0) return "invalid";
+    if (this.localOnlyChanges.length > 0) return "local-only";
     if (this.shell.device.status === "connected") return "synced";
     return "connected";
   }

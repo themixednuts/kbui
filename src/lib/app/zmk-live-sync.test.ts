@@ -136,6 +136,50 @@ describe("ZMK live sync engine", () => {
     );
   });
 
+  it("coordinator reports unsupported ZMK bindings as local-only without device writes", async () => {
+    const shell = new ShellStore();
+    const workbench = new WorkbenchStore({ persist: false });
+    await connectZmkStudioAndActivate({
+      shell,
+      transport: createMockZmkStudioTransport(),
+      workbench,
+    });
+    const engine = new KeyboardLiveSyncEngine({ debounceMs: 8, editor: workbench, shell });
+    const zmk = shell.liveConnection?.zmkStudio as MockZmkStudioConnection;
+    const beforeWrites = requestsOf(zmk, "set_layer_binding").length;
+    const originalBaseCode = workbench.baseProfile.layers[0].bindings["k2-4"].code;
+
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("CUSTOM_SAFE_RANGE");
+    engine.processChanges();
+    await engine.flush();
+
+    expect(requestsOf(zmk, "set_layer_binding").length).toBe(beforeWrites);
+    expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("CUSTOM_SAFE_RANGE");
+    expect(workbench.baseProfile.layers[0].bindings["k2-4"].code).toBe(originalBaseCode);
+    expect(engine.status).toBe("local-only");
+    expect(engine.localOnlyChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: "localOnly",
+          localOnlyCategory: "behaviors",
+          reason: "ZMK binding CUSTOM_SAFE_RANGE is not supported by the live-edit codec yet.",
+        }),
+      ]),
+    );
+    expect(engine.localOnlySummary).toMatchObject({
+      count: 1,
+      reasons: [
+        {
+          category: "behaviors",
+          count: 1,
+          label: "behaviors",
+          reason: "ZMK binding CUSTOM_SAFE_RANGE is not supported by the live-edit codec yet.",
+        },
+      ],
+    });
+  });
+
   it("does not self-invalidate the coordinator effect or reset explicit editor state", async () => {
     const shell = new ShellStore();
     const workbench = new WorkbenchStore({ persist: false });

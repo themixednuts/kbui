@@ -33,6 +33,7 @@ export class KeyboardLiveSyncEngine implements LiveSyncView {
   readonly laneStatuses = $derived(this.active.laneStatuses);
   readonly liveWritableChanges = $derived(this.active.liveWritableChanges);
   readonly localOnlyChanges = $derived(this.active.localOnlyChanges);
+  readonly localOnlySummary = $derived(this.active.localOnlySummary);
   readonly paused = $derived(this.active.paused);
   readonly rebuildRequiredChanges = $derived(this.active.rebuildRequiredChanges);
   readonly status = $derived(this.active.status);

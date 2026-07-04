@@ -23,6 +23,11 @@ describe("ZMK live change classification", () => {
 
     expect(binding).toMatchObject({
       classification: "liveZmkWritable",
+      live: true,
+      outcome: {
+        live: true,
+        status: "live",
+      },
       liveWrite: {
         code: "KC_B",
         encodedBinding: { behaviorId: 1, param1: 0x0005, param2: 0 },
@@ -45,12 +50,56 @@ describe("ZMK live change classification", () => {
       classifyZmkProfileChanges(profile, unsupported, connection).find(
         (change) => change.id === "binding:zmk-layer-100.k2-4",
       ),
-    ).toMatchObject({ classification: "sourceOnlyUnsupported" });
+    ).toMatchObject({
+      classification: "localOnly",
+      live: false,
+      localOnlyCategory: "behaviors",
+      outcome: {
+        category: "behaviors",
+        live: false,
+        status: "local-only",
+      },
+      reason: "ZMK binding CUSTOM_SAFE_RANGE is not supported by the live-edit codec yet.",
+    });
     expect(
       classifyZmkProfileChanges(profile, unknown, connection).find(
         (change) => change.id === "binding:zmk-layer-100.k2-4",
       ),
-    ).toMatchObject({ classification: "sourceOnlyUnsupported" });
+    ).toMatchObject({
+      classification: "localOnly",
+      live: false,
+      localOnlyCategory: "behaviors",
+      outcome: {
+        category: "behaviors",
+        live: false,
+        status: "local-only",
+      },
+      reason: "ZMK behavior 77 is not live-editable yet.",
+    });
+  });
+
+  it("marks ZMK lighting edits as local-only and not written live", async () => {
+    const { connection, profile } = await connectedZmkProfile();
+    const draft = cloneDevice(profile);
+    draft.lighting.speed = 22;
+
+    const lighting = classifyZmkProfileChanges(profile, draft, connection).find(
+      (change) => change.id === "lighting:speed",
+    );
+
+    expect(lighting).toMatchObject({
+      classification: "localOnly",
+      live: false,
+      localOnlyCategory: "lighting",
+      outcome: {
+        category: "lighting",
+        live: false,
+        reason: "ZMK lighting is not written live.",
+        status: "local-only",
+      },
+      reason: "ZMK lighting is not written live.",
+    });
+    expect(lighting?.liveWrite).toBeUndefined();
   });
 
   it("flags combos, macros, tap dances, settings, and layer-count edits for rebuild", async () => {

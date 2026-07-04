@@ -2,6 +2,11 @@ import { getContext, setContext } from "svelte";
 
 import type { EditorStore } from "$lib/app/editor-store.svelte";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
+import {
+  summarizeLiveSyncLocalOnly,
+  type LiveSyncLocalOnlyCategory,
+  type LiveSyncLocalOnlySummary,
+} from "$lib/keyboard/live-sync-classification";
 import type { KeyBinding } from "$lib/keyboard/schema";
 import {
   writeViaKeycode,
@@ -24,6 +29,7 @@ export type ViaLiveSyncStatus =
   | "synced"
   | "local-only"
   | "rebuild-required"
+  | "invalid"
   | "sync-failed";
 
 export type ViaLaneSyncState = "pending" | "syncing" | "synced" | "sync-failed";
@@ -74,6 +80,7 @@ export interface LiveSyncLaneStatus {
 
 export interface LiveSyncChangeNotice {
   id: string;
+  localOnlyCategory?: LiveSyncLocalOnlyCategory;
   path: string;
   reason: string;
   scope: string;
@@ -89,6 +96,7 @@ export interface LiveSyncView {
   laneStatuses: Record<string, LiveSyncLaneStatus>;
   liveWritableChanges: readonly LiveSyncChangeNotice[];
   localOnlyChanges: readonly LiveSyncChangeNotice[];
+  localOnlySummary: LiveSyncLocalOnlySummary;
   paused: boolean;
   rebuildRequiredChanges: readonly LiveSyncChangeNotice[];
   status: string;
@@ -130,14 +138,16 @@ function statusLabel(status: ViaLiveSyncStatus) {
   if (status === "synced") return "Synced";
   if (status === "local-only") return "Local only";
   if (status === "rebuild-required") return "Rebuild required";
+  if (status === "invalid") return "Invalid";
   return "Sync failed";
 }
 
 export function viaSyncStatusDot(status: ViaLiveSyncStatus) {
   if (status === "synced" || status === "connected") return "var(--mint)";
-  if (status === "syncing" || status === "connecting") return "var(--mustard)";
+  if (status === "syncing" || status === "connecting" || status === "local-only")
+    return "var(--mustard)";
   if (status === "sync-failed") return "var(--removed)";
-  if (status === "rebuild-required") return "var(--coral)";
+  if (status === "rebuild-required" || status === "invalid") return "var(--coral)";
   return "var(--ink-3)";
 }
 
@@ -148,8 +158,10 @@ export function viaSyncStatusTitle(status: ViaLiveSyncStatus) {
   if (status === "syncing")
     return "Writing settled live-writable key edits and verifying readback.";
   if (status === "synced") return "Live-writable keymap edits match the connected device.";
-  if (status === "local-only") return "Some valid edits are not supported by generic VIA writes.";
+  if (status === "local-only")
+    return "Some edits were applied locally and were not written to the connected VIA device.";
   if (status === "rebuild-required") return "Some edits require generated firmware and a build.";
+  if (status === "invalid") return "Some edits are incomplete or invalid and were not written.";
   return "A VIA write failed; the local edit is preserved.";
 }
 
@@ -171,7 +183,7 @@ export class ViaLiveSyncEngine {
     this.changes.filter((change) => change.classification === "firmwareRebuildRequired"),
   );
   readonly localOnlyChanges = $derived.by(() =>
-    this.changes.filter((change) => change.classification === "sourceOnlyUnsupported"),
+    this.changes.filter((change) => change.classification === "localOnly"),
   );
   readonly invalidChanges = $derived.by(() =>
     this.changes.filter((change) => change.classification === "invalid"),
@@ -198,6 +210,7 @@ export class ViaLiveSyncEngine {
     syncing: this.activeLaneCount,
     total: this.changes.length,
   }));
+  readonly localOnlySummary = $derived.by(() => summarizeLiveSyncLocalOnly(this.localOnlyChanges));
 
   private readonly writeKeycode: NonNullable<ViaLiveSyncOptions["writeKeycode"]>;
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -282,7 +295,8 @@ export class ViaLiveSyncEngine {
     if (this.failedLanes.length > 0) return "sync-failed";
     if (this.activeLaneCount > 0) return "syncing";
     if (this.rebuildRequiredChanges.length > 0) return "rebuild-required";
-    if (this.invalidChanges.length > 0 || this.localOnlyChanges.length > 0) return "local-only";
+    if (this.invalidChanges.length > 0) return "invalid";
+    if (this.localOnlyChanges.length > 0) return "local-only";
     if (this.shell.device.status === "connected") return "synced";
     return "connected";
   }

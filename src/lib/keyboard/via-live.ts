@@ -1,4 +1,9 @@
 import { diffProfiles } from "./changes";
+import {
+  defaultLiveSyncLocalOnlyCategory,
+  type LiveSyncChangeOutcome,
+  type LiveSyncLocalOnlyCategory,
+} from "./live-sync-classification";
 import { incompleteLogicBindingReason } from "./logic-bindings";
 import {
   qmkKeycodeValue,
@@ -11,7 +16,7 @@ import {
 export type ViaChangeClassification =
   | "liveViaWritable"
   | "firmwareRebuildRequired"
-  | "sourceOnlyUnsupported"
+  | "localOnly"
   | "invalid";
 
 export type ViaClassifiedChangeKind =
@@ -42,7 +47,10 @@ export interface ClassifiedViaChange {
   classification: ViaChangeClassification;
   id: string;
   kind: ViaClassifiedChangeKind;
+  live: boolean;
   liveWrite?: ViaLiveWriteTarget;
+  localOnlyCategory?: LiveSyncLocalOnlyCategory;
+  outcome: LiveSyncChangeOutcome;
   path: string;
   reason: string;
   scope: string;
@@ -130,18 +138,37 @@ function withClassification(
   reason: string,
   kind: ViaClassifiedChangeKind = change.kind,
   liveWrite?: ViaLiveWriteTarget,
+  localOnlyCategory = defaultLiveSyncLocalOnlyCategory(kind),
 ): ClassifiedViaChange {
+  const outcome = viaOutcomeFor(classification, reason, localOnlyCategory);
+
   return {
     after: change.after,
     before: change.before,
     classification,
     id: change.id,
     kind,
+    live: outcome.live,
     liveWrite,
+    localOnlyCategory: outcome.status === "local-only" ? outcome.category : undefined,
+    outcome,
     path: change.path,
     reason,
     scope: change.scope,
   };
+}
+
+function viaOutcomeFor(
+  classification: ViaChangeClassification,
+  reason: string,
+  localOnlyCategory: LiveSyncLocalOnlyCategory,
+): LiveSyncChangeOutcome {
+  if (classification === "liveViaWritable") return { live: true, reason, status: "live" };
+  if (classification === "firmwareRebuildRequired") {
+    return { live: false, reason, status: "rebuild-required" };
+  }
+  if (classification === "invalid") return { live: false, reason, status: "invalid" };
+  return { category: localOnlyCategory, live: false, reason, status: "local-only" };
 }
 
 function classifyBindingChange(
@@ -173,10 +200,13 @@ function classifyBindingChange(
     const localOnly = changedFields.every((field) => field === "notes");
     return withClassification(
       change,
-      localOnly ? "sourceOnlyUnsupported" : "firmwareRebuildRequired",
+      localOnly ? "localOnly" : "firmwareRebuildRequired",
       localOnly
-        ? "Binding notes are profile metadata and are not written through generic VIA."
+        ? "Binding notes are local profile metadata and are not written to the device."
         : "Binding hold/tap/macro metadata needs generated firmware source.",
+      change.kind,
+      undefined,
+      localOnly ? "metadata" : "bindings",
     );
   }
 
@@ -189,8 +219,10 @@ function classifyBindingChange(
   if (draft.protocol !== "via-v3") {
     return withClassification(
       change,
-      draft.firmware === "qmk" ? "firmwareRebuildRequired" : "sourceOnlyUnsupported",
-      "The active profile is not a generic VIA live-edit profile.",
+      draft.firmware === "qmk" ? "firmwareRebuildRequired" : "localOnly",
+      draft.firmware === "qmk"
+        ? "The active profile is not a generic VIA live-edit profile."
+        : "This profile is not a generic VIA live-edit profile, so the edit stays local only.",
     );
   }
 
@@ -198,8 +230,11 @@ function classifyBindingChange(
   if (keycode === undefined) {
     return withClassification(
       change,
-      "sourceOnlyUnsupported",
-      `${code ?? "The binding"} cannot be encoded as a 16-bit VIA keycode.`,
+      "localOnly",
+      `${code ?? "The binding"} cannot be encoded as a VIA keycode, so it was applied locally only.`,
+      change.kind,
+      undefined,
+      "bindings",
     );
   }
 
@@ -317,12 +352,19 @@ export function classifyViaChange(
   if (change.kind === "lighting") {
     return withClassification(
       change,
-      "sourceOnlyUnsupported",
-      "Generic VIA lighting writes are board-specific and are not implemented.",
+      "localOnly",
+      "VIA lighting is not writable over this transport.",
+      change.kind,
+      undefined,
+      "lighting",
     );
   }
 
-  return withClassification(change, "sourceOnlyUnsupported", "Change is local to the profile.");
+  return withClassification(
+    change,
+    "localOnly",
+    "This change is local profile data and is not written to the device.",
+  );
 }
 
 export function classifyViaProfileChanges(
@@ -393,9 +435,7 @@ export function summarizeViaClassifications(changes: readonly ClassifiedViaChang
     ).length,
     invalid: changes.filter((change) => change.classification === "invalid").length,
     liveViaWritable: changes.filter((change) => change.classification === "liveViaWritable").length,
-    sourceOnlyUnsupported: changes.filter(
-      (change) => change.classification === "sourceOnlyUnsupported",
-    ).length,
+    localOnly: changes.filter((change) => change.classification === "localOnly").length,
     total: changes.length,
   };
 }
