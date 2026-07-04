@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { keyLightingFromSwatchId } from "./lighting-swatches";
 import { qmkDirectKeycodes, qmkDirectKeycodeValues } from "./qmk-keycodes";
 
 export type FirmwareFamily = "qmk" | "zmk";
@@ -920,11 +921,20 @@ export const sampleKeyboard: DeviceProfile = {
   ],
   lighting: {
     mode: "reactive",
-    hue: 174,
-    saturation: 76,
+    hue: 90,
+    saturation: 15,
     brightness: 82,
     speed: 45,
-    keys: {},
+    keys: {
+      "k0-0": keyLightingFromSwatchId("coral"),
+      "k1-1": keyLightingFromSwatchId("lilac"),
+      "k1-2": keyLightingFromSwatchId("lilac"),
+      "k1-3": keyLightingFromSwatchId("lilac"),
+      "k2-4": keyLightingFromSwatchId("teal"),
+      "k2-7": keyLightingFromSwatchId("teal"),
+      "k3-0": keyLightingFromSwatchId("coral"),
+      "k4-3": keyLightingFromSwatchId("mustard"),
+    },
   },
   settings: {
     tappingTerm: 185,

@@ -109,7 +109,7 @@ describe("board view model", () => {
       hasLightingOverride: true,
       lightingColor: null,
     });
-    expect(key(model.keys, "k0-2").lightingColor).toBe("oklch(0.750 0.152 174)");
+    expect(key(model.keys, "k0-2").lightingColor).toBe("oklch(0.750 0.030 90)");
   });
 
   it("detects split layouts from split transport and large positioned row gaps", () => {

@@ -3,6 +3,13 @@ import { Effect } from "effect";
 
 import * as TargetOS from "$lib/app/services/target-os";
 import { diffProfiles, qmkSnippet, summarizeDiff } from "$lib/keyboard/changes";
+import {
+  defaultLightingSwatchId,
+  keyLightingEquals,
+  swatchIdForKeyLighting,
+  swatchToKeyLighting,
+  type LightingSwatchId,
+} from "$lib/keyboard/lighting-swatches";
 import { logicBindingOptions, type LogicBindingOption } from "$lib/keyboard/logic-bindings";
 import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from "$lib/keyboard/local-store";
 import {
@@ -14,13 +21,20 @@ import {
   sampleKeyboard,
   type DeviceProfile,
   type KeyBinding,
+  type KeyLighting,
   type Layer,
+  type LightingProfile,
 } from "$lib/keyboard/schema";
 
 export type EditorLens = "keys" | "lighting";
 export type EditorInspectorTab = "bind" | "hold" | "notes";
 export type EditorTargetOs = TargetOS.TargetOS;
 export type BoardTargetOs = "mac" | "windows" | "linux";
+export type EditorLightingEffect = Extract<
+  LightingProfile["mode"],
+  "solid" | "reactive" | "rainbow"
+>;
+export type EditorLightingDragMode = "select" | "add" | "toggle" | "clear";
 
 export interface EditorRenderedBinding extends KeyBinding {
   display: string;
@@ -35,6 +49,13 @@ export interface EditorRenderedBinding extends KeyBinding {
 export interface EditorMutationResult {
   profile: DeviceProfile;
   changedKeyIds: string[];
+}
+
+export interface EditorLightingSelectionSummary {
+  count: number;
+  keyLighting: KeyLighting | null;
+  mixed: boolean;
+  swatchId: LightingSwatchId | null;
 }
 
 export interface EditorStoreOptions {
@@ -178,6 +199,8 @@ export class EditorStore {
   activeLayer = $state(sampleKeyboard.layers[0]?.id ?? "base");
   lens = $state<EditorLens>("keys");
   selection = $state<Set<string>>(new Set([defaultSelectedKeyId(sampleKeyboard)]));
+  currentSwatch = $state<LightingSwatchId>(defaultLightingSwatchId);
+  tintByLayer = $state(false);
   targetOs = $state<EditorTargetOs>("win");
   showFallthrough = $state(true);
   inspectorTab = $state<EditorInspectorTab>("bind");
@@ -224,6 +247,12 @@ export class EditorStore {
   readonly diffStats = $derived(summarizeDiff(this.changes));
   readonly dirty = $derived(this.changes.length);
   readonly boardTargetOs = $derived(targetOsForBoard(this.targetOs));
+  readonly lightingSelection = $derived.by(() =>
+    summarizeLightingSelection(this.profile, this.selectionIds),
+  );
+  readonly lightingEffect = $derived(toEditorLightingEffect(this.profile.lighting.mode));
+  readonly lightingBrightness = $derived(this.profile.lighting.brightness);
+  readonly lightingSpeed = $derived(this.profile.lighting.speed);
 
   private readonly persistEnabled: boolean;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -253,8 +282,17 @@ export class EditorStore {
     this.selection = toggleSelection(this.selection, keyId);
   }
 
+  addKeyToSelection(keyId: string) {
+    if (!this.profile.keys.some((key) => key.id === keyId)) return;
+    this.selection = addToSelection(this.selection, keyId);
+  }
+
   clearSelection() {
     this.selection = new Set();
+  }
+
+  selectAllKeys() {
+    this.selection = new Set(this.profile.keys.map((key) => key.id));
   }
 
   setLayer(layerId: string) {
@@ -354,6 +392,81 @@ export class EditorStore {
     this.queuePersistence();
   }
 
+  applySwatchToSelection(swatch: LightingSwatchId = this.currentSwatch) {
+    this.currentSwatch = swatch;
+    this.paintKeys(this.selection, swatch);
+  }
+
+  setKeyLighting(keyId: string, lighting: KeyLighting) {
+    const result = setKeyLightingOnDevice(this.profile, keyId, lighting);
+    this.applyMutation(result);
+  }
+
+  clearKeyLighting(keyId: string) {
+    this.setKeyLighting(keyId, swatchToKeyLighting("off"));
+  }
+
+  paintKeys(keyIds: Iterable<string>, swatch: LightingSwatchId = this.currentSwatch) {
+    this.currentSwatch = swatch;
+    const result = applyLightingToDevice(this.profile, keyIds, swatchToKeyLighting(swatch));
+    this.applyMutation(result);
+  }
+
+  applyLightingDrag(keyIds: readonly string[], mode: EditorLightingDragMode) {
+    if (mode === "clear") {
+      this.clearSelection();
+      return;
+    }
+
+    for (const keyId of keyIds) {
+      if (mode === "select") this.selectKey(keyId);
+      else if (mode === "toggle") this.toggleKey(keyId);
+      else this.addKeyToSelection(keyId);
+    }
+  }
+
+  setBrightness(value: number) {
+    const brightness = clampPercent(value);
+    if (this.profile.lighting.brightness === brightness) return;
+    this.profile = withUpdatedAt({
+      ...this.profile,
+      lighting: {
+        ...this.profile.lighting,
+        brightness,
+      },
+    });
+    this.queuePersistence();
+  }
+
+  setSpeed(value: number) {
+    const speed = clampPercent(value);
+    if (this.profile.lighting.speed === speed) return;
+    this.profile = withUpdatedAt({
+      ...this.profile,
+      lighting: {
+        ...this.profile.lighting,
+        speed,
+      },
+    });
+    this.queuePersistence();
+  }
+
+  setEffect(effect: EditorLightingEffect) {
+    if (this.profile.lighting.mode === effect) return;
+    this.profile = withUpdatedAt({
+      ...this.profile,
+      lighting: {
+        ...this.profile.lighting,
+        mode: effect,
+      },
+    });
+    this.queuePersistence();
+  }
+
+  toggleTintByLayer(value = !this.tintByLayer) {
+    this.tintByLayer = value;
+  }
+
   bindLogicOption(item: LogicBindingOption) {
     if (!item.code) return;
     this.applyBindingToSelection(item.code, item.kind === "macro" ? item.macroId : undefined);
@@ -444,6 +557,10 @@ export function toggleSelection(selection: Iterable<string>, keyId: string): Set
   return next;
 }
 
+export function addToSelection(selection: Iterable<string>, keyId: string): Set<string> {
+  return new Set([...selection, keyId]);
+}
+
 export function activeLayerStackFor(profile: DeviceProfile, activeLayerId: string): Layer[] {
   const baseLayer = profile.layers[0];
   const activeLayer = profile.layers.find((layer) => layer.id === activeLayerId) ?? baseLayer;
@@ -521,6 +638,77 @@ export function applyNotesToDevice(
     else delete next.notes;
     return next;
   });
+}
+
+export function setKeyLightingOnDevice(
+  profile: DeviceProfile,
+  keyId: string,
+  lighting: KeyLighting,
+): EditorMutationResult {
+  return applyLightingToDevice(profile, [keyId], lighting);
+}
+
+export function clearKeyLightingOnDevice(
+  profile: DeviceProfile,
+  selection: Iterable<string>,
+): EditorMutationResult {
+  return applyLightingToDevice(profile, selection, swatchToKeyLighting("off"));
+}
+
+export function applyLightingToDevice(
+  profile: DeviceProfile,
+  selection: Iterable<string>,
+  lighting: KeyLighting,
+): EditorMutationResult {
+  const keyIds = validSelection(profile, selection);
+  if (keyIds.length === 0) return { profile, changedKeyIds: [] };
+
+  const next = cloneDevice(profile);
+  const changedKeyIds: string[] = [];
+
+  for (const keyId of keyIds) {
+    const previous = next.lighting.keys[keyId];
+    if (keyLightingEquals(previous, lighting)) continue;
+    next.lighting.keys[keyId] = { ...lighting };
+    changedKeyIds.push(keyId);
+  }
+
+  return changedKeyIds.length > 0 ? { profile: next, changedKeyIds } : { profile, changedKeyIds };
+}
+
+export function lightingForKey(profile: DeviceProfile, keyId: string): KeyLighting {
+  return (
+    profile.lighting.keys[keyId] ?? {
+      hue: profile.lighting.hue,
+      saturation: profile.lighting.saturation,
+      brightness: profile.lighting.brightness,
+    }
+  );
+}
+
+export function summarizeLightingSelection(
+  profile: DeviceProfile,
+  selection: readonly string[],
+): EditorLightingSelectionSummary {
+  const keyIds = validSelection(profile, selection);
+  if (keyIds.length === 0) {
+    return {
+      count: 0,
+      keyLighting: null,
+      mixed: false,
+      swatchId: null,
+    };
+  }
+
+  const first = lightingForKey(profile, keyIds[0]);
+  const mixed = keyIds.some((keyId) => !keyLightingEquals(first, lightingForKey(profile, keyId)));
+
+  return {
+    count: keyIds.length,
+    keyLighting: mixed ? null : first,
+    mixed,
+    swatchId: mixed ? null : swatchIdForKeyLighting(first),
+  };
 }
 
 export function addLayerToDevice(
@@ -667,6 +855,10 @@ function sanitizeSelection(profile: DeviceProfile, selection: Iterable<string>):
   return new Set(valid.length > 0 ? valid : [defaultSelectedKeyId(profile)]);
 }
 
+function toEditorLightingEffect(mode: LightingProfile["mode"]): EditorLightingEffect {
+  return mode === "solid" || mode === "rainbow" ? mode : "reactive";
+}
+
 function bindingForLayer(layer: Layer | undefined, keyId: string, base: boolean): KeyBinding {
   return layer?.bindings[keyId] ?? { code: base ? "KC_NO" : "KC_TRNS" };
 }
@@ -702,4 +894,8 @@ function withUpdatedAt(profile: DeviceProfile): DeviceProfile {
     ...profile,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, Math.round(value)));
 }

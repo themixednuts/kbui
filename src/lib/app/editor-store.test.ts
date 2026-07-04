@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { diffProfiles } from "$lib/keyboard/changes";
+import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
 import { cloneDevice, sampleKeyboard } from "$lib/keyboard/schema";
 
 import {
+  applyLightingToDevice,
   applyBindingToDevice,
   applyHoldTapToDevice,
   applyNotesToDevice,
+  clearKeyLightingOnDevice,
+  summarizeLightingSelection,
   clearBindingOnDevice,
   toggleSelection,
 } from "./editor-store.svelte";
@@ -76,6 +80,53 @@ describe("editor store pure mutations", () => {
     expect(change).toMatchObject({
       before: "KC_F",
       after: "KC_F hold:KC_LCTL notes:home row mod candidate",
+    });
+  });
+
+  it("applies lighting swatches to selected keys and records lighting changes", () => {
+    const result = applyLightingToDevice(
+      sampleKeyboard,
+      ["k0-1", "k0-2"],
+      swatchToKeyLighting("coral"),
+    );
+
+    expect(result.changedKeyIds).toEqual(["k0-1", "k0-2"]);
+    expect(result.profile.lighting.keys["k0-1"]).toEqual(swatchToKeyLighting("coral"));
+    expect(sampleKeyboard.lighting.keys["k0-1"]).toBeUndefined();
+
+    const summary = summarizeLightingSelection(result.profile, ["k0-1", "k0-2"]);
+    expect(summary).toMatchObject({
+      count: 2,
+      mixed: false,
+      swatchId: "coral",
+    });
+
+    expect(diffProfiles(sampleKeyboard, result.profile)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "lighting",
+          path: "lighting/keys/k0-1",
+        }),
+        expect.objectContaining({
+          kind: "lighting",
+          path: "lighting/keys/k0-2",
+        }),
+      ]),
+    );
+  });
+
+  it("uses zero-brightness lighting for the off swatch", () => {
+    const result = clearKeyLightingOnDevice(sampleKeyboard, ["k0-1"]);
+    const summary = summarizeLightingSelection(result.profile, ["k0-1"]);
+
+    expect(result.profile.lighting.keys["k0-1"]).toEqual({
+      hue: 0,
+      saturation: 0,
+      brightness: 0,
+    });
+    expect(summary).toMatchObject({
+      mixed: false,
+      swatchId: "off",
     });
   });
 });

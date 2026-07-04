@@ -1,18 +1,23 @@
 <script lang="ts">
-  import { Eye, EyeOff, Keyboard, Lightbulb } from "@lucide/svelte";
+  import { Eye, EyeOff, Keyboard, Lightbulb, MousePointer2 } from "@lucide/svelte";
   import { onDestroy } from "svelte";
 
   import { getShellContext } from "$lib/app/shell-store.svelte";
-  import { EditorStore, type EditorLens } from "$lib/app/editor-store.svelte";
+  import {
+    EditorStore,
+    type EditorLens,
+    type EditorLightingDragMode,
+  } from "$lib/app/editor-store.svelte";
   import { KeyboardBoard } from "$lib/components/board";
-  import { createBoardViewModel } from "$lib/components/board/board-view-model";
+  import { createBoardViewModel, keyLightingToCss } from "$lib/components/board/board-view-model";
   import ActiveStackCard from "$lib/components/editor/ActiveStackCard.svelte";
   import EditorKeyInspector from "$lib/components/editor/EditorKeyInspector.svelte";
   import EditorLayerStack from "$lib/components/editor/EditorLayerStack.svelte";
-  import LightingComingSoon from "$lib/components/editor/LightingComingSoon.svelte";
+  import EditorLightingInspector from "$lib/components/editor/EditorLightingInspector.svelte";
   import KeyInspectorPanel from "$lib/components/keymap/KeyInspectorPanel.svelte";
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
+  import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
 
   const editor = new EditorStore();
   const shell = getShellContext();
@@ -29,7 +34,7 @@
     createBoardViewModel({
       profile: editor.profile,
       activeLayer: editor.activeLayer,
-      lens: "keys",
+      lens: editor.lens,
       selection: editor.selectionIds,
       showFallthrough: editor.showFallthrough,
       targetOs: editor.boardTargetOs,
@@ -43,6 +48,11 @@
         ? `${editor.selectionIds.length} keys`
         : "Selected key",
   );
+  const lightingChipDot = $derived.by(() => {
+    const lighting = editor.lightingSelection.keyLighting ?? swatchToKeyLighting(editor.currentSwatch);
+    if (editor.lightingSelection.mixed) return "var(--teal)";
+    return keyLightingToCss(lighting) ?? "var(--ink-3)";
+  });
 
   $effect(() => {
     shell.setDirty(editor.dirty);
@@ -62,6 +72,10 @@
     if (protocol === "via-v3") return "VIA v3";
     if (protocol === "zmk-studio") return "ZMK Studio";
     return protocol.toUpperCase();
+  }
+
+  function handleLightingDrag(keyIds: string[], mode: EditorLightingDragMode) {
+    editor.applyLightingDrag(keyIds, mode);
   }
 </script>
 
@@ -83,20 +97,26 @@
         <Chip tone="error" title={editor.persistenceError}>Draft save issue</Chip>
       {/if}
 
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-pressed={editor.showFallthrough}
-        title="Toggle fall-through display"
-        onclick={() => editor.toggleFallthrough()}
-      >
-        {#if editor.showFallthrough}
-          <Eye size={15} aria-hidden="true" />
-        {:else}
-          <EyeOff size={15} aria-hidden="true" />
-        {/if}
-        Fall-through
-      </Button>
+      {#if editor.lens === "lighting"}
+        <Chip dot={lightingChipDot} title={`${editor.lightingSelection.count} selected`}>
+          {editor.lightingSelection.count} selected
+        </Chip>
+      {:else}
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={editor.showFallthrough}
+          title="Toggle fall-through display"
+          onclick={() => editor.toggleFallthrough()}
+        >
+          {#if editor.showFallthrough}
+            <Eye size={15} aria-hidden="true" />
+          {:else}
+            <EyeOff size={15} aria-hidden="true" />
+          {/if}
+          Fall-through
+        </Button>
+      {/if}
     </header>
 
     {#if editor.lens === "keys"}
@@ -118,7 +138,25 @@
 
       <ActiveStackCard {editor} />
     {:else}
-      <LightingComingSoon {editor} />
+      <section class="board-stage lighting-stage" aria-label="Keyboard lighting editor">
+        <KeyboardBoard
+          profile={editor.profile}
+          activeLayer={editor.activeLayer}
+          lens="lighting"
+          selection={editor.selectionIds}
+          showFallthrough={editor.showFallthrough}
+          targetOs={editor.boardTargetOs}
+          bind:zoom={boardZoom}
+          bind:pan={boardPan}
+          onLightingDrag={handleLightingDrag}
+          onClearSelection={() => editor.clearSelection()}
+        />
+      </section>
+
+      <div class="lighting-hint">
+        <MousePointer2 size={15} aria-hidden="true" />
+        <span>Drag across keys to select</span>
+      </div>
     {/if}
   </div>
 {/snippet}
@@ -127,7 +165,11 @@
   {#if splitLayout}
     {@render editorMain()}
     <aside class="split-inspector-dock" aria-label={inspectorLabel}>
-      <EditorKeyInspector {editor} compact />
+      {#if editor.lens === "lighting"}
+        <EditorLightingInspector {editor} compact />
+      {:else}
+        <EditorKeyInspector {editor} compact />
+      {/if}
     </aside>
   {:else}
     <KeyInspectorPanel chromeLabel={inspectorLabel}>
@@ -135,7 +177,11 @@
         {@render editorMain()}
       {/snippet}
 
-      <EditorKeyInspector {editor} />
+      {#if editor.lens === "lighting"}
+        <EditorLightingInspector {editor} />
+      {:else}
+        <EditorKeyInspector {editor} />
+      {/if}
     </KeyInspectorPanel>
   {/if}
 </section>
@@ -186,6 +232,23 @@
     border-radius: 12px;
     background: color-mix(in oklch, var(--surface) 54%, transparent);
     box-shadow: var(--shadow-card);
+  }
+
+  .lighting-stage {
+    min-height: 460px;
+  }
+
+  .lighting-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: color-mix(in oklch, var(--surface-2) 72%, var(--surface));
+    color: var(--ink-2);
+    font-size: 12px;
   }
 
   .split-inspector-dock {
