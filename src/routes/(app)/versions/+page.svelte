@@ -21,6 +21,7 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import VersionChangesPanel from "$lib/components/versioning/VersionChangesPanel.svelte";
   import type { ChangeRecord, DeviceProfile, SavePoint } from "$lib/keyboard/schema";
+  import { cn } from "$lib/utils.js";
 
   type VersionTab = "history" | "changes";
   type ChangeGroupId = "keymap" | "lighting" | "settings";
@@ -59,6 +60,93 @@
       ? workbench.variants.find((variant) => variant.id === selectedSavePoint.variantId)
       : undefined,
   );
+  const versionsPageClass =
+    "versions-page grid min-h-full content-start gap-kb-18 p-kb-22 max-[820px]:p-kb-14";
+  const versionsToolbarClass =
+    "versions-toolbar flex min-w-0 items-center gap-kb-10 max-[820px]:flex-wrap";
+  const toolbarSpacerClass = "toolbar-spacer min-w-kb-12 flex-1 max-[820px]:hidden";
+  const versionsAlertClass =
+    "versions-alert rounded-keycap border border-[oklch(0.62_0.2_25_/_0.28)] bg-[oklch(0.95_0.04_25)] px-kb-12 py-kb-10 font-mono text-[12px] text-[oklch(0.42_0.15_25)]";
+  const versionsStatusClass =
+    "versions-status rounded-keycap border border-[color-mix(in_oklch,var(--teal)_35%,transparent)] bg-[color-mix(in_oklch,var(--teal)_12%,var(--surface))] px-kb-12 py-kb-10 font-mono text-[12px] leading-[1.45] text-teal-ink";
+  const versionsGridClass =
+    "versions-grid grid min-h-0 grid-cols-[minmax(0,1fr)_320px] items-start gap-kb-18 max-[1180px]:grid-cols-[minmax(0,1fr)]";
+  const historyGridClass = "history-grid items-stretch";
+  const versionsMainClass = "versions-main grid min-w-0 gap-kb-14";
+  const versionsSidebarClass =
+    "versions-sidebar grid min-w-0 gap-kb-14 max-[1180px]:grid-cols-[repeat(2,minmax(0,1fr))] max-[820px]:grid-cols-[minmax(0,1fr)]";
+  const historySidebarClass = "history-sidebar content-start max-[1180px]:grid-cols-[minmax(0,1fr)]";
+  const changeMetricsClass =
+    "change-metrics grid grid-cols-[repeat(3,minmax(0,1fr))] gap-kb-10 max-[820px]:grid-cols-[minmax(0,1fr)]";
+  const changeMetricClass =
+    "change-metric grid min-h-[66px] grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-keycap border border-line bg-[color-mix(in_oklch,var(--surface)_76%,transparent)] px-kb-14 py-kb-12 data-[empty=true]:[&_b]:text-ink-3";
+  const changeMetricTitleClass =
+    "block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] tracking-[0.04em] uppercase";
+  const changeMetricDescriptionClass =
+    "mt-kb-4 block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-ink-3";
+  const changeMetricCountClass = "font-mono text-[24px] font-strong";
+  const versionsCardHeaderClass =
+    "versions-card-header min-h-kb-44 border-line !px-kb-16 !py-kb-13";
+  const versionsCardTitleClass = "text-[12px] tracking-[0.08em]";
+  const versionsCardBodyClass = "versions-card-body grid gap-kb-13 !p-kb-16";
+  const sideCopyClass = "side-copy m-0 text-[12px] leading-[1.6] text-ink-2";
+  const fieldClass = "field grid gap-kb-6";
+  const fieldLabelClass =
+    "text-ink-3 font-mono text-[10px] tracking-[0.08em] uppercase";
+  const versionInputClass =
+    "version-input h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 py-0 !font-mono !text-[12px] text-ink read-only:bg-paper-2 read-only:text-ink-2";
+  const fullActionClass = "full-action w-full";
+  const cleanCardClass = "clean-card bg-[color-mix(in_oklch,var(--surface)_64%,transparent)]";
+  const cleanBodyClass =
+    "clean-body grid grid-cols-[20px_minmax(0,1fr)] items-center gap-kb-8 !px-kb-14 !py-kb-12 font-mono text-[12px] text-ink-2";
+  const timelineCardClass = "timeline-card min-h-[540px] max-[820px]:min-h-0";
+  const timelineTitleClass = "timeline-title justify-between";
+  const timelineDescriptionClass = "mt-kb-4 font-mono text-[11px] text-ink-3";
+  const timelineBodyClass = "timeline-body !px-kb-16 !pt-kb-18 !pb-kb-22";
+  const timelineEmptyClass =
+    "timeline-empty grid min-h-[180px] place-items-center gap-kb-8 text-center font-mono text-[12px] text-ink-3";
+  const sideEmptyClass =
+    "side-empty grid min-h-[180px] place-items-center gap-kb-8 text-center font-mono text-[12px] text-ink-3";
+  const timelineTracksClass =
+    "timeline-tracks grid grid-cols-[repeat(3,minmax(180px,1fr))] items-start gap-kb-18 max-[820px]:grid-cols-[minmax(0,1fr)]";
+  const timelineTrackClass = "timeline-track min-w-0";
+  const trackHeadClass = "track-head flex min-w-0 items-center gap-kb-8 font-mono text-[12px]";
+  const trackNameClass = "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap";
+  const trackSwatchClass = "track-swatch size-kb-10 flex-none rounded-pill";
+  const trackChipClass = "track-chip !min-h-kb-20 !px-kb-7";
+  const trackNoteClass =
+    "track-note mt-kb-10 flex min-w-0 items-center gap-kb-6 font-mono text-[10px] text-ink-3 [&_span]:overflow-hidden [&_span]:text-ellipsis [&_span]:whitespace-nowrap";
+  const trackLineClass =
+    "track-line relative mt-kb-12 grid gap-kb-8 pl-kb-18 before:absolute before:top-kb-4 before:bottom-kb-4 before:left-kb-5 before:w-kb-2 before:rounded-pill before:bg-[var(--track-color,var(--ink))] before:opacity-80 before:content-['']";
+  const trackEmptyClass = "track-empty min-h-kb-38 font-mono text-[11px] text-ink-3";
+  const savepointRowClass =
+    "savepoint-row relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)] rounded-keycap border border-transparent py-kb-8 pr-kb-8 pl-kb-10 text-left hover:border-line hover:bg-paper-2 [&.selected]:border-line [&.selected]:bg-paper-2";
+  const savepointDotClass =
+    "savepoint-dot absolute top-kb-14 left-[-17px] size-kb-10 rounded-pill border-2 border-paper bg-[var(--track-color,var(--ink))] shadow-[0_0_0_1px_var(--track-color,var(--ink))]";
+  const savepointCopyClass = "savepoint-copy grid min-w-0 gap-kb-3";
+  const savepointCopyHeadClass = "flex min-w-0 items-center gap-kb-7";
+  const savepointMessageClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] font-strong";
+  const savepointDetailsClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-ink-3";
+  const savepointCurrentClass =
+    "flex-none rounded-pill bg-coral px-kb-7 py-kb-3 font-mono text-[9px] not-italic tracking-[0.04em] text-[#1c0a04] uppercase";
+  const savepointHeroClass =
+    "savepoint-hero grid grid-cols-[54px_minmax(0,1fr)] items-center gap-kb-12 rounded-keycap bg-paper-2 p-kb-12";
+  const savepointCapClass =
+    "savepoint-cap grid size-[54px] place-items-center overflow-hidden rounded-big-cap font-mono text-[11px] text-paper uppercase";
+  const savepointVariantClass =
+    "block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] tracking-[0.08em] text-ink-3 uppercase";
+  const savepointTitleClass =
+    "mt-kb-4 mb-0 block overflow-hidden text-ellipsis text-[15px] leading-[1.2]";
+  const savepointMetaClass = "savepoint-meta m-0 grid gap-0 font-mono text-[11px]";
+  const savepointMetaRowClass =
+    "grid grid-cols-[74px_minmax(0,1fr)] gap-kb-10 border-b border-line py-kb-8 last:border-b-0";
+  const savepointMetaTermClass =
+    "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3";
+  const savepointMetaDescriptionClass =
+    "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap";
+  const actionRowClass = "action-row flex flex-wrap gap-kb-7";
 
   async function createSavePoint() {
     if (workbench.changes.length === 0 || saving) return;
@@ -219,8 +307,8 @@
   }
 </script>
 
-<section class="versions-page">
-  <header class="versions-toolbar">
+<section class={versionsPageClass}>
+  <header class={versionsToolbarClass}>
     <SegmentedNav
       items={tabItems}
       value={tab}
@@ -228,7 +316,7 @@
       ariaLabel="Versions tabs"
     />
 
-    <div class="toolbar-spacer"></div>
+    <div class={toolbarSpacerClass}></div>
 
     <Chip dot={workbench.activeVariant.color} title="Active variant">
       {workbench.activeVariant.name}
@@ -237,28 +325,28 @@
   </header>
 
   {#if actionError || workbench.versioningError}
-    <div class="versions-alert" role="status">
+    <div class={versionsAlertClass} role="status">
       {actionError ?? workbench.versioningError}
     </div>
   {/if}
 
   {#if flashStatus}
-    <div class="versions-status" role="status">
+    <div class={versionsStatusClass} role="status">
       {flashStatus}
     </div>
   {/if}
 
   {#if tab === "changes"}
-    <div class="versions-grid">
-      <div class="versions-main">
-        <div class="change-metrics" aria-label="Uncommitted change groups">
+    <div class={versionsGridClass}>
+      <div class={versionsMainClass}>
+        <div class={changeMetricsClass} aria-label="Uncommitted change groups">
           {#each changeGroups as group (group.id)}
-            <article class="change-metric" data-empty={group.changes.length === 0}>
+            <article class={changeMetricClass} data-empty={group.changes.length === 0}>
               <div>
-                <strong>{group.label}</strong>
-                <span>{group.description}</span>
+                <strong class={changeMetricTitleClass}>{group.label}</strong>
+                <span class={changeMetricDescriptionClass}>{group.description}</span>
               </div>
-              <b>{group.changes.length}</b>
+              <b class={changeMetricCountClass}>{group.changes.length}</b>
             </article>
           {/each}
         </div>
@@ -271,22 +359,22 @@
         />
       </div>
 
-      <aside class="versions-sidebar" aria-label="Save point actions">
+      <aside class={versionsSidebarClass} aria-label="Save point actions">
         <Card.Root>
-          <Card.Header class="versions-card-header">
-            <Card.Title>Save point</Card.Title>
+          <Card.Header class={versionsCardHeaderClass}>
+            <Card.Title class={versionsCardTitleClass}>Save point</Card.Title>
           </Card.Header>
-          <Card.Content class="versions-card-body">
-            <p class="side-copy">
+          <Card.Content class={versionsCardBodyClass}>
+            <p class={sideCopyClass}>
               Bundle these {workbench.changes.length} change{workbench.changes.length === 1
                 ? ""
                 : "s"} into a named point on <strong>{workbench.activeVariant.name}</strong>.
             </p>
 
-            <label class="field">
-              <span>Message</span>
+            <label class={fieldClass}>
+              <span class={fieldLabelClass}>Message</span>
               <input
-                class="version-input"
+                class={versionInputClass}
                 bind:value={savePointMessage}
                 placeholder="Describe the layout change"
               />
@@ -294,7 +382,7 @@
 
             <Button
               variant="coral"
-              class="full-action"
+              class={fullActionClass}
               disabled={workbench.changes.length === 0 || saving}
               onclick={createSavePoint}
             >
@@ -304,8 +392,8 @@
           </Card.Content>
         </Card.Root>
 
-        <Card.Root class="clean-card">
-          <Card.Content class="clean-body">
+        <Card.Root class={cleanCardClass}>
+          <Card.Content class={cleanBodyClass}>
             {#if workbench.changes.length === 0}
               <CheckCircle2 size={18} />
               <span>Draft matches the current base.</span>
@@ -318,62 +406,62 @@
       </aside>
     </div>
   {:else}
-    <div class="versions-grid history-grid">
-      <Card.Root class="timeline-card">
-        <Card.Header class="versions-card-header timeline-title">
+    <div class={cn(versionsGridClass, historyGridClass)}>
+      <Card.Root class={timelineCardClass}>
+        <Card.Header class={cn(versionsCardHeaderClass, timelineTitleClass)}>
           <div>
-            <Card.Title>Version history</Card.Title>
-            <Card.Description>
+            <Card.Title class={versionsCardTitleClass}>Version history</Card.Title>
+            <Card.Description class={timelineDescriptionClass}>
               {workbench.variants.length} variants / {workbench.savePoints.length} save points
             </Card.Description>
           </div>
         </Card.Header>
 
-        <Card.Content class="timeline-body">
+        <Card.Content class={timelineBodyClass}>
           {#if workbench.savePoints.length === 0}
-            <div class="timeline-empty">
+            <div class={timelineEmptyClass}>
               <History size={24} />
               <span>No save points yet. Create one from the Changes tab.</span>
             </div>
           {:else}
-            <div class="timeline-tracks">
+            <div class={timelineTracksClass}>
               {#each workbench.savePointTracks as track (track.id)}
-                <article class="timeline-track" data-active={track.id === workbench.activeVariantId}>
-                  <div class="track-head">
-                    <span class="track-swatch" style={`background: ${track.color}`}></span>
-                    <strong>{track.name}</strong>
+                <article class={timelineTrackClass} data-active={track.id === workbench.activeVariantId}>
+                  <div class={trackHeadClass}>
+                    <span class={trackSwatchClass} style={`background: ${track.color}`}></span>
+                    <strong class={trackNameClass}>{track.name}</strong>
                     {#if track.id === workbench.activeVariantId}
-                      <Chip class="track-chip">on</Chip>
+                      <Chip class={trackChipClass}>on</Chip>
                     {/if}
                   </div>
 
                   {#if track.note}
-                    <div class="track-note">
+                    <div class={trackNoteClass}>
                       <GitBranch size={13} />
                       <span>{track.note}</span>
                     </div>
                   {/if}
 
-                  <div class="track-line" style={`--track-color: ${track.color}`}>
+                  <div class={trackLineClass} style={`--track-color: ${track.color}`}>
                     {#if track.points.length === 0}
-                      <div class="track-empty">No save points on this variant</div>
+                      <div class={trackEmptyClass}>No save points on this variant</div>
                     {:else}
                       {#each track.points as point (point.id)}
                         <button
                           type="button"
-                          class="savepoint-row"
+                          class={savepointRowClass}
                           class:selected={selectedSavePoint?.id === point.id}
                           onclick={() => workbench.selectSavePoint(point.id)}
                         >
-                          <span class="savepoint-dot" aria-hidden="true"></span>
-                          <span class="savepoint-copy">
-                            <span>
-                              <strong>{point.message}</strong>
+                          <span class={savepointDotClass} aria-hidden="true"></span>
+                          <span class={savepointCopyClass}>
+                            <span class={savepointCopyHeadClass}>
+                              <strong class={savepointMessageClass}>{point.message}</strong>
                               {#if latestPointId(track) === point.id && track.id === workbench.activeVariantId}
-                                <em>current</em>
+                                <em class={savepointCurrentClass}>current</em>
                               {/if}
                             </span>
-                            <small>{pointLabel(point.id)} / {authorLabel(point)} / {formatWhen(point.createdAt)}</small>
+                            <small class={savepointDetailsClass}>{pointLabel(point.id)} / {authorLabel(point)} / {formatWhen(point.createdAt)}</small>
                           </span>
                         </button>
                       {/each}
@@ -386,42 +474,42 @@
         </Card.Content>
       </Card.Root>
 
-      <aside class="versions-sidebar history-sidebar" aria-label="Selected save point">
+      <aside class={cn(versionsSidebarClass, historySidebarClass)} aria-label="Selected save point">
         <Card.Root>
-          <Card.Header class="versions-card-header">
-            <Card.Title>Save point</Card.Title>
+          <Card.Header class={versionsCardHeaderClass}>
+            <Card.Title class={versionsCardTitleClass}>Save point</Card.Title>
           </Card.Header>
-          <Card.Content class="versions-card-body">
+          <Card.Content class={versionsCardBodyClass}>
             {#if selectedSavePoint}
-              <div class="savepoint-hero">
+              <div class={savepointHeroClass}>
                 <div
-                  class="savepoint-cap"
+                  class={savepointCapClass}
                   style={`background: ${selectedVariant?.color ?? "var(--ink)"}`}
                 >
                   {pointLabel(selectedSavePoint.id)}
                 </div>
                 <div>
-                  <span>{selectedVariant?.name ?? selectedSavePoint.variantId}</span>
-                  <h2>{selectedSavePoint.message}</h2>
+                  <span class={savepointVariantClass}>{selectedVariant?.name ?? selectedSavePoint.variantId}</span>
+                  <h2 class={savepointTitleClass}>{selectedSavePoint.message}</h2>
                 </div>
               </div>
 
-              <dl class="savepoint-meta">
-                <div>
-                  <dt>When</dt>
-                  <dd>{formatWhen(selectedSavePoint.createdAt)}</dd>
+              <dl class={savepointMetaClass}>
+                <div class={savepointMetaRowClass}>
+                  <dt class={savepointMetaTermClass}>When</dt>
+                  <dd class={savepointMetaDescriptionClass}>{formatWhen(selectedSavePoint.createdAt)}</dd>
                 </div>
-                <div>
-                  <dt>Author</dt>
-                  <dd>{authorLabel(selectedSavePoint)}</dd>
+                <div class={savepointMetaRowClass}>
+                  <dt class={savepointMetaTermClass}>Author</dt>
+                  <dd class={savepointMetaDescriptionClass}>{authorLabel(selectedSavePoint)}</dd>
                 </div>
-                <div>
-                  <dt>Changes</dt>
-                  <dd>{selectedChanges.length}</dd>
+                <div class={savepointMetaRowClass}>
+                  <dt class={savepointMetaTermClass}>Changes</dt>
+                  <dd class={savepointMetaDescriptionClass}>{selectedChanges.length}</dd>
                 </div>
               </dl>
 
-              <div class="action-row">
+              <div class={actionRowClass}>
                 <Button variant="coral" size="sm" disabled={restoring} onclick={restoreSelectedSavePoint}>
                   <RotateCcw size={14} />
                   {restoring ? "Restoring" : "Restore"}
@@ -433,7 +521,7 @@
               </div>
 
             {:else}
-              <div class="side-empty">Select a save point to inspect.</div>
+              <div class={sideEmptyClass}>Select a save point to inspect.</div>
             {/if}
           </Card.Content>
         </Card.Root>
@@ -448,14 +536,14 @@
         {/if}
 
         <Card.Root>
-          <Card.Header class="versions-card-header">
-            <Card.Title>Branch off a variant</Card.Title>
+          <Card.Header class={versionsCardHeaderClass}>
+            <Card.Title class={versionsCardTitleClass}>Branch off a variant</Card.Title>
           </Card.Header>
-          <Card.Content class="versions-card-body">
-            <label class="field">
-              <span>From</span>
+          <Card.Content class={versionsCardBodyClass}>
+            <label class={fieldClass}>
+              <span class={fieldLabelClass}>From</span>
               <input
-                class="version-input"
+                class={versionInputClass}
                 value={selectedSavePoint
                   ? `${selectedVariant?.name ?? selectedSavePoint.variantId} @ ${pointLabel(selectedSavePoint.id)}`
                   : "Select a save point"}
@@ -463,14 +551,14 @@
               />
             </label>
 
-            <label class="field">
-              <span>Name</span>
-              <input class="version-input" bind:value={branchName} placeholder="new-variant" />
+            <label class={fieldClass}>
+              <span class={fieldLabelClass}>Name</span>
+              <input class={versionInputClass} bind:value={branchName} placeholder="new-variant" />
             </label>
 
             <Button
               variant="coral"
-              class="full-action"
+              class={fullActionClass}
               disabled={!selectedSavePoint || branching}
               onclick={branchFromSelectedSavePoint}
             >
@@ -492,508 +580,3 @@
     onclose={closeFlashOverlay}
   />
 {/if}
-
-<style>
-  .versions-page {
-    display: grid;
-    gap: 18px;
-    align-content: start;
-    min-height: 100%;
-    padding: 22px;
-  }
-
-  .versions-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .toolbar-spacer {
-    flex: 1;
-    min-width: 12px;
-  }
-
-  .versions-alert {
-    padding: 10px 12px;
-    border: 1px solid oklch(0.62 0.2 25 / 0.28);
-    border-radius: 8px;
-    background: oklch(0.95 0.04 25);
-    color: oklch(0.42 0.15 25);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .versions-status {
-    padding: 10px 12px;
-    border: 1px solid color-mix(in oklch, var(--teal) 35%, transparent);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--teal) 12%, var(--surface));
-    color: var(--teal-ink);
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .versions-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 18px;
-    align-items: start;
-    min-height: 0;
-  }
-
-  .versions-main,
-  .versions-sidebar {
-    display: grid;
-    gap: 14px;
-    min-width: 0;
-  }
-
-  .change-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .change-metric {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    min-height: 66px;
-    padding: 12px 14px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--surface) 76%, transparent);
-  }
-
-  .change-metric strong,
-  .change-metric span {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .change-metric strong {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .change-metric span {
-    margin-top: 4px;
-    color: var(--ink-3);
-    font-size: 12px;
-  }
-
-  .change-metric b {
-    font-family: var(--mono);
-    font-size: 24px;
-    font-weight: 600;
-  }
-
-  .change-metric[data-empty="true"] b {
-    color: var(--ink-3);
-  }
-
-  :global(.versions-card-header) {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-    padding: 13px 16px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  :global(.versions-card-header h3) {
-    margin: 0;
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  :global(.versions-card-body) {
-    display: grid;
-    gap: 13px;
-    padding: 16px;
-  }
-
-  .side-copy {
-    margin: 0;
-    color: var(--ink-2);
-    font-size: 12px;
-    line-height: 1.6;
-  }
-
-  .field {
-    display: grid;
-    gap: 6px;
-  }
-
-  .field span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .version-input {
-    width: 100%;
-    min-width: 0;
-    height: 34px;
-    padding: 0 10px;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    background: var(--surface);
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .version-input:read-only {
-    color: var(--ink-2);
-    background: var(--paper-2);
-  }
-
-  :global(.full-action) {
-    width: 100%;
-  }
-
-  :global(.clean-card) {
-    background: color-mix(in oklch, var(--surface) 64%, transparent);
-  }
-
-  :global(.clean-body) {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    padding: 12px 14px;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .history-grid {
-    align-items: stretch;
-  }
-
-  :global(.timeline-card) {
-    min-height: 540px;
-  }
-
-  :global(.timeline-title) {
-    justify-content: space-between;
-  }
-
-  :global(.timeline-title p) {
-    margin-top: 4px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  :global(.timeline-body) {
-    padding: 18px 16px 22px;
-  }
-
-  .timeline-empty,
-  .side-empty {
-    display: grid;
-    place-items: center;
-    gap: 8px;
-    min-height: 180px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 12px;
-    text-align: center;
-  }
-
-  .timeline-tracks {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(180px, 1fr));
-    gap: 18px;
-    align-items: start;
-  }
-
-  .timeline-track {
-    min-width: 0;
-  }
-
-  .track-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .track-head strong {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .track-swatch {
-    width: 10px;
-    height: 10px;
-    flex: none;
-    border-radius: 999px;
-  }
-
-  :global(.track-chip) {
-    min-height: 20px;
-    padding-inline: 7px;
-  }
-
-  .track-note {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    margin-top: 10px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .track-note span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .track-line {
-    position: relative;
-    display: grid;
-    gap: 8px;
-    margin-top: 12px;
-    padding-left: 18px;
-  }
-
-  .track-line::before {
-    content: "";
-    position: absolute;
-    top: 4px;
-    bottom: 4px;
-    left: 5px;
-    width: 2px;
-    border-radius: 999px;
-    background: var(--track-color, var(--ink));
-    opacity: 0.8;
-  }
-
-  .track-empty {
-    min-height: 38px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .savepoint-row {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-    min-width: 0;
-    padding: 8px 8px 8px 10px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    text-align: left;
-  }
-
-  .savepoint-row:hover,
-  .savepoint-row.selected {
-    border-color: var(--line);
-    background: var(--paper-2);
-  }
-
-  .savepoint-dot {
-    position: absolute;
-    top: 14px;
-    left: -17px;
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--paper);
-    border-radius: 999px;
-    background: var(--track-color, var(--ink));
-    box-shadow: 0 0 0 1px var(--track-color, var(--ink));
-  }
-
-  .savepoint-copy {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-  }
-
-  .savepoint-copy span {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-  }
-
-  .savepoint-copy strong,
-  .savepoint-copy small {
-    overflow: hidden;
-    font-family: var(--mono);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .savepoint-copy strong {
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .savepoint-copy small {
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .savepoint-copy em {
-    flex: none;
-    padding: 3px 7px;
-    border-radius: 999px;
-    background: var(--coral);
-    color: #1c0a04;
-    font-family: var(--mono);
-    font-size: 9px;
-    font-style: normal;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .history-sidebar {
-    align-content: start;
-  }
-
-  .savepoint-hero {
-    display: grid;
-    grid-template-columns: 54px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    padding: 12px;
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  .savepoint-cap {
-    display: grid;
-    width: 54px;
-    height: 54px;
-    place-items: center;
-    overflow: hidden;
-    border-radius: 9px;
-    color: var(--paper);
-    font-family: var(--mono);
-    font-size: 11px;
-    text-transform: uppercase;
-  }
-
-  .savepoint-hero span,
-  .savepoint-hero h2 {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .savepoint-hero span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .savepoint-hero h2 {
-    margin: 4px 0 0;
-    font-size: 15px;
-    line-height: 1.2;
-  }
-
-  .savepoint-meta {
-    display: grid;
-    gap: 0;
-    margin: 0;
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .savepoint-meta div {
-    display: grid;
-    grid-template-columns: 74px minmax(0, 1fr);
-    gap: 10px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .savepoint-meta div:last-child {
-    border-bottom: 0;
-  }
-
-  .savepoint-meta dt,
-  .savepoint-meta dd {
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .savepoint-meta dt {
-    color: var(--ink-3);
-  }
-
-  .action-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-  }
-
-  @media (max-width: 1180px) {
-    .versions-grid,
-    .history-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .versions-sidebar {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .history-sidebar {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  @media (max-width: 820px) {
-    .versions-page {
-      padding: 14px;
-    }
-
-    .versions-toolbar {
-      flex-wrap: wrap;
-    }
-
-    .toolbar-spacer {
-      display: none;
-    }
-
-    .change-metrics,
-    .timeline-tracks,
-    .versions-sidebar {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    :global(.timeline-card) {
-      min-height: 0;
-    }
-  }
-</style>
