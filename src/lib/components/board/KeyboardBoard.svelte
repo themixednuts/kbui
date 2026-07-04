@@ -11,6 +11,7 @@
   import type { Snippet } from "svelte";
 
   import type { DeviceProfile } from "$lib/keyboard/schema";
+  import { cn } from "$lib/utils.js";
 
   import {
     computeBoardUnit,
@@ -22,6 +23,12 @@
     type BoardComboConnector,
   } from "./board-view-model";
   import Keycap from "./Keycap.svelte";
+
+  const boardClass = "keyboard-board relative flex min-h-0 min-w-0 flex-1 flex-col";
+  const viewportClass =
+    "keyboard-board-viewport relative grid min-h-[260px] min-w-0 flex-1 place-items-center overflow-auto px-kb-24 py-kb-28 overscroll-contain touch-none select-none bg-[linear-gradient(to_right,oklch(0.13_0.01_60/0.04)_1px,transparent_1px),linear-gradient(to_bottom,oklch(0.13_0.01_60/0.04)_1px,transparent_1px),radial-gradient(ellipse_70%_60%_at_50%_35%,oklch(0.96_0.04_60/0.5),transparent_75%)] [background-size:24px_24px,24px_24px,100%_100%] cursor-default max-[640px]:min-h-[220px] max-[640px]:px-[14px] max-[640px]:pt-[18px] max-[640px]:pb-[28px]";
+  const connectorLineClass =
+    "combo-connector-line fill-none stroke-mustard opacity-[0.34] mix-blend-multiply transition-[filter,opacity,stroke,stroke-width] duration-[120ms] ease-[ease] [shape-rendering:geometricPrecision] [stroke-dasharray:4_5] [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:1.25] [vector-effect:non-scaling-stroke]";
 
   interface Props {
     profile: DeviceProfile;
@@ -266,12 +273,14 @@
   }
 </script>
 
-<div class={`keyboard-board ${className}`} data-lens={lens}>
+<div class={cn(boardClass, className)} data-lens={lens}>
   <div
     bind:this={viewport}
-    class="keyboard-board-viewport"
-    class:lighting={lens === "lighting"}
-    class:panning
+    class={cn(
+      viewportClass,
+      lens === "lighting" && "lighting cursor-crosshair [&_.board-keycap]:cursor-crosshair",
+      panning && "panning cursor-grabbing [&_.board-keycap]:cursor-grabbing",
+    )}
     role="region"
     aria-label={lens === "lighting" ? "Keyboard lighting viewport" : "Keyboard board viewport"}
     title="Mouse wheel zoom; middle-drag pan"
@@ -281,22 +290,35 @@
     onpointerup={handlePointerUp}
     onpointercancel={handlePointerCancel}
   >
-    <div class="keyboard-board-surface" style={surfaceStyle}>
-      <div class="key-plane" style={planeStyle}>
+    <div
+      class="keyboard-board-surface relative min-w-max transition-transform duration-[90ms] ease-[var(--ease-out-soft)] will-change-transform"
+      style={surfaceStyle}
+    >
+      <div class="key-plane absolute top-0 left-0" style={planeStyle}>
         {#if model.comboConnectors.length > 0 && lens === "keys"}
           <svg
-            class="combo-connectors"
+            class="combo-connectors pointer-events-none absolute inset-0 z-[3] h-full w-full overflow-visible"
             viewBox={`0 0 ${model.bounds.width} ${model.bounds.height}`}
             preserveAspectRatio="none"
             aria-hidden="true"
           >
             {#each model.comboConnectors as connector (connector.id)}
               {@const active = connectorActive(connector)}
-              <g class="combo-connector" class:combo-connector-active={active}>
+              <g class={cn("combo-connector", active && "combo-connector-active")}>
                 <title>{connector.title}</title>
                 {#each connector.segments as segment (segment.id)}
-                  <path class="combo-connector-hit" d={segment.path}></path>
-                  <path class="combo-connector-line" class:active d={segment.path}></path>
+                  <path
+                    class="combo-connector-hit fill-none stroke-transparent [stroke-width:14] [vector-effect:non-scaling-stroke]"
+                    d={segment.path}
+                  ></path>
+                  <path
+                    class={cn(
+                      connectorLineClass,
+                      active &&
+                        "active stroke-coral opacity-[0.92] [filter:drop-shadow(0_1px_2px_color-mix(in_oklch,var(--coral)_55%,transparent))] [stroke-width:2.35]",
+                    )}
+                    d={segment.path}
+                  ></path>
                 {/each}
               </g>
             {/each}
@@ -305,7 +327,7 @@
 
         {#if model.split.enabled && model.split.seamX !== null}
           <span
-            class="split-seam"
+            class="split-seam pointer-events-none absolute top-0 bottom-0 z-[2] w-0 border-l border-dashed border-line-2"
             style={`left: calc(var(--u) * ${model.split.seamX})`}
             aria-hidden="true"
           ></span>
@@ -329,183 +351,22 @@
 
       {#if model.split.enabled && model.split.seamX !== null}
         <div
-          class="split-label"
+          class="split-label absolute inline-flex -translate-x-1/2 items-center gap-kb-6 whitespace-nowrap font-mono text-kb-10 leading-none tracking-[0.12em] text-ink-3 uppercase"
           style={`left: calc(var(--u) * ${model.split.seamX}); top: calc(var(--u) * ${model.bounds.height} + 10px)`}
         >
-          <span class="material-symbols-outlined" aria-hidden="true">cable</span>
+          <span class="material-symbols-outlined text-[14px]" aria-hidden="true">cable</span>
           <span>{model.split.label}</span>
         </div>
       {/if}
     </div>
   </div>
 
-  <button type="button" class="zoom-readout" title="Reset keyboard zoom" onclick={() => (zoom = 1)}>
+  <button
+    type="button"
+    class="zoom-readout absolute right-kb-12 bottom-kb-12 inline-grid h-kb-22 min-w-[42px] place-items-center rounded-[6px] border border-[rgba(24,22,20,0.18)] bg-[rgba(255,252,245,0.78)] px-[7px] py-0 font-mono text-kb-10 leading-none text-ink-2 shadow-card hover:border-[rgba(24,22,20,0.34)] hover:bg-paper hover:text-ink"
+    title="Reset keyboard zoom"
+    onclick={() => (zoom = 1)}
+  >
     {zoomPercent}
   </button>
 </div>
-
-<style>
-  .keyboard-board {
-    position: relative;
-    display: flex;
-    min-width: 0;
-    min-height: 0;
-    flex: 1;
-    flex-direction: column;
-  }
-
-  .keyboard-board-viewport {
-    position: relative;
-    display: grid;
-    min-width: 0;
-    min-height: 260px;
-    flex: 1;
-    place-items: center;
-    overflow: auto;
-    padding: 28px 24px;
-    overscroll-behavior: contain;
-    touch-action: none;
-    user-select: none;
-    background:
-      linear-gradient(to right, oklch(0.13 0.01 60 / 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.13 0.01 60 / 0.04) 1px, transparent 1px),
-      radial-gradient(ellipse 70% 60% at 50% 35%, oklch(0.96 0.04 60 / 0.5), transparent 75%);
-    background-size:
-      24px 24px,
-      24px 24px,
-      100% 100%;
-    cursor: default;
-  }
-
-  .keyboard-board-viewport.lighting {
-    cursor: crosshair;
-  }
-
-  .keyboard-board-viewport.lighting :global(.board-keycap) {
-    cursor: crosshair;
-  }
-
-  .keyboard-board-viewport.panning,
-  .keyboard-board-viewport.panning :global(.board-keycap) {
-    cursor: grabbing;
-  }
-
-  .keyboard-board-surface {
-    position: relative;
-    min-width: max-content;
-    transition: transform 90ms var(--ease-out-soft, ease);
-    will-change: transform;
-  }
-
-  .key-plane {
-    position: absolute;
-    top: 0;
-    left: 0;
-  }
-
-  .combo-connectors {
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    width: 100%;
-    height: 100%;
-    overflow: visible;
-    pointer-events: none;
-  }
-
-  .combo-connector-hit,
-  .combo-connector-line {
-    fill: none;
-    vector-effect: non-scaling-stroke;
-  }
-
-  .combo-connector-hit {
-    stroke: transparent;
-    stroke-width: 14;
-  }
-
-  .combo-connector-line {
-    stroke: var(--mustard);
-    stroke-width: 1.25;
-    stroke-dasharray: 4 5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    opacity: 0.34;
-    mix-blend-mode: multiply;
-    shape-rendering: geometricPrecision;
-    transition:
-      filter 120ms ease,
-      opacity 120ms ease,
-      stroke 120ms ease,
-      stroke-width 120ms ease;
-  }
-
-  .combo-connector.combo-connector-active .combo-connector-line,
-  .combo-connector-line.active {
-    stroke: var(--coral);
-    stroke-width: 2.35;
-    opacity: 0.92;
-    filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--coral) 55%, transparent));
-  }
-
-  .split-seam {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 2;
-    width: 0;
-    border-left: 1px dashed var(--line-2);
-    pointer-events: none;
-  }
-
-  .split-label {
-    position: absolute;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    line-height: 1;
-    text-transform: uppercase;
-    transform: translateX(-50%);
-    white-space: nowrap;
-  }
-
-  .split-label .material-symbols-outlined {
-    font-size: 14px;
-  }
-
-  .zoom-readout {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    display: inline-grid;
-    min-width: 42px;
-    height: 22px;
-    place-items: center;
-    padding: 0 7px;
-    border: 1px solid rgba(24, 22, 20, 0.18);
-    border-radius: 6px;
-    color: var(--ink-2);
-    background: rgba(255, 252, 245, 0.78);
-    box-shadow: var(--shadow-card);
-    font-family: var(--mono);
-    font-size: 10px;
-    line-height: 1;
-  }
-
-  .zoom-readout:hover {
-    border-color: rgba(24, 22, 20, 0.34);
-    color: var(--ink);
-    background: var(--paper);
-  }
-
-  @media (max-width: 640px) {
-    .keyboard-board-viewport {
-      min-height: 220px;
-      padding: 18px 14px 28px;
-    }
-  }
-</style>

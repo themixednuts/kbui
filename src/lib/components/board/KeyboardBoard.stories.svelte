@@ -35,7 +35,7 @@
 
 <Story name="Keys Lens">
   {#snippet template()}
-    <div class="story-board">
+    <div class="story-board h-[520px] w-[min(1120px,100%)] overflow-hidden rounded-kb-3 border border-line bg-paper">
       <KeyboardBoard
         profile={keysProfile}
         activeLayer="base"
@@ -49,7 +49,7 @@
 
 <Story name="Lighting Lens">
   {#snippet template()}
-    <div class="story-board">
+    <div class="story-board h-[520px] w-[min(1120px,100%)] overflow-hidden rounded-kb-3 border border-line bg-paper">
       <KeyboardBoard
         profile={lightingProfile}
         activeLayer="base"
@@ -62,7 +62,9 @@
 
 <Story name="Split Layout">
   {#snippet template()}
-    <div class="story-board split">
+    <div
+      class="story-board split h-[440px] w-[min(1120px,100%)] overflow-hidden rounded-kb-3 border border-line bg-paper"
+    >
       <KeyboardBoard
         profile={splitProfile}
         activeLayer="base"
@@ -73,18 +75,3 @@
     </div>
   {/snippet}
 </Story>
-
-<style>
-  .story-board {
-    width: min(1120px, 100%);
-    height: 520px;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: var(--r-3);
-    background: var(--paper);
-  }
-
-  .story-board.split {
-    height: 440px;
-  }
-</style>
