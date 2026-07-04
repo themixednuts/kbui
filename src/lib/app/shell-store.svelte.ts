@@ -1,3 +1,5 @@
+import { getContext, setContext } from "svelte";
+
 export type AppRouteId = "connect" | "editor" | "browse" | "library" | "versions" | "settings";
 
 export interface ShellNavItem {
@@ -53,6 +55,8 @@ export interface ShellPlaceMode {
   kind: "macro" | "tapDance" | "combo";
   label: string;
 }
+
+const SHELL_CONTEXT = Symbol("kbgui.shell");
 
 export const appNavItems = [
   { id: "connect", href: "/connect", icon: "cable", label: "Connect", title: "Connect" },
@@ -194,4 +198,24 @@ export class ShellStore {
   closeProfile() {
     this.profileOpen = false;
   }
+
+  setDirty(count: number) {
+    this.dirty = Math.max(0, Math.floor(count));
+  }
+
+  setDevice(device: ShellDevice) {
+    this.device = device;
+  }
+
+  setCurrentVariant(variant: ShellVariant) {
+    this.currentVariant = variant;
+  }
+}
+
+export function setShellContext(shell: ShellStore) {
+  setContext(SHELL_CONTEXT, shell);
+}
+
+export function getShellContext(): ShellStore {
+  return getContext<ShellStore>(SHELL_CONTEXT);
 }

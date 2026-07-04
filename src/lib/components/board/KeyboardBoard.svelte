@@ -36,6 +36,7 @@
     class?: string;
     comboMarker?: Snippet<[BoardKeyViewModel]>;
     layerMarker?: Snippet<[BoardKeyViewModel]>;
+    targetOs?: "mac" | "windows" | "linux";
     onSelectKey?: (keyId: string) => void;
     onToggleKey?: (keyId: string) => void;
     onClearSelection?: () => void;
@@ -56,6 +57,7 @@
     class: className = "",
     comboMarker,
     layerMarker,
+    targetOs,
     onSelectKey,
     onToggleKey,
     onClearSelection,
@@ -90,6 +92,7 @@
       marked,
       showFallthrough,
       split,
+      targetOs,
     }),
   );
   const baseUnit = $derived(computeBoardUnit(model, viewportWidth));

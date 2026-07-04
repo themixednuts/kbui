@@ -8,6 +8,7 @@
   import Button from "$lib/components/ui/Button.svelte";
   import Chip from "$lib/components/ui/Chip.svelte";
   import {
+    setShellContext,
     routeTitleFromPath,
     ShellStore,
     type ShellSessionUser,
@@ -16,6 +17,7 @@
   let { children } = $props();
 
   const shell = new ShellStore();
+  setShellContext(shell);
   const pathname = $derived(page.url.pathname);
   const routeTitle = $derived(routeTitleFromPath(pathname));
   const accountAvatar = $derived(

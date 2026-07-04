@@ -15,6 +15,7 @@ function bindingLabel(binding?: KeyBinding): string {
   if (binding.tap) parts.push(`tap:${binding.tap}`);
   if (binding.hold) parts.push(`hold:${binding.hold}`);
   if (binding.macroId) parts.push(`macro:${binding.macroId}`);
+  if (binding.notes) parts.push(`notes:${binding.notes}`);
   return parts.join(" ");
 }
 
