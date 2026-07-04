@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CheckCircle2, Eye, GitFork, Heart, Keyboard, Layers, ShieldCheck } from "@lucide/svelte";
+  import { Eye, GitFork, Heart, Keyboard, Layers, ShieldCheck } from "@lucide/svelte";
 
   import { Button, Chip } from "$lib/components/ui";
   import type { CommunityKeymapCard } from "$lib/community/types";
@@ -13,6 +13,7 @@
   let { card, onpreview, ontag }: Props = $props();
 
   const cells = $derived(previewCells(card));
+  const isOfficial = $derived(card.source === "official");
   const authorLabel = $derived(card.author.handle ? `@${card.author.handle}` : card.author.displayName);
   const initials = $derived(
     card.author.displayName
@@ -54,8 +55,8 @@
   <div class="card-body">
     <div class="title-row">
       <h3>{card.title}</h3>
-      {#if card.official}
-        <Chip tone="warning" title="Official seed map">
+      {#if isOfficial}
+        <Chip tone="warning" title="First-party curated keymap">
           <ShieldCheck size={13} aria-hidden="true" />
           Official
         </Chip>
@@ -90,12 +91,6 @@
         <GitFork size={13} aria-hidden="true" />
         {formatCount(card.adoptionsCount)}
       </span>
-      {#if card.compileVerified}
-        <span class="verified" title="Demo compile verified">
-          <CheckCircle2 size={13} aria-hidden="true" />
-          compiles
-        </span>
-      {/if}
       <span title={`${card.keyCount} keys`}>
         <Keyboard size={13} aria-hidden="true" />
         {card.keyCount}
@@ -271,10 +266,6 @@
     align-items: center;
     gap: 4px;
     min-height: 22px;
-  }
-
-  .signal-row .verified {
-    color: oklch(0.35 0.12 150);
   }
 
   .signal-row .liked {

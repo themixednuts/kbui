@@ -48,16 +48,9 @@ export const communityKeymap = sqliteTable(
     adoptionsCount: integer("adoptions_count").notNull().default(0),
     reportsCount: integer("reports_count").notNull().default(0),
 
-    compileStatus: text("compile_status", {
-      enum: ["unverified", "pending", "verified", "failed"],
-    })
+    source: text("source", { enum: ["official", "community"] })
       .notNull()
-      .default("unverified"),
-    compileVerifiedAt: integer("compile_verified_at", { mode: "timestamp_ms" }),
-    compileTarget: text("compile_target"),
-    compileLogR2Key: text("compile_log_r2_key"),
-
-    official: integer("official", { mode: "boolean" }).notNull().default(false),
+      .default("community"),
     visibility: text("visibility", { enum: ["public", "unlisted", "hidden"] })
       .notNull()
       .default("public"),
@@ -80,7 +73,7 @@ export const communityKeymap = sqliteTable(
     index("community_keymap_board_identity_idx").on(table.vendorId, table.productId),
     index("community_keymap_likes_idx").on(table.visibility, table.likesCount),
     index("community_keymap_new_idx").on(table.visibility, table.createdAt),
-    index("community_keymap_official_idx").on(table.official),
+    index("community_keymap_source_idx").on(table.source),
   ],
 );
 

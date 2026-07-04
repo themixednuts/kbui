@@ -32,6 +32,7 @@ import {
   type CommunityKeymapCard,
   type CommunityKeymapDetail,
   type CommunityKeymapListInput,
+  type CommunityKeymapSource,
   type CommunityMutationUser,
 } from "$lib/community/types";
 import type { StoredDeviceProfile } from "$lib/keyboard/schema";
@@ -56,8 +57,7 @@ interface CommunityDbRow {
   layersCount: number;
   likesCount: number;
   adoptionsCount: number;
-  compileStatus: string;
-  official: boolean;
+  source: string | null;
   note: string;
   createdAt: Date | number | string;
   updatedAt: Date | number | string;
@@ -319,6 +319,8 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
   }
 
   private async ensureSeed() {
+    const resetSeedMetrics = await this.shouldResetSeedMetrics();
+
     for (const author of communitySeedAuthors) {
       await this.#db
         .insert(communityUser)
@@ -350,7 +352,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
         .values(values)
         .onConflictDoUpdate({
           target: communityKeymap.id,
-          set: keymapUpdateValues(seed),
+          set: keymapUpdateValues(seed, { resetMetrics: resetSeedMetrics }),
         });
 
       await this.#db
@@ -381,6 +383,15 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
     console.log(`[CommunityAgent] seeded ${communitySeedKeymaps.length} community keymap(s)`);
   }
 
+  private async shouldResetSeedMetrics(): Promise<boolean> {
+    const rows = await this.#db
+      .select({ version: communitySeed.version })
+      .from(communitySeed)
+      .where(eq(communitySeed.id, COMMUNITY_SEED_ID))
+      .limit(1);
+    return rows[0]?.version !== COMMUNITY_SEED_VERSION;
+  }
+
   private async selectCards(input: CommunityKeymapListInput): Promise<CommunityDbRow[]> {
     const conditions: SQL[] = [
       ne(communityKeymap.visibility, "hidden"),
@@ -397,7 +408,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
         )
       `);
     }
-    if (input.officialOnly) conditions.push(eq(communityKeymap.official, true));
+    if (input.officialOnly) conditions.push(eq(communityKeymap.source, "official"));
     if (input.compatibleWithCatalogId) {
       conditions.push(eq(communityKeymap.catalogId, input.compatibleWithCatalogId));
     } else {
@@ -554,11 +565,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
         likes_count INTEGER NOT NULL DEFAULT 0,
         adoptions_count INTEGER NOT NULL DEFAULT 0,
         reports_count INTEGER NOT NULL DEFAULT 0,
-        compile_status TEXT NOT NULL DEFAULT 'unverified',
-        compile_verified_at INTEGER,
-        compile_target TEXT,
-        compile_log_r2_key TEXT,
-        official INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'community',
         visibility TEXT NOT NULL DEFAULT 'public',
         moderation_state TEXT NOT NULL DEFAULT 'ok',
         payload_format TEXT NOT NULL,
@@ -585,8 +592,9 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
       CREATE INDEX IF NOT EXISTS community_keymap_new_idx
       ON community_keymap (visibility, created_at)
     `;
+    this.ensureCommunityKeymapSourceColumn();
     void this
-      .sql`CREATE INDEX IF NOT EXISTS community_keymap_official_idx ON community_keymap (official)`;
+      .sql`CREATE INDEX IF NOT EXISTS community_keymap_source_idx ON community_keymap (source)`;
 
     void this.sql`
       CREATE TABLE IF NOT EXISTS community_keymap_tag (
@@ -659,6 +667,15 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
       )
     `;
   }
+
+  private ensureCommunityKeymapSourceColumn() {
+    try {
+      void this
+        .sql`ALTER TABLE community_keymap ADD COLUMN source TEXT NOT NULL DEFAULT 'community'`;
+    } catch (error) {
+      if (!isDuplicateColumnError(error)) throw error;
+    }
+  }
 }
 
 const cardSelection = {
@@ -676,8 +693,7 @@ const cardSelection = {
   layersCount: communityKeymap.layersCount,
   likesCount: communityKeymap.likesCount,
   adoptionsCount: communityKeymap.adoptionsCount,
-  compileStatus: communityKeymap.compileStatus,
-  official: communityKeymap.official,
+  source: communityKeymap.source,
   note: communityKeymap.note,
   createdAt: communityKeymap.createdAt,
   updatedAt: communityKeymap.updatedAt,
@@ -714,11 +730,7 @@ function keymapValues(seed: CommunitySeedKeymap) {
     likesCount: seed.likesCount,
     adoptionsCount: seed.adoptionsCount,
     reportsCount: seed.reportsCount,
-    compileStatus: seed.compileStatus,
-    compileVerifiedAt: dateFromIso(seed.compileVerifiedAt),
-    compileTarget: seed.compileTarget,
-    compileLogR2Key: null,
-    official: seed.official,
+    source: seed.source,
     visibility: seed.visibility,
     moderationState: seed.moderationState,
     payloadFormat: seed.payloadFormat,
@@ -729,8 +741,11 @@ function keymapValues(seed: CommunitySeedKeymap) {
   };
 }
 
-function keymapUpdateValues(seed: CommunitySeedKeymap) {
-  const { id: _id, ...values } = keymapValues(seed);
+function keymapUpdateValues(seed: CommunitySeedKeymap, options: { resetMetrics: boolean }) {
+  const { id: _id, likesCount, adoptionsCount, reportsCount, ...values } = keymapValues(seed);
+  if (options.resetMetrics) {
+    return { ...values, likesCount, adoptionsCount, reportsCount };
+  }
   return values;
 }
 
@@ -741,6 +756,7 @@ function rowToCard(
   return {
     id: row.id,
     title: row.title,
+    source: communityKeymapSourceFromDb(row.source),
     author: {
       id: row.authorId,
       handle: row.authorHandle ?? undefined,
@@ -758,8 +774,6 @@ function rowToCard(
     layersCount: row.layersCount,
     likesCount: row.likesCount,
     adoptionsCount: row.adoptionsCount,
-    compileVerified: row.compileStatus === "verified",
-    official: row.official,
     note: row.note,
     highlights: parseStringRecord(row.highlightsJson),
     createdAt: isoFromDbDate(row.createdAt),
@@ -767,6 +781,14 @@ function rowToCard(
     likedByViewer: viewerState.liked.has(row.id),
     adoptedByViewer: viewerState.adopted.has(row.id),
   };
+}
+
+function communityKeymapSourceFromDb(value: CommunityDbRow["source"]): CommunityKeymapSource {
+  return value === "official" ? "official" : "community";
+}
+
+function isDuplicateColumnError(error: unknown): boolean {
+  return error instanceof Error && /duplicate column name/i.test(error.message);
 }
 
 function dateFromIso(value: string): Date {

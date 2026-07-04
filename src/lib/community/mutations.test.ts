@@ -224,6 +224,7 @@ function testDetail(): CommunityKeymapDetail & {
   return {
     id: "cm-test",
     title: "Test Community Layout",
+    source: "community",
     author: {
       id: "author-1",
       handle: "quante",
@@ -242,8 +243,6 @@ function testDetail(): CommunityKeymapDetail & {
     likesCount: 0,
     adoptionsCount: 0,
     reportsCount: 0,
-    compileVerified: false,
-    official: false,
     note: "A test keymap.",
     highlights: {},
     createdAt: "2026-07-04T00:00:00.000Z",

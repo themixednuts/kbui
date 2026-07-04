@@ -14,24 +14,29 @@ import {
 import {
   COMMUNITY_PAYLOAD_FORMAT,
   type CommunityAuthor,
-  type CommunityCompileStatus,
   type CommunityKeymapCard,
   type CommunityKeymapDetail,
+  type CommunityKeymapSource,
   type CommunityModerationState,
   type CommunityVisibility,
 } from "./types";
 
 export const COMMUNITY_AGENT_NAME = "global-community";
 export const COMMUNITY_SEED_ID = "prototype-community-keymaps";
-export const COMMUNITY_SEED_VERSION = "wave-4a-i-2026-07-04";
+export const COMMUNITY_SEED_VERSION = "wave-4a-demock-1d-2026-07-04";
 export const COMMUNITY_SEED_APPLIED_AT = "2026-07-04T00:00:00.000Z";
 
 type SeedBoardId = "65" | "3x5+2";
+const OFFICIAL_SEED_AUTHOR: CommunityAuthor = {
+  id: "official:kbgui",
+  displayName: "kbgui Official",
+};
 
 export interface CommunitySeedKeymap {
   id: string;
   title: string;
   slug: string;
+  source: CommunityKeymapSource;
   author: CommunityAuthor;
   catalogId: string;
   vendorId: number;
@@ -45,10 +50,6 @@ export interface CommunitySeedKeymap {
   likesCount: number;
   adoptionsCount: number;
   reportsCount: number;
-  compileStatus: CommunityCompileStatus;
-  compileVerifiedAt: string;
-  compileTarget: string;
-  official: boolean;
   visibility: CommunityVisibility;
   moderationState: CommunityModerationState;
   note: string;
@@ -63,41 +64,21 @@ export interface CommunitySeedKeymap {
 interface PrototypeCommunityMap {
   id: string;
   title: string;
-  authorHandle: string;
   board: SeedBoardId;
   tags: string[];
   layersCount: number;
-  likesCount: number;
-  adoptionsCount: number;
-  official?: boolean;
   note: string;
   highlights: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
 }
-
-const authorDisplayNames: Record<string, string> = {
-  quante: "Quante",
-  dvorak_dan: "Dvorak Dan",
-  frags: "Frags",
-  mikroko: "Mikroko",
-  aria: "Aria",
-  klakson: "Klakson Labs",
-};
 
 const prototypeCommunityMaps = [
   {
     id: "cm1",
     title: "Miryoku-ish 34",
-    authorHandle: "quante",
     board: "3x5+2",
     tags: ["ergo", "homerow-mods"],
     layersCount: 5,
-    likesCount: 1284,
-    adoptionsCount: 412,
-    createdAt: "2026-05-18T14:10:00.000Z",
-    updatedAt: "2026-06-20T14:10:00.000Z",
-    note: "Layer-per-thumb, GACS home row. My daily driver for two years.",
+    note: "Layer-per-thumb, GACS home row. Curated as a compact ergonomic starter.",
     highlights: {
       "1,3": "var(--teal)",
       "1,6": "var(--teal)",
@@ -108,15 +89,10 @@ const prototypeCommunityMaps = [
   {
     id: "cm2",
     title: "Workbench Programmer",
-    authorHandle: "dvorak_dan",
     board: "65",
     tags: ["programmer", "symbols"],
     layersCount: 4,
-    likesCount: 903,
-    adoptionsCount: 356,
-    createdAt: "2026-05-28T09:20:00.000Z",
-    updatedAt: "2026-06-29T09:20:00.000Z",
-    note: "SYM layer tuned for Rust & TS. Brackets on the home row.",
+    note: "SYM layer tuned for Rust and TypeScript, with bracket access near the home row.",
     highlights: {
       "2,1": "var(--lilac)",
       "2,2": "var(--lilac)",
@@ -126,15 +102,10 @@ const prototypeCommunityMaps = [
   {
     id: "cm3",
     title: "Gaming 65 (no HRM)",
-    authorHandle: "frags",
     board: "65",
     tags: ["gaming"],
     layersCount: 3,
-    likesCount: 671,
-    adoptionsCount: 512,
-    createdAt: "2026-04-22T19:40:00.000Z",
-    updatedAt: "2026-06-04T19:40:00.000Z",
-    note: "No home-row mods so WASD never mis-fires mid-fight.",
+    note: "No home-row mods, keeping WASD and nearby game keys direct.",
     highlights: {
       "3,1": "var(--mustard)",
       "3,2": "var(--mustard)",
@@ -145,14 +116,9 @@ const prototypeCommunityMaps = [
   {
     id: "cm4",
     title: "Corney Colemak-DH",
-    authorHandle: "mikroko",
     board: "3x5+2",
     tags: ["colemak", "ergo"],
     layersCount: 4,
-    likesCount: 588,
-    adoptionsCount: 190,
-    createdAt: "2026-05-14T11:05:00.000Z",
-    updatedAt: "2026-06-13T11:05:00.000Z",
     note: "Colemak-DH with a tidy number row on the right thumb layer.",
     highlights: {
       "0,0": "var(--teal)",
@@ -163,15 +129,10 @@ const prototypeCommunityMaps = [
   {
     id: "cm5",
     title: "One-hand NAV 65",
-    authorHandle: "aria",
     board: "65",
     tags: ["accessibility", "nav"],
     layersCount: 4,
-    likesCount: 442,
-    adoptionsCount: 98,
-    createdAt: "2026-05-31T16:35:00.000Z",
-    updatedAt: "2026-06-28T16:35:00.000Z",
-    note: "Sticky mods + big NAV cluster for low-effort one-handed use.",
+    note: "Sticky mods and a larger NAV cluster for lower-effort one-handed use.",
     highlights: {
       "2,6": "var(--mint)",
       "2,7": "var(--mint)",
@@ -182,16 +143,10 @@ const prototypeCommunityMaps = [
   {
     id: "cm6",
     title: "Minimal starter 34",
-    authorHandle: "klakson",
     board: "3x5+2",
     tags: ["beginner"],
     layersCount: 3,
-    likesCount: 2050,
-    adoptionsCount: 1340,
-    official: true,
-    createdAt: "2026-05-21T08:30:00.000Z",
-    updatedAt: "2026-06-27T08:30:00.000Z",
-    note: "A clean, well-commented base to learn split layers. Official.",
+    note: "A clean, first-party base for learning split keyboard layers.",
     highlights: {},
   },
 ] as const satisfies readonly PrototypeCommunityMap[];
@@ -223,6 +178,7 @@ export function seedToCard(seed: CommunitySeedKeymap): CommunityKeymapCard {
   return {
     id: seed.id,
     title: seed.title,
+    source: seed.source,
     author: seed.author,
     catalogId: seed.catalogId,
     vendorId: seed.vendorId,
@@ -235,8 +191,6 @@ export function seedToCard(seed: CommunitySeedKeymap): CommunityKeymapCard {
     layersCount: seed.layersCount,
     likesCount: seed.likesCount,
     adoptionsCount: seed.adoptionsCount,
-    compileVerified: seed.compileStatus === "verified",
-    official: seed.official,
     note: seed.note,
     highlights: { ...seed.highlights },
     createdAt: seed.createdAt,
@@ -258,13 +212,13 @@ export function seedToDetail(seed: CommunitySeedKeymap): CommunityKeymapDetail {
 function buildSeedKeymap(map: PrototypeCommunityMap): CommunitySeedKeymap {
   const profile = createSeedProfile(map);
   const payload = encodeDeviceProfileForStorage(profile);
-  const author = seedAuthor(map.authorHandle);
 
   return {
     id: map.id,
     title: map.title,
     slug: slugFor(map.title, map.id),
-    author,
+    source: "official",
+    author: OFFICIAL_SEED_AUTHOR,
     catalogId: baseProfileForBoard(map.board).id,
     vendorId: profile.vendorId,
     productId: profile.productId,
@@ -274,13 +228,9 @@ function buildSeedKeymap(map: PrototypeCommunityMap): CommunitySeedKeymap {
     keyCount: profile.keys.length,
     tags: [...map.tags],
     layersCount: map.layersCount,
-    likesCount: map.likesCount,
-    adoptionsCount: map.adoptionsCount,
+    likesCount: 0,
+    adoptionsCount: 0,
     reportsCount: 0,
-    compileStatus: "verified",
-    compileVerifiedAt: map.updatedAt,
-    compileTarget: "demo-seed-wave-4a",
-    official: map.official ?? false,
     visibility: "public",
     moderationState: "ok",
     note: map.note,
@@ -288,16 +238,8 @@ function buildSeedKeymap(map: PrototypeCommunityMap): CommunitySeedKeymap {
     payloadFormat: COMMUNITY_PAYLOAD_FORMAT,
     profile: payload,
     payloadHash: payloadHash(payload),
-    createdAt: map.createdAt,
-    updatedAt: map.updatedAt,
-  };
-}
-
-function seedAuthor(handle: string): CommunityAuthor {
-  return {
-    id: `seed:${handle}`,
-    handle,
-    displayName: authorDisplayNames[handle] ?? titleCase(handle),
+    createdAt: COMMUNITY_SEED_APPLIED_AT,
+    updatedAt: COMMUNITY_SEED_APPLIED_AT,
   };
 }
 
@@ -307,7 +249,7 @@ function createSeedProfile(map: PrototypeCommunityMap): DeviceProfile {
 
   profile.id = `community-${map.id}`;
   profile.name = map.title;
-  profile.updatedAt = map.updatedAt;
+  profile.updatedAt = COMMUNITY_SEED_APPLIED_AT;
   profile.layers = layersForCount(profile, map.layersCount);
 
   return profile;
@@ -344,14 +286,6 @@ function slugFor(title: string, id: string): string {
       .replace(/(^-|-$)/g, "")
       .slice(0, 60) || id;
   return `${slug}-${id}`;
-}
-
-function titleCase(value: string): string {
-  return value
-    .split(/[_-]+/)
-    .filter(Boolean)
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
 }
 
 function payloadHash(payload: StoredDeviceProfile): string {

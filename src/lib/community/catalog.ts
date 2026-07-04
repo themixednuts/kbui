@@ -29,7 +29,7 @@ export function filterAndSortCommunityCards<TCard extends CommunityKeymapCard>(
   return cards
     .filter((card) => {
       if (tag && !card.tags.some((candidate) => candidate.toLowerCase() === tag)) return false;
-      if (input.officialOnly && !card.official) return false;
+      if (input.officialOnly && card.source !== "official") return false;
       if (input.compatibleWithCatalogId && card.catalogId !== input.compatibleWithCatalogId) {
         return false;
       }

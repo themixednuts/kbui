@@ -5,7 +5,7 @@ export const COMMUNITY_DEFAULT_LIMIT = 24;
 export const COMMUNITY_MAX_LIMIT = 50;
 
 export type CommunityKeymapSort = "likes" | "new" | "adoptions";
-export type CommunityCompileStatus = "unverified" | "pending" | "verified" | "failed";
+export type CommunityKeymapSource = "official" | "community";
 export type CommunityVisibility = "public" | "unlisted" | "hidden";
 export type CommunityModerationState = "ok" | "review_pending" | "hidden";
 export type CommunityReportReason =
@@ -53,14 +53,13 @@ export interface CommunityCatalogIdentity {
 export interface CommunityKeymapCard extends CommunityCatalogIdentity {
   id: string;
   title: string;
+  source: CommunityKeymapSource;
   author: CommunityAuthor;
   boardName: string;
   tags: string[];
   layersCount: number;
   likesCount: number;
   adoptionsCount: number;
-  compileVerified: boolean;
-  official: boolean;
   note: string;
   highlights: Record<string, string>;
   createdAt: string;

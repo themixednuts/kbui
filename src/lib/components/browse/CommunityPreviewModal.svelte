@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     AlertTriangle,
-    CheckCircle2,
     Flag,
     GitFork,
     Heart,
@@ -56,6 +55,7 @@
   const authorLabel = $derived(
     detail?.author.handle ? `@${detail.author.handle}` : (detail?.author.displayName ?? ""),
   );
+  const isOfficial = $derived(detail?.source === "official");
 
   $effect(() => {
     if (!detail?.id) return;
@@ -98,7 +98,14 @@
           </span>
           <div>
             <h2>{detail.title}</h2>
-            <p>{authorLabel} · {detail.boardName} · updated {formatDate(detail.updatedAt)}</p>
+            <p>
+              {authorLabel} · {detail.boardName} ·
+              {#if isOfficial}
+                Official curated layout
+              {:else}
+                updated {formatDate(detail.updatedAt)}
+              {/if}
+            </p>
           </div>
         {:else}
           <div>
@@ -137,16 +144,10 @@
 
         <aside class="detail-panel">
           <div class="badge-row">
-            {#if detail.official}
-              <Chip tone="warning" title="Official seed map">
+            {#if isOfficial}
+              <Chip tone="warning" title="First-party curated keymap">
                 <ShieldCheck size={13} aria-hidden="true" />
                 Official
-              </Chip>
-            {/if}
-            {#if detail.compileVerified}
-              <Chip tone="success" title="Demo compile verified">
-                <CheckCircle2 size={13} aria-hidden="true" />
-                Compiles
               </Chip>
             {/if}
           </div>
