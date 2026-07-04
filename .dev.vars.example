@@ -20,3 +20,11 @@ BETTER_AUTH_URL="http://127.0.0.1:8787"
 # 3. Restart `wrangler dev`.
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
+
+# --- Monkeytype data sync -------------------------------------------------
+# Encrypts stored ApeKeys in AuthAgent Durable Object SQLite.
+# Generate a 32-byte base64 key with:
+#   openssl rand -base64 32
+# Production:
+#   vp exec wrangler secret put MONKEYTYPE_SECRET_KEY
+MONKEYTYPE_SECRET_KEY="replace-with-32-byte-base64-secret"

@@ -64,3 +64,27 @@ export const verification = sqliteTable(
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
+
+export const monkeytypeConnection = sqliteTable(
+  "monkeytype_connection",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    apeKeyCiphertext: text("ape_key_ciphertext").notNull(),
+    apeKeyIv: text("ape_key_iv").notNull(),
+    username: text("username"),
+    mode: text("mode").notNull(),
+    mode2: text("mode2").notNull(),
+    summaryJson: text("summary_json"),
+    lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
+    rateLimitResetAt: integer("rate_limit_reset_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("monkeytype_connection_user_id_idx").on(table.userId),
+    index("monkeytype_connection_rate_limit_reset_idx").on(table.rateLimitResetAt),
+  ],
+);

@@ -20,6 +20,7 @@ declare global {
         BETTER_AUTH_URL?: string;
         GITHUB_CLIENT_ID?: string;
         GITHUB_CLIENT_SECRET?: string;
+        MONKEYTYPE_SECRET_KEY?: string;
         GITHUB_TOKEN?: string;
         VIA_GITHUB_TOKEN?: string;
       };

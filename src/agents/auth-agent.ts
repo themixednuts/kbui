@@ -4,12 +4,14 @@ import { betterAuth } from "better-auth";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 
 import * as authSchema from "$lib/server/auth/schema";
+import { monkeytypePlugin } from "$lib/server/auth/monkeytype-plugin";
 
 interface AuthAgentEnv extends Cloudflare.Env {
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
+  MONKEYTYPE_SECRET_KEY?: string;
 }
 
 interface AuthAgentState {
@@ -124,6 +126,11 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
                 },
               }
             : {},
+        plugins: [
+          monkeytypePlugin({
+            secretKey: this.#agentEnv.MONKEYTYPE_SECRET_KEY,
+          }),
+        ],
         trustedOrigins: [
           "http://localhost:5173",
           "http://127.0.0.1:5173",
@@ -211,5 +218,32 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
 
     void this
       .sql`CREATE INDEX IF NOT EXISTS verification_identifier_idx ON verification (identifier)`;
+
+    void this.sql`
+      CREATE TABLE IF NOT EXISTS monkeytype_connection (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        ape_key_ciphertext TEXT NOT NULL,
+        ape_key_iv TEXT NOT NULL,
+        username TEXT,
+        mode TEXT NOT NULL,
+        mode2 TEXT NOT NULL,
+        summary_json TEXT,
+        last_synced_at INTEGER,
+        rate_limit_reset_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `;
+
+    void this.sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS monkeytype_connection_user_id_idx
+      ON monkeytype_connection (user_id)
+    `;
+
+    void this.sql`
+      CREATE INDEX IF NOT EXISTS monkeytype_connection_rate_limit_reset_idx
+      ON monkeytype_connection (rate_limit_reset_at)
+    `;
   }
 }

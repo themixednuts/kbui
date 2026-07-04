@@ -2,6 +2,8 @@
   import { browser } from "$app/environment";
 
   import { Accent, runApp, TargetOS } from "$lib/app";
+  import { authClient } from "$lib/auth-client";
+  import { DEFAULT_MONKEYTYPE_MODE, DEFAULT_MONKEYTYPE_MODE2 } from "$lib/monkeytype/types";
   import {
     Button,
     Card,
@@ -11,6 +13,7 @@
     ToggleGroup,
   } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
+  import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import type { KeyboardSettings } from "$lib/keyboard/schema";
   import {
@@ -23,12 +26,26 @@
     type SplitTransport,
   } from "$lib/keyboard/split-transport";
 
+  type AuthClientError = {
+    code?: string;
+    message?: string;
+    status?: number;
+    statusText?: string;
+  };
+
   type BehaviorToggleKey = "permissiveHold" | "retroTapping" | "nkro";
 
+  const shell = getShellContext();
   const workbench = getWorkbenchContext();
   let accentId = $state<Accent.AccentId>(Accent.DEFAULT_ACCENT_ID);
   let accentLoaded = $state(false);
   let preferenceError = $state<string | null>(null);
+  let monkeytypeApeKey = $state("");
+  let monkeytypeUsername = $state("");
+  let monkeytypePreset = $state(`${DEFAULT_MONKEYTYPE_MODE}:${DEFAULT_MONKEYTYPE_MODE2}`);
+  let monkeytypeBusy = $state(false);
+  let monkeytypeError = $state<string | null>(null);
+  let monkeytypeSeeded = $state(false);
 
   const profile = $derived(workbench.profile);
   const settings = $derived(profile.settings);
@@ -46,6 +63,17 @@
   const appPreferenceSummary = $derived(
     `${TargetOS.labels[workbench.targetOs]} key labels · ${Accent.accentById(accentId).label} accent`,
   );
+  const monkeytypeSignedIn = $derived(shell.account.status === "signed-in");
+  const monkeytypeCanSubmit = $derived(
+    monkeytypeSignedIn &&
+      !monkeytypeBusy &&
+      (shell.monkeytype.connected || monkeytypeApeKey.trim().length > 0),
+  );
+  const monkeytypeSummary = $derived(
+    shell.monkeytype.connected
+      ? `${statValue(shell.monkeytype.wpm)} wpm · ${statValue(shell.monkeytype.accuracy, 1)}%`
+      : "Not connected",
+  );
   const splitTransportCopy = $derived.by(() => {
     if (isZmkDevice(profile)) return "ZMK wireless split boards use BLE; wired TRRS modes stay locked.";
     if (isSplitKeyboard(profile)) return "Pick the link used by each half in generated firmware.";
@@ -57,6 +85,13 @@
     { value: "win", label: "Windows", title: "Use Windows shortcut labels" },
     { value: "linux", label: "Linux", title: "Use Linux shortcut labels" },
   ] satisfies SegmentItem<TargetOS.TargetOS>[];
+
+  const monkeytypePresets = [
+    { value: "time:60", label: "time 60", mode: "time", mode2: "60" },
+    { value: "time:15", label: "time 15", mode: "time", mode2: "15" },
+    { value: "words:50", label: "words 50", mode: "words", mode2: "50" },
+    { value: "words:25", label: "words 25", mode: "words", mode2: "25" },
+  ] as const;
 
   const behaviorToggles = [
     {
@@ -95,6 +130,17 @@
     });
   });
 
+  $effect(() => {
+    if (!shell.monkeytype.connected) {
+      monkeytypeSeeded = false;
+      return;
+    }
+    if (monkeytypeSeeded) return;
+    monkeytypeUsername = shell.monkeytype.username ?? "";
+    monkeytypePreset = `${shell.monkeytype.mode}:${shell.monkeytype.mode2}`;
+    monkeytypeSeeded = true;
+  });
+
   function updateTiming(key: "tappingTerm" | "debounce", value: number) {
     const next = Math.round(value);
     if (key === "tappingTerm") workbench.updateSettings({ tappingTerm: next });
@@ -128,6 +174,96 @@
     accentId = next;
     preferenceError = null;
     void runApp("Save accent", Accent.saveAndApply(next), capturePreferenceError);
+  }
+
+  async function connectMonkeytype(event: SubmitEvent) {
+    event.preventDefault();
+    if (!monkeytypeCanSubmit) return;
+
+    monkeytypeBusy = true;
+    monkeytypeError = null;
+
+    try {
+      const preset = monkeytypePresets.find((option) => option.value === monkeytypePreset);
+      const result = await authClient.monkeytype.connect({
+        apeKey: monkeytypeApeKey,
+        username: monkeytypeUsername,
+        mode: preset?.mode ?? DEFAULT_MONKEYTYPE_MODE,
+        mode2: preset?.mode2 ?? DEFAULT_MONKEYTYPE_MODE2,
+      });
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        monkeytypeError = clientErrorMessage(error, "Monkeytype connect failed");
+        return;
+      }
+      shell.setMonkeytypeStatus(result.data);
+      monkeytypeApeKey = "";
+    } catch (error) {
+      monkeytypeError = clientErrorMessage(error, "Monkeytype connect failed");
+    } finally {
+      monkeytypeBusy = false;
+    }
+  }
+
+  async function refreshMonkeytype() {
+    if (!shell.monkeytype.connected || monkeytypeBusy) return;
+    monkeytypeBusy = true;
+    monkeytypeError = null;
+    try {
+      const result = await authClient.monkeytype.refresh({ force: true });
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        monkeytypeError = clientErrorMessage(error, "Monkeytype refresh failed");
+        return;
+      }
+      shell.setMonkeytypeStatus(result.data);
+    } catch (error) {
+      monkeytypeError = clientErrorMessage(error, "Monkeytype refresh failed");
+    } finally {
+      monkeytypeBusy = false;
+    }
+  }
+
+  async function disconnectMonkeytype() {
+    if (!shell.monkeytype.connected || monkeytypeBusy) return;
+    monkeytypeBusy = true;
+    monkeytypeError = null;
+    try {
+      const result = await authClient.monkeytype.disconnect();
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        monkeytypeError = clientErrorMessage(error, "Monkeytype disconnect failed");
+        return;
+      }
+      shell.setMonkeytypeStatus(result.data);
+      monkeytypeApeKey = "";
+      monkeytypeUsername = "";
+      monkeytypePreset = `${DEFAULT_MONKEYTYPE_MODE}:${DEFAULT_MONKEYTYPE_MODE2}`;
+    } catch (error) {
+      monkeytypeError = clientErrorMessage(error, "Monkeytype disconnect failed");
+    } finally {
+      monkeytypeBusy = false;
+    }
+  }
+
+  function statValue(value: number | null, digits = 0, fallback = "--") {
+    if (value === null || !Number.isFinite(value)) return fallback;
+    return value.toLocaleString(undefined, {
+      maximumFractionDigits: digits,
+      minimumFractionDigits: digits,
+    });
+  }
+
+  function clientErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error) return error.message || fallback;
+    if (error && typeof error === "object") {
+      const authError = error as AuthClientError;
+      if (authError.message) return authError.message;
+      if (authError.statusText) return authError.statusText;
+      if (authError.status) return `${fallback} (${authError.status})`;
+      if (authError.code) return authError.code;
+    }
+    return fallback;
   }
 
   function capturePreferenceError(label: string, message: string) {
@@ -271,6 +407,108 @@
     </div>
 
     <aside class="app-column" aria-label="Application preferences">
+      <Card.Root class="settings-card monkeytype-card">
+        <Card.Header class="settings-card-header">
+          <div class="card-title-stack">
+            <Card.Title>Monkeytype</Card.Title>
+            <Card.Description>{monkeytypeSummary}</Card.Description>
+          </div>
+          <span class="scope-chip integration-scope" data-connected={shell.monkeytype.connected}>
+            {shell.monkeytype.connected ? "connected" : "data source"}
+          </span>
+        </Card.Header>
+        <Card.Content class="settings-card-body monkeytype-settings">
+          <div class="monkeytype-scoreboard" data-connected={shell.monkeytype.connected}>
+            <div>
+              <strong>{statValue(shell.monkeytype.wpm)}</strong>
+              <span>wpm avg</span>
+            </div>
+            <div>
+              <strong>{statValue(shell.monkeytype.accuracy, 1)}%</strong>
+              <span>accuracy</span>
+            </div>
+            <div>
+              <strong>{statValue(shell.monkeytype.pb)}</strong>
+              <span>pb wpm</span>
+            </div>
+            <div>
+              <strong>{statValue(shell.monkeytype.tests)}</strong>
+              <span>tests</span>
+            </div>
+          </div>
+
+          <form class="monkeytype-form" onsubmit={connectMonkeytype}>
+            <label class="monkeytype-field">
+              <span>ApeKey</span>
+              <input
+                class="input"
+                type="password"
+                bind:value={monkeytypeApeKey}
+                autocomplete="off"
+                spellcheck="false"
+                placeholder={shell.monkeytype.connected ? "Stored key stays encrypted" : "ApeKey"}
+              />
+            </label>
+
+            <label class="monkeytype-field">
+              <span>Username</span>
+              <input
+                class="input"
+                type="text"
+                bind:value={monkeytypeUsername}
+                autocomplete="username"
+                spellcheck="false"
+                placeholder="optional"
+              />
+            </label>
+
+            <label class="monkeytype-field monkeytype-preset">
+              <span>PB mode</span>
+              <select class="input" bind:value={monkeytypePreset}>
+                {#each monkeytypePresets as option (option.value)}
+                  <option value={option.value}>{option.label}</option>
+                {/each}
+              </select>
+            </label>
+
+            <div class="monkeytype-command-row">
+              <Button variant="coral" size="sm" type="submit" disabled={!monkeytypeCanSubmit}>
+                <span class="material-symbols-outlined" aria-hidden="true">link</span>
+                {shell.monkeytype.connected ? "Update" : "Connect"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={refreshMonkeytype}
+                disabled={!shell.monkeytype.connected || monkeytypeBusy}
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">sync</span>
+                Refresh
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={disconnectMonkeytype}
+                disabled={!shell.monkeytype.connected || monkeytypeBusy}
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">link_off</span>
+                Disconnect
+              </Button>
+            </div>
+          </form>
+
+          {#if !monkeytypeSignedIn}
+            <p class="monkeytype-error" role="status">Sign in with GitHub first.</p>
+          {:else if monkeytypeError || shell.monkeytype.error}
+            <p class="monkeytype-error" role="status">
+              {monkeytypeError ?? shell.monkeytype.error}
+            </p>
+          {:else if shell.monkeytype.connected && shell.monkeytype.stale}
+            <p class="monkeytype-note" role="status">Stale sync</p>
+          {/if}
+        </Card.Content>
+      </Card.Root>
+
       <Card.Root class="settings-card app-card">
         <Card.Header class="settings-card-header">
           <div class="card-title-stack">
@@ -436,6 +674,8 @@
   }
 
   .app-column {
+    display: grid;
+    gap: 16px;
     min-width: 0;
   }
 
@@ -481,6 +721,17 @@
   .app-scope {
     border-color: color-mix(in oklch, var(--teal) 34%, var(--line-2));
     background: color-mix(in oklch, var(--teal) 9%, var(--paper));
+  }
+
+  .integration-scope {
+    border-color: color-mix(in oklch, var(--coral) 34%, var(--line-2));
+    background: color-mix(in oklch, var(--coral) 9%, var(--paper));
+  }
+
+  .integration-scope[data-connected="true"] {
+    border-color: color-mix(in oklch, var(--mint) 48%, var(--line-2));
+    background: color-mix(in oklch, var(--mint) 13%, var(--paper));
+    color: oklch(0.36 0.12 155);
   }
 
   .transport-chip {
@@ -613,6 +864,116 @@
     display: grid;
     gap: 10px;
     min-width: 0;
+  }
+
+  :global(.monkeytype-settings) {
+    gap: 12px;
+  }
+
+  .monkeytype-scoreboard {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .monkeytype-scoreboard div {
+    display: grid;
+    gap: 2px;
+    min-height: 54px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper-2);
+  }
+
+  .monkeytype-scoreboard[data-connected="false"] div {
+    color: var(--ink-3);
+    background: color-mix(in oklch, var(--paper-2) 60%, transparent);
+  }
+
+  .monkeytype-scoreboard strong,
+  .monkeytype-scoreboard span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .monkeytype-scoreboard strong {
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .monkeytype-scoreboard span {
+    color: var(--ink-3);
+    font-size: 10.5px;
+  }
+
+  .monkeytype-form {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .monkeytype-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .monkeytype-field span {
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .monkeytype-field .input {
+    height: 34px;
+    border-color: var(--line-2);
+    background: var(--paper);
+  }
+
+  .monkeytype-preset select {
+    appearance: none;
+    background:
+      linear-gradient(45deg, transparent 50%, var(--ink-3) 50%) right 12px center / 6px 6px
+        no-repeat,
+      var(--paper);
+  }
+
+  .monkeytype-command-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .monkeytype-command-row :global(button) {
+    width: 100%;
+    justify-content: center;
+    padding-inline: 8px;
+  }
+
+  .monkeytype-error,
+  .monkeytype-note {
+    margin: 0;
+    padding: 9px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .monkeytype-error {
+    border: 1px solid oklch(0.62 0.2 25 / 0.3);
+    background: oklch(0.95 0.04 25);
+    color: oklch(0.42 0.15 25);
+  }
+
+  .monkeytype-note {
+    border: 1px solid color-mix(in oklch, var(--mustard) 42%, var(--line-2));
+    background: color-mix(in oklch, var(--mustard) 15%, var(--surface));
+    color: var(--ink-2);
   }
 
   .preference-head {
@@ -773,7 +1134,9 @@
     }
 
     :global(.settings-transport-grid),
-    .accent-grid {
+    .accent-grid,
+    .monkeytype-scoreboard,
+    .monkeytype-command-row {
       grid-template-columns: 1fr;
     }
   }

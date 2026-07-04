@@ -44,12 +44,19 @@
   const pathname = $derived(page.url.pathname);
   const routeTitle = $derived(routeTitleFromPath(pathname));
   const accountAvatar = $derived(shell.account.image ?? null);
+  const monkeytypeProfileUrl = $derived(
+    shell.monkeytype.username
+      ? `https://monkeytype.com/profile/${encodeURIComponent(shell.monkeytype.username)}`
+      : null,
+  );
 
   let authRequested = $state(false);
   let accentRequested = $state(false);
   let previousPathname = $state("");
   let lastSsrUserKey = $state(sessionUserKey(initialAuthUser));
   let authBusy = $state(false);
+  let monkeytypeRequestedFor = $state<string | null>(null);
+  let monkeytypeBusy = $state(false);
 
   $effect(() => {
     const user = data.auth?.user ?? null;
@@ -69,6 +76,18 @@
     if (!browser || authRequested) return;
     authRequested = true;
     void refreshSession();
+  });
+
+  $effect(() => {
+    if (!browser) return;
+    const userId = shell.account.status === "signed-in" ? (shell.account.id ?? null) : null;
+    if (!userId) {
+      monkeytypeRequestedFor = null;
+      return;
+    }
+    if (monkeytypeRequestedFor === userId) return;
+    monkeytypeRequestedFor = userId;
+    void loadMonkeytypeStatus();
   });
 
   $effect(() => {
@@ -109,6 +128,56 @@
       shell.setSessionUser(session?.user);
     } catch (error) {
       shell.setAuthError(authMessage(error, "Auth unavailable"));
+    }
+  }
+
+  async function loadMonkeytypeStatus() {
+    try {
+      const result = await authClient.monkeytype.status();
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        shell.setMonkeytypeError(errorMessage(error, "Monkeytype unavailable"));
+        return;
+      }
+      shell.setMonkeytypeStatus(result.data);
+    } catch (error) {
+      shell.setMonkeytypeError(errorMessage(error, "Monkeytype unavailable"));
+    }
+  }
+
+  async function refreshMonkeytype() {
+    if (monkeytypeBusy) return;
+    monkeytypeBusy = true;
+    try {
+      const result = await authClient.monkeytype.refresh({ force: true });
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        shell.setMonkeytypeError(errorMessage(error, "Monkeytype refresh failed"));
+        return;
+      }
+      shell.setMonkeytypeStatus(result.data);
+    } catch (error) {
+      shell.setMonkeytypeError(errorMessage(error, "Monkeytype refresh failed"));
+    } finally {
+      monkeytypeBusy = false;
+    }
+  }
+
+  async function disconnectMonkeytype() {
+    if (monkeytypeBusy) return;
+    monkeytypeBusy = true;
+    try {
+      const result = await authClient.monkeytype.disconnect();
+      const error = result.error as AuthClientError | null | undefined;
+      if (error) {
+        shell.setMonkeytypeError(errorMessage(error, "Monkeytype disconnect failed"));
+        return;
+      }
+      shell.setMonkeytypeStatus(result.data);
+    } catch (error) {
+      shell.setMonkeytypeError(errorMessage(error, "Monkeytype disconnect failed"));
+    } finally {
+      monkeytypeBusy = false;
     }
   }
 
@@ -196,6 +265,14 @@
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
+  function statValue(value: number | null, digits = 0, fallback = "--") {
+    if (value === null || !Number.isFinite(value)) return fallback;
+    return value.toLocaleString(undefined, {
+      maximumFractionDigits: digits,
+      minimumFractionDigits: digits,
+    });
+  }
+
   function handlePrimaryAction() {
     if (!shell.connected) {
       void goto("/connect");
@@ -273,9 +350,78 @@
               <div class="monkeytype-head">
                 <span class="material-symbols-outlined" aria-hidden="true">keyboard_alt</span>
                 <span>Monkeytype</span>
-                <span class="monkeytype-soon">Wave 3b</span>
+                {#if shell.monkeytype.connected && monkeytypeProfileUrl}
+                  <a class="monkeytype-open" href={monkeytypeProfileUrl} target="_blank" rel="noreferrer">
+                    open
+                    <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                  </a>
+                {:else if shell.monkeytype.connected}
+                  <span class="monkeytype-mode">{shell.monkeytype.mode}/{shell.monkeytype.mode2}</span>
+                {:else}
+                  <span class="monkeytype-mode">offline</span>
+                {/if}
               </div>
-              <div class="monkeytype-slot" aria-hidden="true"></div>
+              {#if shell.monkeytype.connected}
+                <div class="monkeytype-grid">
+                  <div class="monkeytype-stat">
+                    <strong>{statValue(shell.monkeytype.wpm)}</strong>
+                    <span>wpm avg</span>
+                  </div>
+                  <div class="monkeytype-stat">
+                    <strong>{statValue(shell.monkeytype.accuracy, 1)}%</strong>
+                    <span>accuracy</span>
+                  </div>
+                  <div class="monkeytype-stat">
+                    <strong>{statValue(shell.monkeytype.pb)}</strong>
+                    <span>pb wpm</span>
+                  </div>
+                  <div class="monkeytype-stat">
+                    <strong>{statValue(shell.monkeytype.tests)}</strong>
+                    <span>tests</span>
+                  </div>
+                </div>
+                {#if shell.monkeytype.error}
+                  <p class="monkeytype-error" role="status">{shell.monkeytype.error}</p>
+                {:else if shell.monkeytype.stale}
+                  <p class="monkeytype-note" role="status">Stale sync</p>
+                {/if}
+                <div class="monkeytype-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="monkeytype-action"
+                    onclick={refreshMonkeytype}
+                    disabled={monkeytypeBusy}
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true">sync</span>
+                    {monkeytypeBusy ? "Syncing" : "Refresh"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="monkeytype-action"
+                    onclick={disconnectMonkeytype}
+                    disabled={monkeytypeBusy}
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true">link_off</span>
+                    Disconnect
+                  </Button>
+                </div>
+              {:else}
+                <Button
+                  variant="coral"
+                  size="sm"
+                  class="monkeytype-connect"
+                  href="/settings"
+                  onclick={() => shell.closeProfile()}
+                >
+                  <span class="material-symbols-outlined" aria-hidden="true">link</span>
+                  Connect Monkeytype
+                </Button>
+                {#if shell.monkeytype.error}
+                  <p class="monkeytype-error" role="status">{shell.monkeytype.error}</p>
+                {/if}
+              {/if}
             </section>
 
             <div class="profile-divider"></div>
@@ -370,7 +516,7 @@
       {#if shell.activeMonkeytype}
         <Chip title="Monkeytype average">
           <span class="material-symbols-outlined chip-icon" aria-hidden="true">speed</span>
-          {shell.activeMonkeytype.wpm} wpm
+          {statValue(shell.activeMonkeytype.wpm)} wpm
         </Chip>
       {/if}
 
@@ -648,19 +794,92 @@
     font-size: 15px;
   }
 
-  .monkeytype-soon {
+  .monkeytype-mode,
+  .monkeytype-open {
     color: var(--ink-3);
     font-size: 9px;
     text-align: right;
   }
 
-  .monkeytype-slot {
-    min-height: 58px;
-    border: 1px dashed var(--line-2);
+  .monkeytype-open {
+    display: inline-grid;
+    grid-template-columns: auto 12px;
+    align-items: center;
+    gap: 3px;
+    color: var(--coral-ink);
+    font-family: var(--mono);
+    text-decoration: none;
+  }
+
+  .monkeytype-open .material-symbols-outlined {
+    font-size: 12px;
+  }
+
+  .monkeytype-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .monkeytype-stat {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 8px;
+    border: 1px solid var(--line);
     border-radius: 8px;
-    background:
-      linear-gradient(90deg, color-mix(in oklch, var(--surface-2) 66%, transparent), transparent),
-      var(--paper-2);
+    background: color-mix(in oklch, var(--paper-2) 76%, transparent);
+  }
+
+  .monkeytype-stat strong,
+  .monkeytype-stat span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .monkeytype-stat strong {
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  .monkeytype-stat span {
+    color: var(--ink-3);
+    font-size: 10px;
+  }
+
+  .monkeytype-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  :global(.monkeytype-action),
+  :global(.monkeytype-connect) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .monkeytype-error,
+  .monkeytype-note {
+    margin: 0;
+    padding: 7px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .monkeytype-error {
+    border: 1px solid oklch(0.62 0.2 25 / 0.26);
+    background: oklch(0.95 0.04 25);
+    color: oklch(0.42 0.15 25);
+  }
+
+  .monkeytype-note {
+    border: 1px solid color-mix(in oklch, var(--mustard) 42%, var(--line-2));
+    background: color-mix(in oklch, var(--mustard) 15%, var(--surface));
+    color: var(--ink-2);
   }
 
   .account-strip {

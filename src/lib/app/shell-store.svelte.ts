@@ -1,4 +1,9 @@
 import { getContext, setContext } from "svelte";
+import {
+  DEFAULT_MONKEYTYPE_MODE,
+  DEFAULT_MONKEYTYPE_MODE2,
+  type MonkeytypeConnectionStatus,
+} from "$lib/monkeytype/types";
 
 export type AppRouteId = "connect" | "editor" | "browse" | "library" | "versions" | "settings";
 
@@ -25,17 +30,24 @@ export interface ShellVariant {
 
 export interface ShellMonkeytype {
   connected: boolean;
-  wpm: number;
-  accuracy: number;
-  consistency: number;
-  pb: number;
-  tests: number;
+  username: string | null;
+  mode: string;
+  mode2: string;
+  wpm: number | null;
+  accuracy: number | null;
+  consistency: number | null;
+  pb: number | null;
+  tests: number | null;
+  lastSyncedAt: string | null;
+  stale: boolean;
+  error: string | null;
 }
 
 export type ShellAccountStatus = "loading" | "signed-in" | "signed-out";
 
 export interface ShellAccount {
   status: ShellAccountStatus;
+  id?: string;
   name: string;
   login: string;
   email?: string;
@@ -171,11 +183,17 @@ export class ShellStore {
 
   monkeytype = $state<ShellMonkeytype>({
     connected: false,
-    wpm: 98,
-    accuracy: 96.4,
-    consistency: 82,
-    pb: 121,
-    tests: 1240,
+    username: null,
+    mode: DEFAULT_MONKEYTYPE_MODE,
+    mode2: DEFAULT_MONKEYTYPE_MODE2,
+    wpm: null,
+    accuracy: null,
+    consistency: null,
+    pb: null,
+    tests: null,
+    lastSyncedAt: null,
+    stale: false,
+    error: null,
   });
 
   account = $state<ShellAccount>({
@@ -212,6 +230,7 @@ export class ShellStore {
     const name = user.name?.trim() || user.email || "GitHub user";
     this.account = {
       status: "signed-in",
+      id: user.id,
       name,
       login: loginFor(user, name),
       email: user.email ?? undefined,
@@ -229,6 +248,7 @@ export class ShellStore {
       initials: "LD",
       message,
     };
+    this.setMonkeytypeStatus(null);
   }
 
   setAuthError(message: string) {
@@ -238,6 +258,51 @@ export class ShellStore {
       login: "auth unavailable",
       initials: "LD",
       message,
+    };
+    this.setMonkeytypeStatus(null);
+  }
+
+  setMonkeytypeStatus(status: MonkeytypeConnectionStatus | null | undefined) {
+    if (!status?.connected) {
+      this.monkeytype = {
+        connected: false,
+        username: null,
+        mode: DEFAULT_MONKEYTYPE_MODE,
+        mode2: DEFAULT_MONKEYTYPE_MODE2,
+        wpm: null,
+        accuracy: null,
+        consistency: null,
+        pb: null,
+        tests: null,
+        lastSyncedAt: null,
+        stale: false,
+        error: status?.error?.message ?? null,
+      };
+      return;
+    }
+
+    const summary = status.summary;
+    this.monkeytype = {
+      connected: true,
+      username: status.username,
+      mode: status.mode,
+      mode2: status.mode2,
+      wpm: summary?.wpm ?? null,
+      accuracy: summary?.accuracy ?? null,
+      consistency: summary?.consistency ?? null,
+      pb: summary?.pb ?? null,
+      tests: summary?.tests ?? null,
+      lastSyncedAt: status.lastSyncedAt,
+      stale: status.stale,
+      error: status.error?.message ?? summary?.error?.message ?? null,
+    };
+  }
+
+  setMonkeytypeError(message: string) {
+    this.monkeytype = {
+      ...this.monkeytype,
+      stale: this.monkeytype.connected,
+      error: message,
     };
   }
 
