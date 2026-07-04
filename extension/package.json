@@ -1,0 +1,28 @@
+{
+  "name": "kbgui-monkeytype-tagger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone WXT extension for tagging Monkeytype runs with kbgui keyboard/layout context.",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "test": "vitest run",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.23.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@types/chrome": "^0.1.0",
+    "@wxt-dev/module-svelte": "^2.0.4",
+    "jsdom": "^27.2.0",
+    "svelte": "^5.56.4",
+    "typescript": "^6.0.3",
+    "vite": "^7.2.4",
+    "vitest": "^4.0.15",
+    "wxt": "^0.20.27"
+  }
+}

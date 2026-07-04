@@ -4,7 +4,7 @@ import agents from "agents/vite";
 import sqlocal from "sqlocal/vite";
 import { defineConfig } from "vite-plus";
 
-const externalArtifactPatterns = ["resources/**", "docs/redesign/**"];
+const externalArtifactPatterns = ["resources/**", "docs/redesign/**", "extension/**"];
 
 export default defineConfig({
   fmt: { ignorePatterns: externalArtifactPatterns },

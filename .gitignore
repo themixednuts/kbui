@@ -1,7 +1,10 @@
 node_modules
+extension/node_modules
 
 # Output
 .output
+extension/.output
+extension/.wxt
 .vercel
 .netlify
 .wrangler
