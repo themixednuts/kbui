@@ -4,6 +4,7 @@
   import { page } from "$app/state";
   import { Accent, runApp } from "$lib/app";
   import { authClient } from "$lib/auth-client";
+  import { cn } from "$lib/utils.js";
   import { onDestroy, untrack } from "svelte";
   import AvatarButton from "$lib/components/ui/AvatarButton.svelte";
   import Brand from "$lib/components/ui/Brand.svelte";
@@ -301,114 +302,200 @@
   function openVersionsForSavePoint() {
     void goto("/versions");
   }
+
+  const appShellClass =
+    "new-app-shell grid min-h-screen grid-cols-[208px_minmax(0,1fr)] overflow-hidden bg-[radial-gradient(ellipse_95%_75%_at_100%_0%,color-mix(in_oklch,var(--teal)_9%,transparent),transparent_58%),var(--paper)] text-ink max-[900px]:grid-cols-[72px_minmax(0,1fr)] max-[560px]:grid-cols-[58px_minmax(0,1fr)]";
+  const leftRailClass =
+    "left-rail relative z-[2] flex min-h-screen min-w-0 flex-col gap-[18px] border-r border-line bg-[color-mix(in_oklch,var(--surface)_78%,var(--paper))] max-[900px]:gap-[12px]";
+  const railBrandClass =
+    "rail-brand flex min-h-[58px] items-center border-b border-line px-[16px] max-[900px]:justify-center max-[900px]:px-0";
+  const railNavClass =
+    "rail-nav grid gap-[5px] px-[12px] py-[8px] max-[900px]:px-[10px] max-[560px]:px-[7px]";
+  const railNavItemClass =
+    "rail-nav-item grid min-h-[38px] grid-cols-[22px_minmax(0,1fr)_16px] items-center gap-[10px] rounded-[8px] border border-transparent px-[10px] text-[13px] text-ink-2 no-underline transition-[border-color,background,color] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:border-line hover:bg-[color-mix(in_oklch,var(--surface)_72%,transparent)] hover:text-ink max-[900px]:grid-cols-[1fr] max-[900px]:justify-items-center max-[900px]:gap-0 max-[900px]:px-0";
+  const railNavItemActiveClass =
+    "active border-ink bg-ink text-paper shadow-card hover:border-ink hover:bg-ink hover:text-paper";
+  const railIconClass = "material-symbols-outlined rail-icon !text-[19px] max-[560px]:!text-[20px]";
+  const railLabelClass = "rail-label overflow-hidden text-ellipsis whitespace-nowrap max-[900px]:hidden";
+  const railCheckClass = "material-symbols-outlined rail-check text-mint !text-[16px] max-[900px]:hidden";
+  const railFooterClass = "rail-footer relative mt-auto grid gap-[10px] px-[12px] pb-[14px] max-[900px]:px-[10px]";
+  const profilePopoverClass =
+    "profile-popover absolute right-[12px] bottom-[114px] left-[12px] z-[5] overflow-hidden rounded-[12px] border border-line-2 bg-surface shadow-popover max-[900px]:right-auto max-[900px]:left-[60px] max-[900px]:w-[212px]";
+  const profileHeadClass = "profile-head grid grid-cols-[40px_minmax(0,1fr)] items-center gap-[10px] p-[12px]";
+  const profileAvatarClass =
+    "profile-avatar grid size-[40px] place-items-center overflow-hidden rounded-[10px] border border-line-2 bg-paper-2 font-mono text-[12px] font-bold";
+  const profileIdentityClass = "profile-identity min-w-0";
+  const profileIdentityStrongClass = "block overflow-hidden text-ellipsis whitespace-nowrap text-[13px]";
+  const profileIdentitySpanClass = "mt-[2px] block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-ink-3";
+  const profileDividerClass = "profile-divider mx-[12px] h-px bg-line";
+  const profileActionsClass = "profile-actions grid gap-[6px] px-[12px] py-[10px]";
+  const profileLinkClass =
+    "profile-link inline-grid min-h-[28px] grid-cols-[16px_minmax(0,1fr)] items-center gap-[7px] rounded-[8px] border border-line bg-paper-2 px-[8px] text-[12px] font-semibold text-ink no-underline hover:border-line-2 hover:bg-[color-mix(in_oklch,var(--coral)_10%,var(--paper-2))]";
+  const authHintClass = "auth-hint mx-[12px] mb-[12px] mt-[-4px] text-[11px] leading-[1.35] text-ink-3";
+  const monkeytypeBlockClass = "monkeytype-block grid gap-[8px] px-[12px] pt-[11px] pb-[12px]";
+  const monkeytypeHeadClass =
+    "monkeytype-head grid grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-[6px] font-mono text-[10px] uppercase tracking-[0.1em] text-ink-2";
+  const monkeytypeModeClass = "monkeytype-mode text-right text-[9px] text-ink-3";
+  const monkeytypeOpenClass =
+    "monkeytype-open inline-grid grid-cols-[auto_12px] items-center gap-[3px] text-right font-mono text-[9px] text-coral-ink no-underline";
+  const monkeytypeGridClass = "monkeytype-grid grid grid-cols-2 gap-[6px]";
+  const monkeytypeStatClass =
+    "monkeytype-stat grid min-h-[48px] min-w-0 gap-[2px] rounded-[8px] border border-line bg-[color-mix(in_oklch,var(--paper-2)_76%,transparent)] p-[8px]";
+  const monkeytypeStatStrongClass = "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px]";
+  const monkeytypeStatSpanClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink-3";
+  const monkeytypeActionsClass = "monkeytype-actions grid grid-cols-2 gap-[6px]";
+  const monkeytypeMessageClass = "m-0 rounded-[8px] px-[8px] py-[7px] text-[11px] leading-[1.35]";
+  const monkeytypeErrorClass =
+    "monkeytype-error border border-[oklch(0.62_0.2_25_/_0.26)] bg-[oklch(0.95_0.04_25)] text-[oklch(0.42_0.15_25)]";
+  const monkeytypeNoteClass =
+    "monkeytype-note border border-[color-mix(in_oklch,var(--mustard)_42%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_15%,var(--surface))] text-ink-2";
+  const accountStripClass =
+    "account-strip grid grid-cols-[34px_minmax(0,1fr)_28px] items-center gap-[8px] rounded-[12px] border border-transparent p-[7px] hover:border-line hover:bg-[color-mix(in_oklch,var(--surface)_68%,transparent)] max-[900px]:flex max-[900px]:justify-center max-[900px]:px-0 max-[900px]:py-[6px]";
+  const accountStripOpenClass = "open border-line bg-[color-mix(in_oklch,var(--surface)_68%,transparent)]";
+  const accountCopyClass = "account-copy min-w-0 p-0 text-left max-[900px]:hidden";
+  const accountNameClass = "block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-semibold";
+  const accountLoginClass = "mt-[1px] block overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink-3";
+  const accountCaretClass =
+    "account-caret grid size-[28px] place-items-center rounded-[8px] text-ink-3 hover:bg-paper-2 hover:text-ink max-[900px]:hidden";
+  const deviceStatusClass =
+    "device-status grid min-h-[48px] grid-cols-[10px_minmax(0,1fr)] items-center gap-[10px] rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--surface)_72%,transparent)] px-[10px] py-[9px] max-[900px]:min-h-[36px] max-[900px]:place-items-center max-[900px]:p-0";
+  const deviceDotClass = "device-dot size-[8px] rounded-pill bg-ink-3";
+  const deviceConnectedDotClass =
+    "bg-mint shadow-[0_0_0_3px_color-mix(in_oklch,var(--mint)_24%,transparent)]";
+  const deviceConnectingDotClass =
+    "bg-mustard shadow-[0_0_0_3px_color-mix(in_oklch,var(--mustard)_24%,transparent)]";
+  const deviceErrorDotClass =
+    "bg-removed shadow-[0_0_0_3px_color-mix(in_oklch,var(--removed)_18%,transparent)]";
+  const deviceStatusStrongClass =
+    "block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] font-semibold max-[900px]:hidden";
+  const deviceStatusSpanClass =
+    "mt-[2px] block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-ink-3 max-[900px]:hidden";
+  const shellMainClass = "shell-main flex min-h-screen min-w-0 flex-col overflow-hidden";
+  const appbarClass =
+    "appbar flex min-h-[58px] min-w-0 items-center gap-[8px] border-b border-line bg-[color-mix(in_oklch,var(--surface)_42%,var(--paper))] px-[20px] max-[900px]:min-h-[68px] max-[900px]:flex-wrap max-[900px]:content-center max-[900px]:px-[12px] max-[900px]:py-[8px]";
+  const appbarTitleClass =
+    "m-0 mr-[10px] flex-none text-[17px] font-bold tracking-[0] max-[900px]:w-full max-[900px]:mr-0 max-[900px]:text-[15px]";
+  const appbarChipClass = "max-[560px]:max-w-[145px]";
+  const appbarSpacerClass = "appbar-spacer min-w-[10px] flex-1 max-[900px]:hidden";
+  const chipIconClass = "material-symbols-outlined chip-icon !text-[14px]";
+  const starterBadgeClass =
+    "starter-badge inline-grid min-h-[17px] place-items-center rounded-pill border border-[color-mix(in_oklch,var(--mustard)_46%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_18%,var(--surface))] px-[6px] text-[9px] uppercase tracking-[0.08em] text-[oklch(0.39_0.11_90)]";
+  const placementBannerHostClass = "placement-banner-host contents";
+  const placementBannerClass =
+    "placement-banner flex min-h-[38px] items-center gap-[8px] border-b border-[var(--place-banner-border)] bg-[var(--place-banner-bg)] px-[18px] text-[12px] text-ink";
+  const placementBannerButtonClass =
+    "ml-auto grid size-[26px] place-items-center rounded-[7px] hover:bg-[color-mix(in_oklch,var(--coral)_16%,transparent)]";
+  const placementBannerSmallClass = "ml-[6px] font-mono text-[10px] text-ink-3";
+  const shellContentClass = "shell-content min-h-0 min-w-0 flex-1 overflow-auto";
+  const overlayHostClass = "overlay-host pointer-events-none fixed inset-0 z-20 hidden";
+  const flashOverlayHostClass = "flash-overlay-host pointer-events-none fixed inset-0 z-20 hidden";
 </script>
 
-<div class="new-app-shell">
-  <nav class="left-rail" aria-label="Application navigation">
-    <div class="rail-brand">
+<div class={appShellClass}>
+  <nav class={leftRailClass} aria-label="Application navigation">
+    <div class={railBrandClass}>
       <Brand href="/editor" />
     </div>
 
-    <div class="rail-nav">
+    <div class={railNavClass}>
       {#each shell.navItems as item (item.id)}
         {@const active = isActive(item.href)}
         <a
           href={item.href}
-          class="rail-nav-item"
-          class:active
+          class={cn(railNavItemClass, active && railNavItemActiveClass)}
           aria-current={active ? "page" : undefined}
           data-sveltekit-preload-data="hover"
         >
-          <span class="material-symbols-outlined rail-icon" aria-hidden="true">{item.icon}</span>
-          <span class="rail-label">{item.label}</span>
+          <span class={railIconClass} aria-hidden="true">{item.icon}</span>
+          <span class={railLabelClass}>{item.label}</span>
           {#if item.id === "connect" && shell.connected}
-            <span class="material-symbols-outlined rail-check" aria-hidden="true">check_circle</span>
+            <span class={railCheckClass} aria-hidden="true">check_circle</span>
           {/if}
         </a>
       {/each}
     </div>
 
-    <div class="rail-footer">
+    <div class={railFooterClass}>
       {#if shell.profileOpen}
-        <section class="profile-popover" aria-label="Profile">
+        <section class={profilePopoverClass} aria-label="Profile">
           {#if shell.account.status === "signed-in"}
-            <div class="profile-head">
-              <span class="profile-avatar">
+            <div class={profileHeadClass}>
+              <span class={profileAvatarClass}>
                 {#if accountAvatar}
-                  <img src={accountAvatar} alt="" />
+                  <img class="size-full object-cover" src={accountAvatar} alt="" />
                 {:else}
                   {shell.account.initials}
                 {/if}
               </span>
-              <div class="profile-identity">
-                <strong>{shell.account.name}</strong>
-                <span>@{shell.account.login} · GitHub</span>
+              <div class={profileIdentityClass}>
+                <strong class={profileIdentityStrongClass}>{shell.account.name}</strong>
+                <span class={profileIdentitySpanClass}>@{shell.account.login} · GitHub</span>
                 {#if shell.account.email}
-                  <span class="profile-email">{shell.account.email}</span>
+                  <span class={cn(profileIdentitySpanClass, "profile-email mt-[1px] text-ink-2")}>{shell.account.email}</span>
                 {/if}
               </div>
             </div>
 
-            <div class="profile-divider"></div>
+            <div class={profileDividerClass}></div>
 
-            <div class="profile-actions">
+            <div class={profileActionsClass}>
               <a
-                class="profile-link"
+                class={profileLinkClass}
                 href={shell.account.githubProfileUrl ?? "https://github.com/settings/profile"}
                 target="_blank"
                 rel="noreferrer"
               >
-                <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                <span class="material-symbols-outlined !text-[15px]" aria-hidden="true">open_in_new</span>
                 View GitHub profile
               </a>
             </div>
 
-            <div class="profile-divider"></div>
+            <div class={profileDividerClass}></div>
 
-            <section class="monkeytype-block" aria-label="Monkeytype">
-              <div class="monkeytype-head">
-                <span class="material-symbols-outlined" aria-hidden="true">keyboard_alt</span>
+            <section class={monkeytypeBlockClass} aria-label="Monkeytype">
+              <div class={monkeytypeHeadClass}>
+                <span class="material-symbols-outlined !text-[15px]" aria-hidden="true">keyboard_alt</span>
                 <span>Monkeytype</span>
                 {#if shell.monkeytype.connected && monkeytypeProfileUrl}
-                  <a class="monkeytype-open" href={monkeytypeProfileUrl} target="_blank" rel="noreferrer">
+                  <a class={monkeytypeOpenClass} href={monkeytypeProfileUrl} target="_blank" rel="noreferrer">
                     open
-                    <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                    <span class="material-symbols-outlined !text-[12px]" aria-hidden="true">open_in_new</span>
                   </a>
                 {:else if shell.monkeytype.connected}
-                  <span class="monkeytype-mode">{shell.monkeytype.mode}/{shell.monkeytype.mode2}</span>
+                  <span class={monkeytypeModeClass}>{shell.monkeytype.mode}/{shell.monkeytype.mode2}</span>
                 {:else}
-                  <span class="monkeytype-mode">offline</span>
+                  <span class={monkeytypeModeClass}>offline</span>
                 {/if}
               </div>
               {#if shell.monkeytype.connected}
-                <div class="monkeytype-grid">
-                  <div class="monkeytype-stat">
-                    <strong>{statValue(shell.monkeytype.wpm)}</strong>
-                    <span>wpm avg</span>
+                <div class={monkeytypeGridClass}>
+                  <div class={monkeytypeStatClass}>
+                    <strong class={monkeytypeStatStrongClass}>{statValue(shell.monkeytype.wpm)}</strong>
+                    <span class={monkeytypeStatSpanClass}>wpm avg</span>
                   </div>
-                  <div class="monkeytype-stat">
-                    <strong>{statValue(shell.monkeytype.accuracy, 1)}%</strong>
-                    <span>accuracy</span>
+                  <div class={monkeytypeStatClass}>
+                    <strong class={monkeytypeStatStrongClass}>{statValue(shell.monkeytype.accuracy, 1)}%</strong>
+                    <span class={monkeytypeStatSpanClass}>accuracy</span>
                   </div>
-                  <div class="monkeytype-stat">
-                    <strong>{statValue(shell.monkeytype.pb)}</strong>
-                    <span>pb wpm</span>
+                  <div class={monkeytypeStatClass}>
+                    <strong class={monkeytypeStatStrongClass}>{statValue(shell.monkeytype.pb)}</strong>
+                    <span class={monkeytypeStatSpanClass}>pb wpm</span>
                   </div>
-                  <div class="monkeytype-stat">
-                    <strong>{statValue(shell.monkeytype.tests)}</strong>
-                    <span>tests</span>
+                  <div class={monkeytypeStatClass}>
+                    <strong class={monkeytypeStatStrongClass}>{statValue(shell.monkeytype.tests)}</strong>
+                    <span class={monkeytypeStatSpanClass}>tests</span>
                   </div>
                 </div>
                 {#if shell.monkeytype.error}
-                  <p class="monkeytype-error" role="status">{shell.monkeytype.error}</p>
+                  <p class={cn(monkeytypeMessageClass, monkeytypeErrorClass)} role="status">{shell.monkeytype.error}</p>
                 {:else if shell.monkeytype.stale}
-                  <p class="monkeytype-note" role="status">Stale sync</p>
+                  <p class={cn(monkeytypeMessageClass, monkeytypeNoteClass)} role="status">Stale sync</p>
                 {/if}
-                <div class="monkeytype-actions">
+                <div class={monkeytypeActionsClass}>
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="monkeytype-action"
+                    class="monkeytype-action w-full justify-center"
                     onclick={refreshMonkeytype}
                     disabled={monkeytypeBusy}
                   >
@@ -418,7 +505,7 @@
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="monkeytype-action"
+                    class="monkeytype-action w-full justify-center"
                     onclick={disconnectMonkeytype}
                     disabled={monkeytypeBusy}
                   >
@@ -430,7 +517,7 @@
                 <Button
                   variant="coral"
                   size="sm"
-                  class="monkeytype-connect"
+                  class="monkeytype-connect w-full justify-center"
                   href="/settings"
                   onclick={() => shell.closeProfile()}
                 >
@@ -438,12 +525,12 @@
                   Connect Monkeytype
                 </Button>
                 {#if shell.monkeytype.error}
-                  <p class="monkeytype-error" role="status">{shell.monkeytype.error}</p>
+                  <p class={cn(monkeytypeMessageClass, monkeytypeErrorClass)} role="status">{shell.monkeytype.error}</p>
                 {/if}
               {/if}
             </section>
 
-            <div class="profile-divider"></div>
+            <div class={profileDividerClass}></div>
 
             <Button
               variant="ghost"
@@ -456,14 +543,14 @@
               {authBusy ? "Signing out" : "Sign out"}
             </Button>
           {:else}
-            <div class="profile-head">
-              <span class="profile-avatar local">{shell.account.initials}</span>
-              <div class="profile-identity">
-                <strong>{shell.account.name}</strong>
-                <span>{shell.account.message ?? "GitHub not connected"}</span>
+            <div class={profileHeadClass}>
+              <span class={cn(profileAvatarClass, "local bg-coral text-[#1c0a04]")}>{shell.account.initials}</span>
+              <div class={profileIdentityClass}>
+                <strong class={profileIdentityStrongClass}>{shell.account.name}</strong>
+                <span class={profileIdentitySpanClass}>{shell.account.message ?? "GitHub not connected"}</span>
               </div>
             </div>
-            <div class="profile-divider"></div>
+            <div class={profileDividerClass}></div>
             <Button
               variant="coral"
               size="sm"
@@ -475,13 +562,13 @@
               {authBusy ? "Opening GitHub" : "Sign in with GitHub"}
             </Button>
             {#if shell.account.message}
-              <p class="auth-hint">{shell.account.message}</p>
+              <p class={authHintClass}>{shell.account.message}</p>
             {/if}
           {/if}
         </section>
       {/if}
 
-      <div class="account-strip" class:open={shell.profileOpen}>
+      <div class={cn(accountStripClass, shell.profileOpen && accountStripOpenClass)}>
         <AvatarButton
           image={accountAvatar}
           initials={shell.account.initials}
@@ -489,13 +576,13 @@
           title="Profile"
           onclick={() => shell.toggleProfile()}
         />
-        <button type="button" class="account-copy" onclick={() => shell.toggleProfile()}>
-          <span>{shell.account.name}</span>
-          <small>@{shell.account.login}</small>
+        <button type="button" class={accountCopyClass} onclick={() => shell.toggleProfile()}>
+          <span class={accountNameClass}>{shell.account.name}</span>
+          <small class={accountLoginClass}>@{shell.account.login}</small>
         </button>
         <button
           type="button"
-          class="account-caret"
+          class={accountCaretClass}
           aria-label={shell.profileOpen ? "Close profile" : "Open profile"}
           onclick={() => shell.toggleProfile()}
         >
@@ -505,43 +592,52 @@
         </button>
       </div>
 
-      <div class="device-status" data-status={shell.device.status}>
-        <span class="device-dot" aria-hidden="true"></span>
+      <div class={deviceStatusClass} data-status={shell.device.status}>
+        <span
+          class={cn(
+            deviceDotClass,
+            shell.device.status === "connected" && deviceConnectedDotClass,
+            shell.device.status === "connecting" && deviceConnectingDotClass,
+            shell.device.status === "error" && deviceErrorDotClass,
+          )}
+          aria-hidden="true"
+        ></span>
         <div>
-          <strong>{shell.connected ? shell.device.board : "No device"}</strong>
-          <span>{shell.connected ? `${shell.device.transport} · ${shell.device.protocol}` : shell.device.message}</span>
+          <strong class={deviceStatusStrongClass}>{shell.connected ? shell.device.board : "No device"}</strong>
+          <span class={deviceStatusSpanClass}>{shell.connected ? `${shell.device.transport} · ${shell.device.protocol}` : shell.device.message}</span>
         </div>
       </div>
     </div>
   </nav>
 
-  <div class="shell-main">
-    <header class="appbar">
-      <h1>{routeTitle}</h1>
+  <div class={shellMainClass}>
+    <header class={appbarClass}>
+      <h1 class={appbarTitleClass}>{routeTitle}</h1>
 
       <Chip
+        class={appbarChipClass}
         dot={shell.connected ? "var(--teal)" : undefined}
         tone={workbench.profile.origin === "starter" ? "warning" : "neutral"}
         title={activeBoardTitle}
       >
         {activeBoardName}
         {#if workbench.profile.origin === "starter"}
-          <span class="starter-badge">Starter</span>
+          <span class={starterBadgeClass}>Starter</span>
         {/if}
       </Chip>
 
-      <Chip dot={liveSync.dot} title={liveSync.title}>{liveSync.label}</Chip>
+      <Chip class={appbarChipClass} dot={liveSync.dot} title={liveSync.title}>{liveSync.label}</Chip>
 
-      <Chip dot={shell.currentVariant.color} title="Current variant">
-        <span class="material-symbols-outlined chip-icon" aria-hidden="true">account_tree</span>
+      <Chip class={appbarChipClass} dot={shell.currentVariant.color} title="Current variant">
+        <span class={chipIconClass} aria-hidden="true">account_tree</span>
         {shell.currentVariant.name}
       </Chip>
 
-      <div class="appbar-spacer"></div>
+      <div class={appbarSpacerClass}></div>
 
       {#if shell.activeMonkeytype}
-        <Chip title="Monkeytype average">
-          <span class="material-symbols-outlined chip-icon" aria-hidden="true">speed</span>
+        <Chip class={appbarChipClass} title="Monkeytype average">
+          <span class={chipIconClass} aria-hidden="true">speed</span>
           {statValue(shell.activeMonkeytype.wpm)} wpm
         </Chip>
       {/if}
@@ -561,654 +657,35 @@
       </Button>
     </header>
 
-    <div class="placement-banner-host" data-shell-placement-banner>
+    <div class={placementBannerHostClass} data-shell-placement-banner>
       {#if pathname.startsWith("/editor") && shell.placeMode}
-        <div class="placement-banner">
+        <div class={placementBannerClass}>
           <span class="material-symbols-outlined" aria-hidden="true">ads_click</span>
           {#if shell.placeMode.kind === "combo"}
             <span>
               Picking <strong>{shell.placeMode.label}</strong>
-              <small>{shell.placeMode.picks.length}/2 keys</small>
+              <small class={placementBannerSmallClass}>{shell.placeMode.picks.length}/2 keys</small>
             </span>
           {:else}
             <span>Placing <strong>{shell.placeMode.label}</strong> - click a key</span>
           {/if}
-          <button type="button" aria-label="Cancel placement" onclick={() => shell.clearPlacement()}>
+          <button
+            type="button"
+            class={placementBannerButtonClass}
+            aria-label="Cancel placement"
+            onclick={() => shell.clearPlacement()}
+          >
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
       {/if}
     </div>
 
-    <main class="shell-content">
+    <main class={shellContentClass}>
       {@render children()}
     </main>
 
-    <div class="overlay-host" data-shell-overlay-host aria-hidden="true"></div>
-    <div class="flash-overlay-host" data-shell-flash-overlay-host aria-hidden="true"></div>
+    <div class={overlayHostClass} data-shell-overlay-host aria-hidden="true"></div>
+    <div class={flashOverlayHostClass} data-shell-flash-overlay-host aria-hidden="true"></div>
   </div>
 </div>
-
-<style>
-  .new-app-shell {
-    display: grid;
-    grid-template-columns: 208px minmax(0, 1fr);
-    min-height: 100vh;
-    overflow: hidden;
-    background:
-      radial-gradient(ellipse 95% 75% at 100% 0%, color-mix(in oklch, var(--teal) 9%, transparent), transparent 58%),
-      var(--paper);
-    color: var(--ink);
-  }
-
-  .left-rail {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    min-width: 0;
-    min-height: 100vh;
-    flex-direction: column;
-    gap: 18px;
-    border-right: 1px solid var(--line);
-    background: color-mix(in oklch, var(--surface) 78%, var(--paper));
-  }
-
-  .rail-brand {
-    display: flex;
-    align-items: center;
-    min-height: 58px;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .rail-nav {
-    display: grid;
-    gap: 5px;
-    padding: 8px 12px;
-  }
-
-  .rail-nav-item {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) 16px;
-    align-items: center;
-    gap: 10px;
-    min-height: 38px;
-    padding: 0 10px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    color: var(--ink-2);
-    font-size: 13px;
-    text-decoration: none;
-    transition:
-      border-color var(--dur-fast) var(--ease-out-soft),
-      background var(--dur-fast) var(--ease-out-soft),
-      color var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .rail-nav-item:hover {
-    border-color: var(--line);
-    color: var(--ink);
-    background: color-mix(in oklch, var(--surface) 72%, transparent);
-  }
-
-  .rail-nav-item.active {
-    border-color: var(--ink);
-    color: var(--paper);
-    background: var(--ink);
-    box-shadow: var(--shadow-card);
-  }
-
-  .rail-icon {
-    font-size: 19px;
-  }
-
-  .rail-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .rail-check {
-    color: var(--mint);
-    font-size: 16px;
-  }
-
-  .rail-footer {
-    position: relative;
-    display: grid;
-    gap: 10px;
-    margin-top: auto;
-    padding: 0 12px 14px;
-  }
-
-  .profile-popover {
-    position: absolute;
-    right: 12px;
-    bottom: 114px;
-    left: 12px;
-    z-index: 5;
-    overflow: hidden;
-    border: 1px solid var(--line-2);
-    border-radius: 12px;
-    background: var(--surface);
-    box-shadow: var(--shadow-popover);
-  }
-
-  .profile-head {
-    display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    padding: 12px;
-  }
-
-  .profile-avatar {
-    display: grid;
-    width: 40px;
-    height: 40px;
-    place-items: center;
-    overflow: hidden;
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    background: var(--paper-2);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .profile-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .profile-avatar.local {
-    color: #1c0a04;
-    background: var(--coral);
-  }
-
-  .profile-identity {
-    min-width: 0;
-  }
-
-  .profile-identity strong,
-  .profile-identity span {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .profile-identity strong {
-    font-size: 13px;
-  }
-
-  .profile-identity span {
-    margin-top: 2px;
-    color: var(--ink-3);
-    font-size: 11px;
-  }
-
-  .profile-identity .profile-email {
-    margin-top: 1px;
-    color: var(--ink-2);
-  }
-
-  .profile-divider {
-    height: 1px;
-    margin: 0 12px;
-    background: var(--line);
-  }
-
-  .profile-actions {
-    display: grid;
-    gap: 6px;
-    padding: 10px 12px;
-  }
-
-  .profile-link {
-    display: inline-grid;
-    grid-template-columns: 16px minmax(0, 1fr);
-    align-items: center;
-    gap: 7px;
-    min-height: 28px;
-    padding: 0 8px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    color: var(--ink);
-    background: var(--paper-2);
-    font-size: 12px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-
-  .profile-link:hover {
-    border-color: var(--line-2);
-    background: color-mix(in oklch, var(--coral) 10%, var(--paper-2));
-  }
-
-  .profile-link .material-symbols-outlined {
-    font-size: 15px;
-  }
-
-  .auth-hint {
-    margin: -4px 12px 12px;
-    color: var(--ink-3);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .monkeytype-block {
-    display: grid;
-    gap: 8px;
-    padding: 11px 12px 12px;
-  }
-
-  .monkeytype-head {
-    display: grid;
-    grid-template-columns: 18px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .monkeytype-head .material-symbols-outlined {
-    font-size: 15px;
-  }
-
-  .monkeytype-mode,
-  .monkeytype-open {
-    color: var(--ink-3);
-    font-size: 9px;
-    text-align: right;
-  }
-
-  .monkeytype-open {
-    display: inline-grid;
-    grid-template-columns: auto 12px;
-    align-items: center;
-    gap: 3px;
-    color: var(--coral-ink);
-    font-family: var(--mono);
-    text-decoration: none;
-  }
-
-  .monkeytype-open .material-symbols-outlined {
-    font-size: 12px;
-  }
-
-  .monkeytype-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .monkeytype-stat {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-    min-height: 48px;
-    padding: 8px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper-2) 76%, transparent);
-  }
-
-  .monkeytype-stat strong,
-  .monkeytype-stat span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .monkeytype-stat strong {
-    font-family: var(--mono);
-    font-size: 13px;
-  }
-
-  .monkeytype-stat span {
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .monkeytype-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px;
-  }
-
-  :global(.monkeytype-action),
-  :global(.monkeytype-connect) {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .monkeytype-error,
-  .monkeytype-note {
-    margin: 0;
-    padding: 7px 8px;
-    border-radius: 8px;
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .monkeytype-error {
-    border: 1px solid oklch(0.62 0.2 25 / 0.26);
-    background: oklch(0.95 0.04 25);
-    color: oklch(0.42 0.15 25);
-  }
-
-  .monkeytype-note {
-    border: 1px solid color-mix(in oklch, var(--mustard) 42%, var(--line-2));
-    background: color-mix(in oklch, var(--mustard) 15%, var(--surface));
-    color: var(--ink-2);
-  }
-
-  .account-strip {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) 28px;
-    align-items: center;
-    gap: 8px;
-    padding: 7px;
-    border: 1px solid transparent;
-    border-radius: 12px;
-  }
-
-  .account-strip.open,
-  .account-strip:hover {
-    border-color: var(--line);
-    background: color-mix(in oklch, var(--surface) 68%, transparent);
-  }
-
-  .account-copy {
-    min-width: 0;
-    padding: 0;
-    text-align: left;
-  }
-
-  .account-copy span,
-  .account-copy small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .account-copy span {
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .account-copy small {
-    margin-top: 1px;
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .account-caret {
-    display: grid;
-    width: 28px;
-    height: 28px;
-    place-items: center;
-    border-radius: 8px;
-    color: var(--ink-3);
-  }
-
-  .account-caret:hover {
-    color: var(--ink);
-    background: var(--paper-2);
-  }
-
-  .device-status {
-    display: grid;
-    grid-template-columns: 10px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    min-height: 48px;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: color-mix(in oklch, var(--surface) 72%, transparent);
-  }
-
-  .device-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: var(--ink-3);
-  }
-
-  .device-status[data-status="connected"] .device-dot {
-    background: var(--mint);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--mint) 24%, transparent);
-  }
-
-  .device-status[data-status="connecting"] .device-dot {
-    background: var(--mustard);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--mustard) 24%, transparent);
-  }
-
-  .device-status[data-status="error"] .device-dot {
-    background: var(--removed);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--removed) 18%, transparent);
-  }
-
-  .device-status strong,
-  .device-status span {
-    display: block;
-    overflow: hidden;
-    font-family: var(--mono);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .device-status strong {
-    font-size: 11px;
-    font-weight: 600;
-  }
-
-  .device-status span {
-    margin-top: 2px;
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .shell-main {
-    display: flex;
-    min-width: 0;
-    min-height: 100vh;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .appbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    min-height: 58px;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--line);
-    background: color-mix(in oklch, var(--surface) 42%, var(--paper));
-  }
-
-  .appbar h1 {
-    flex: 0 0 auto;
-    margin: 0 10px 0 0;
-    font-size: 17px;
-    font-weight: 700;
-    letter-spacing: 0;
-  }
-
-  .appbar-spacer {
-    flex: 1;
-    min-width: 10px;
-  }
-
-  .chip-icon {
-    font-size: 14px;
-  }
-
-  .starter-badge {
-    display: inline-grid;
-    min-height: 17px;
-    place-items: center;
-    padding: 0 6px;
-    border: 1px solid color-mix(in oklch, var(--mustard) 46%, var(--line-2));
-    border-radius: 999px;
-    background: color-mix(in oklch, var(--mustard) 18%, var(--surface));
-    color: oklch(0.39 0.11 90);
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .placement-banner-host {
-    display: contents;
-  }
-
-  .placement-banner {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 38px;
-    padding: 0 18px;
-    border-bottom: 1px solid var(--place-banner-border);
-    background: var(--place-banner-bg);
-    color: var(--ink);
-    font-size: 12px;
-  }
-
-  .placement-banner button {
-    display: grid;
-    width: 26px;
-    height: 26px;
-    place-items: center;
-    margin-left: auto;
-    border-radius: 7px;
-  }
-
-  .placement-banner button:hover {
-    background: color-mix(in oklch, var(--coral) 16%, transparent);
-  }
-
-  .placement-banner small {
-    margin-left: 6px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .shell-content {
-    min-width: 0;
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-  }
-
-  .overlay-host,
-  .flash-overlay-host {
-    position: fixed;
-    inset: 0;
-    z-index: 20;
-    display: none;
-    pointer-events: none;
-  }
-
-  @media (max-width: 900px) {
-    .new-app-shell {
-      grid-template-columns: 72px minmax(0, 1fr);
-    }
-
-    .left-rail {
-      gap: 12px;
-    }
-
-    .rail-brand {
-      justify-content: center;
-      padding: 0;
-    }
-
-    .rail-nav {
-      padding-inline: 10px;
-    }
-
-    .rail-nav-item {
-      grid-template-columns: 1fr;
-      justify-items: center;
-      gap: 0;
-      padding: 0;
-    }
-
-    .rail-label,
-    .rail-check,
-    .account-copy,
-    .account-caret,
-    .device-status span,
-    .device-status strong {
-      display: none;
-    }
-
-    .rail-footer {
-      padding-inline: 10px;
-    }
-
-    .profile-popover {
-      right: auto;
-      left: 60px;
-      width: 212px;
-    }
-
-    .account-strip {
-      display: flex;
-      justify-content: center;
-      padding: 6px 0;
-    }
-
-    .device-status {
-      display: grid;
-      place-items: center;
-      min-height: 36px;
-      padding: 0;
-    }
-
-    .appbar {
-      flex-wrap: wrap;
-      min-height: 68px;
-      align-content: center;
-      padding: 8px 12px;
-    }
-
-    .appbar h1 {
-      width: 100%;
-      margin: 0;
-      font-size: 15px;
-    }
-
-    .appbar-spacer {
-      display: none;
-    }
-  }
-
-  @media (max-width: 560px) {
-    .new-app-shell {
-      grid-template-columns: 58px minmax(0, 1fr);
-    }
-
-    .rail-nav {
-      padding-inline: 7px;
-    }
-
-    .rail-icon {
-      font-size: 20px;
-    }
-
-    .appbar :global([data-slot="badge"]) {
-      max-width: 145px;
-    }
-  }
-</style>
