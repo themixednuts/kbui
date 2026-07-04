@@ -16,6 +16,10 @@ class_name = "UserWorkbenchAgent"
 name = "AuthAgent"
 class_name = "AuthAgent"
 
+[[durable_objects.bindings]]
+name = "CommunityAgent"
+class_name = "CommunityAgent"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UserWorkbenchAgent"]
@@ -23,3 +27,7 @@ new_sqlite_classes = ["UserWorkbenchAgent"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["AuthAgent"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["CommunityAgent"]

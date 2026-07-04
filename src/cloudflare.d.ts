@@ -3,7 +3,7 @@
 declare namespace Cloudflare {
   interface GlobalProps {
     mainModule: unknown;
-    durableNamespaces: "UserWorkbenchAgent" | "AuthAgent";
+    durableNamespaces: "UserWorkbenchAgent" | "AuthAgent" | "CommunityAgent";
   }
   interface Env {
     ASSETS: Fetcher;
@@ -11,6 +11,7 @@ declare namespace Cloudflare {
       import("./agents/user-workbench").UserWorkbenchAgent
     >;
     AuthAgent: DurableObjectNamespace<import("./agents/auth-agent").AuthAgent>;
+    CommunityAgent: DurableObjectNamespace<import("./agents/community-agent").CommunityAgent>;
   }
 }
 interface Env extends Cloudflare.Env {}

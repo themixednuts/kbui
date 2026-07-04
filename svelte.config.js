@@ -4,6 +4,7 @@ import path from "node:path";
 
 const agentExports = [
   'export { AuthAgent } from "../../src/agents/auth-agent";',
+  'export { CommunityAgent } from "../../src/agents/community-agent";',
   'export { UserWorkbenchAgent } from "../../src/agents/user-workbench";',
 ];
 const usePlatformProxy = process.argv.slice(2).some((arg) => arg === "dev");
