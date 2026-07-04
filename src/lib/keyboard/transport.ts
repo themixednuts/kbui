@@ -629,7 +629,7 @@ export function connectKeyboardEffect(
           status: "unsupported" as const,
           transport,
           protocol: "zmk-studio" as const,
-          message: "Real ZMK Studio transport lands in Wave 4c-ii.",
+          message: "Use the dedicated ZMK Studio Bluetooth or Serial transport.",
         };
       }
 

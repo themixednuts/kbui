@@ -20,11 +20,13 @@
     createWebHidViaTransport,
     type ConnectionState,
   } from "$lib/keyboard/transport";
+  import { createWebBluetoothZmkStudioTransport } from "$lib/keyboard/transport-zmk-ble";
   import { createMockViaTransport, mockViaBoards } from "$lib/keyboard/transport-mock";
   import {
     createMockZmkStudioTransport,
     mockZmkStudioBoards,
   } from "$lib/keyboard/transport-mock-zmk";
+  import { createWebSerialZmkStudioTransport } from "$lib/keyboard/transport-zmk-serial";
 
   import { getViaKeyboardDetail, getViaKeyboardIndex } from "../../keyboards.remote";
 
@@ -180,12 +182,36 @@
     });
   }
 
-  function showZmkScaffold(kind: "bluetooth" | "usb") {
-    const supported = kind === "bluetooth" ? webBluetoothSupported : webSerialSupported;
-    const label = kind === "bluetooth" ? "Web Bluetooth" : "Web Serial";
-    message = supported
-      ? `Real ZMK Studio over ${label} lands in Wave 4c-ii and needs a board for protocol verification.`
-      : `${label} is unavailable in this browser; real ZMK Studio connection still lands in Wave 4c-ii.`;
+  function connectZmkBluetooth() {
+    if (!webBluetoothSupported) {
+      message = "Web Bluetooth is unavailable in this browser.";
+      return;
+    }
+
+    void runAction("zmk-ble", async () => {
+      const result = await connectZmkStudioAndActivate({
+        shell,
+        transport: createWebBluetoothZmkStudioTransport(),
+        workbench,
+      });
+      return `${result.message}. Real BLE is hardware-unverified until tested with a ZMK Studio board.`;
+    });
+  }
+
+  function connectZmkSerial() {
+    if (!webSerialSupported) {
+      message = "Web Serial is unavailable in this browser.";
+      return;
+    }
+
+    void runAction("zmk-usb", async () => {
+      const result = await connectZmkStudioAndActivate({
+        shell,
+        transport: createWebSerialZmkStudioTransport(),
+        workbench,
+      });
+      return `${result.message}. Real USB serial is hardware-unverified until tested with a ZMK Studio board.`;
+    });
   }
 
   function chooseViaJson() {
@@ -299,18 +325,18 @@
           class="connect-option"
           data-testid="connect-zmk-ble"
           disabled={busy}
-          onclick={() => showZmkScaffold("bluetooth")}
+          onclick={connectZmkBluetooth}
         >
           <span class="option-icon material-symbols-outlined" aria-hidden="true">bluetooth</span>
           <span class="option-copy">
-            <strong>Connect over Bluetooth (ZMK)</strong>
+            <strong>{busyAction === "zmk-ble" ? "Opening Bluetooth prompt" : "Connect over Bluetooth (ZMK)"}</strong>
             <small>
               {webBluetoothSupported
-                ? "Feature detected; real ZMK Studio BLE lands in the next wave"
+                ? "Real ZMK Studio BLE transport; hardware-unverified until board-tested"
                 : "Web Bluetooth unavailable in this browser"}
             </small>
           </span>
-          <span class="option-action">{webBluetoothSupported ? "Next wave" : "Unavailable"}</span>
+          <span class="option-action">{busyAction === "zmk-ble" ? "..." : webBluetoothSupported ? "Connect" : "Unavailable"}</span>
         </button>
 
         <button
@@ -318,18 +344,18 @@
           class="connect-option"
           data-testid="connect-zmk-usb"
           disabled={busy}
-          onclick={() => showZmkScaffold("usb")}
+          onclick={connectZmkSerial}
         >
           <span class="option-icon material-symbols-outlined" aria-hidden="true">usb</span>
           <span class="option-copy">
-            <strong>Connect over USB (ZMK)</strong>
+            <strong>{busyAction === "zmk-usb" ? "Opening serial prompt" : "Connect over USB (ZMK)"}</strong>
             <small>
               {webSerialSupported
-                ? "Feature detected; real ZMK Studio USB serial lands in the next wave"
+                ? "Real ZMK Studio USB serial transport; hardware-unverified until board-tested"
                 : "Web Serial unavailable in this browser"}
             </small>
           </span>
-          <span class="option-action">{webSerialSupported ? "Next wave" : "Unavailable"}</span>
+          <span class="option-action">{busyAction === "zmk-usb" ? "..." : webSerialSupported ? "Connect" : "Unavailable"}</span>
         </button>
 
         <button
