@@ -14,7 +14,9 @@ import {
   MockUsbKeyboardDevice,
   createMockHidController,
   createMockTransportEnvironment,
+  createMockViaTransport,
   createMockUsbController,
+  mockViaBoards,
 } from "./transport-mock";
 import {
   encodeViaCommandReport,
@@ -136,6 +138,50 @@ describe("keyboard transports", () => {
     expect(hidDevice.validationResults.at(-1)?.ok).toBe(true);
     expect(hidDevice.validationResults.at(-1)?.commandName).toBe("dynamicKeymapSetKeycode");
     expect(hidDevice.definition.keymap[0][0][0]).toBe(0x0028);
+  });
+
+  it("reads stable VIA keymap buffer windows from the mock WebHID device", async () => {
+    const hidDevice = new MockHidKeyboardDevice({
+      layerCount: 1,
+      matrix: { rows: 1, cols: 3 },
+      keymap: [[[0x0004, 0x0028, 0x002c]]],
+    });
+    const responsePromise = new Promise<Uint8Array>((resolve) => {
+      hidDevice.addEventListener("inputreport", (event) => {
+        resolve(new Uint8Array(event.data.buffer.slice(0, event.data.byteLength)));
+      });
+    });
+
+    await hidDevice.open();
+    await hidDevice.sendReport(
+      0,
+      encodeViaCommandReport(viaCommand.dynamicKeymapGetBuffer, [0, 2, 4]),
+    );
+    const response = await responsePromise;
+
+    const validation = hidDevice.validationResults.at(-1);
+    const request = hidDevice.sentReports.at(-1);
+
+    expect(validation?.ok).toBe(true);
+    expect(validation?.commandName).toBe("dynamicKeymapGetBuffer");
+    expect(request?.[1]).toBe(0);
+    expect(request?.[2]).toBe(2);
+    expect(request?.[3]).toBe(4);
+    expect(Array.from(response.slice(4, 8))).toEqual([0x00, 0x28, 0x00, 0x2c]);
+  });
+
+  it("exposes a mock VIA transport backed by the Workbench 65 profile", async () => {
+    const transport = createMockViaTransport();
+    const connection = await transport.connect();
+
+    expect(transport.mode).toBe("mock");
+    expect(transport.defaultProfile?.name).toBe("Workbench 65");
+    expect(connection.status).toBe("connected");
+    expect(connection.productName).toBe("Workbench 65");
+    expect(connection.serialNumber).toBe("MOCK-WB65-001");
+    expect(connection.detection?.keymap?.[0]?.[0]?.[0]).toBe(
+      mockViaBoards.workbench65.definition.keymap?.[0]?.[0]?.[0],
+    );
   });
 
   it("writes a VIA keycode through an established WebHID connection and verifies readback", async () => {

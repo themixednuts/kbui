@@ -15,11 +15,18 @@ export interface ShellNavItem {
   title: string;
 }
 
+export type ShellConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
+
 export interface ShellDevice {
-  connected: boolean;
+  board: string;
+  message: string;
   name: string;
+  productId?: number;
   protocol: string;
+  protocolVersion?: number;
+  status: ShellConnectionStatus;
   transport: string;
+  vendorId?: number;
 }
 
 export interface ShellVariant {
@@ -167,10 +174,12 @@ export class ShellStore {
   readonly navItems = appNavItems;
 
   device = $state<ShellDevice>({
-    connected: true,
-    name: "Workbench 65",
-    protocol: "VIA v3",
-    transport: "QMK",
+    board: "No device",
+    message: "Local-only editing",
+    name: "No device",
+    protocol: "Local",
+    status: "disconnected",
+    transport: "Offline",
   });
 
   currentVariant = $state<ShellVariant>({
@@ -206,8 +215,11 @@ export class ShellStore {
   profileOpen = $state(false);
   placeMode = $state<ShellPlaceMode | null>(null);
 
-  readonly connected = $derived(this.device.connected);
-  readonly primaryActionLabel = $derived(this.connected ? "Flash" : "Connect");
+  readonly connected = $derived(this.device.status === "connected");
+  readonly connecting = $derived(this.device.status === "connecting");
+  readonly primaryActionLabel = $derived(
+    this.connected ? "Connected" : this.connecting ? "Connecting" : "Connect",
+  );
   readonly activeMonkeytype = $derived(
     this.account.status === "signed-in" && this.monkeytype.connected ? this.monkeytype : null,
   );
@@ -320,6 +332,74 @@ export class ShellStore {
 
   setDevice(device: ShellDevice) {
     this.device = device;
+  }
+
+  setDisconnected(message = "Local-only editing") {
+    this.device = {
+      board: "No device",
+      message,
+      name: "No device",
+      protocol: "Local",
+      status: "disconnected",
+      transport: "Offline",
+    };
+  }
+
+  setConnecting(message = "Waiting for device permission", transport = "WebHID") {
+    this.device = {
+      ...this.device,
+      board: this.device.board === "No device" ? "Connecting" : this.device.board,
+      message,
+      name: this.device.name === "No device" ? "Connecting" : this.device.name,
+      protocol: this.device.protocol === "Local" ? "VIA" : this.device.protocol,
+      status: "connecting",
+      transport,
+    };
+  }
+
+  setConnected(input: {
+    board: string;
+    message?: string;
+    productId?: number;
+    protocol: string;
+    protocolVersion?: number;
+    transport: string;
+    vendorId?: number;
+  }) {
+    this.device = {
+      board: input.board,
+      message: input.message ?? "Connected",
+      name: input.board,
+      productId: input.productId,
+      protocol: input.protocol,
+      protocolVersion: input.protocolVersion,
+      status: "connected",
+      transport: input.transport,
+      vendorId: input.vendorId,
+    };
+  }
+
+  setConnectionError(message: string, transport = this.device.transport) {
+    this.device = {
+      ...this.device,
+      board: "Connection error",
+      message,
+      name: "No device",
+      status: "error",
+      transport,
+    };
+  }
+
+  updateConnectedBoard(input: { board: string; protocol: string; transport?: string }) {
+    if (this.device.status !== "connected") return;
+
+    this.device = {
+      ...this.device,
+      board: input.board,
+      name: input.board,
+      protocol: input.protocol,
+      transport: input.transport ?? this.device.transport,
+    };
   }
 
   setCurrentVariant(variant: ShellVariant) {

@@ -98,11 +98,9 @@
 
   $effect(() => {
     shell.setDirty(workbench.dirty);
-    shell.setDevice({
-      connected: true,
-      name: workbench.profile.name,
+    shell.updateConnectedBoard({
+      board: workbench.profile.name,
       protocol: protocolLabel(workbench.profile.protocol),
-      transport: workbench.profile.firmware.toUpperCase(),
     });
     shell.setCurrentVariant({
       id: workbench.activeVariant.id,
@@ -486,11 +484,11 @@
         </button>
       </div>
 
-      <div class="device-status" data-connected={shell.connected}>
+      <div class="device-status" data-status={shell.device.status}>
         <span class="device-dot" aria-hidden="true"></span>
         <div>
-          <strong>{shell.connected ? shell.device.name : "No device"}</strong>
-          <span>{shell.connected ? `${shell.device.transport} · ${shell.device.protocol}` : "Offline"}</span>
+          <strong>{shell.connected ? shell.device.board : "No device"}</strong>
+          <span>{shell.connected ? `${shell.device.transport} · ${shell.device.protocol}` : shell.device.message}</span>
         </div>
       </div>
     </div>
@@ -529,7 +527,7 @@
 
       <Button variant={shell.connected ? "coral" : "ghost"} onclick={handlePrimaryAction}>
         <span class="material-symbols-outlined" aria-hidden="true">
-          {shell.connected ? "bolt" : "cable"}
+          {shell.connected ? "check_circle" : "cable"}
         </span>
         {shell.primaryActionLabel}
       </Button>
@@ -956,9 +954,19 @@
     background: var(--ink-3);
   }
 
-  .device-status[data-connected="true"] .device-dot {
+  .device-status[data-status="connected"] .device-dot {
     background: var(--mint);
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--mint) 24%, transparent);
+  }
+
+  .device-status[data-status="connecting"] .device-dot {
+    background: var(--mustard);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--mustard) 24%, transparent);
+  }
+
+  .device-status[data-status="error"] .device-dot {
+    background: var(--removed);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--removed) 18%, transparent);
   }
 
   .device-status strong,

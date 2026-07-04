@@ -1,11 +1,14 @@
 import type {
   HidController,
+  KeyboardTransport,
   MinimalHidDevice,
   MinimalHidInputReportEvent,
   MinimalUsbDevice,
   TransportEnvironment,
   UsbController,
 } from "./transport";
+import { connectKeyboard } from "./transport";
+import { cloneDevice, qmkKeycodeValue, sampleKeyboard, type DeviceProfile } from "./schema";
 import {
   validateViaReport,
   viaCommand,
@@ -29,6 +32,13 @@ export interface MockKeyboardDefinition {
   keymap?: number[][][];
 }
 
+export interface MockViaBoard {
+  id: string;
+  name: string;
+  definition: MockKeyboardDefinition;
+  profile: DeviceProfile;
+}
+
 function bufferSourceBytes(data: BufferSource) {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
@@ -44,10 +54,66 @@ function defaultKeymap(layerCount: number, matrix: { rows: number; cols: number 
   );
 }
 
+function keymapFromProfile(profile: DeviceProfile) {
+  const keymap: number[][][] = Array.from({ length: profile.layers.length }, (_, layerIndex) =>
+    Array.from({ length: profile.matrix.rows }, () =>
+      Array.from({ length: profile.matrix.cols }, () => (layerIndex === 0 ? 0x0000 : 0x0001)),
+    ),
+  );
+
+  for (const [layerIndex, layer] of profile.layers.entries()) {
+    for (const key of profile.keys) {
+      const binding = layer.bindings[key.id];
+      const keycode = binding ? qmkKeycodeValue(binding.code) : undefined;
+      keymap[layerIndex][key.row][key.col] = keycode ?? (layerIndex === 0 ? 0x0000 : 0x0001);
+    }
+  }
+
+  return keymap;
+}
+
+function createWorkbench65MockBoard(): MockViaBoard {
+  const profile = cloneDevice(sampleKeyboard);
+  profile.id = "mock:workbench-65";
+  profile.name = "Workbench 65";
+  profile.vendor = "Mock VIA";
+  profile.identity = {
+    key: "keyboard:feed:6060:MOCK-WB65-001",
+    transport: "webhid",
+    vendorId: profile.vendorId,
+    productId: profile.productId,
+    productName: profile.name,
+    serialNumber: "MOCK-WB65-001",
+  };
+  profile.detectionNotes = ["Seed profile for the mock VIA Workbench 65 harness."];
+
+  return {
+    id: "workbench-65",
+    name: "Workbench 65",
+    profile,
+    definition: {
+      productName: profile.name,
+      vendorId: profile.vendorId,
+      productId: profile.productId,
+      serialNumber: "MOCK-WB65-001",
+      protocolVersion: 12,
+      layerCount: profile.layers.length,
+      matrix: profile.matrix,
+      macroCount: profile.macros.length,
+      keymap: keymapFromProfile(profile),
+    },
+  };
+}
+
+export const mockViaBoards = {
+  workbench65: createWorkbench65MockBoard(),
+} as const;
+
 export class MockHidKeyboardDevice implements MinimalHidDevice {
   productName: string;
   vendorId: number;
   productId: number;
+  serialNumber?: string;
   collections = [{ usagePage: viaUsagePage, usage: viaUsage }];
   opened = false;
 
@@ -76,6 +142,7 @@ export class MockHidKeyboardDevice implements MinimalHidDevice {
     this.productName = this.definition.productName;
     this.vendorId = this.definition.vendorId;
     this.productId = this.definition.productId;
+    this.serialNumber = this.definition.serialNumber;
   }
 
   async open() {
@@ -152,7 +219,33 @@ export class MockHidKeyboardDevice implements MinimalHidDevice {
       response[5] = keycode & 0xff;
     }
 
+    if (request[0] === viaCommand.dynamicKeymapGetBuffer) {
+      const offset = (request[1] << 8) | request[2];
+      const size = Math.min(request[3], viaReportSize - 4);
+      response.set(this.keymapBuffer().slice(offset, offset + size), 4);
+    }
+
     return response;
+  }
+
+  private keymapBuffer() {
+    const size =
+      this.definition.layerCount * this.definition.matrix.rows * this.definition.matrix.cols * 2;
+    const buffer = new Uint8Array(size);
+    let index = 0;
+
+    for (let layer = 0; layer < this.definition.layerCount; layer += 1) {
+      for (let row = 0; row < this.definition.matrix.rows; row += 1) {
+        for (let col = 0; col < this.definition.matrix.cols; col += 1) {
+          const keycode = this.definition.keymap[layer]?.[row]?.[col] ?? 0x0000;
+          buffer[index] = (keycode >> 8) & 0xff;
+          buffer[index + 1] = keycode & 0xff;
+          index += 2;
+        }
+      }
+    }
+
+    return buffer;
   }
 }
 
@@ -216,5 +309,23 @@ export function createMockTransportEnvironment(
     isBrowser: true,
     hid: createMockHidController(new MockHidKeyboardDevice(definition)),
     usb: createMockUsbController(new MockUsbKeyboardDevice(definition)),
+  };
+}
+
+export function createMockViaTransport(
+  board: MockViaBoard = mockViaBoards.workbench65,
+): KeyboardTransport {
+  return {
+    id: `mock-via:${board.id}`,
+    label: `${board.name} demo`,
+    mode: "mock",
+    transport: "webhid",
+    defaultProfile: cloneDevice(board.profile),
+    connect: (options = {}) =>
+      connectKeyboard("webhid", options.filters ?? [], {
+        ...options,
+        environment: createMockTransportEnvironment(board.definition),
+        matrixHint: options.matrixHint ?? board.definition.matrix,
+      }),
   };
 }

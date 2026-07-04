@@ -1,7 +1,7 @@
 import { browser } from "$app/environment";
 import { Effect } from "effect";
 
-import type { Capability, KeyboardDetection } from "./schema";
+import type { Capability, DeviceProfile, KeyboardDetection } from "./schema";
 import { viaCommand, viaReportSize } from "./via-protocol";
 
 export type MinimalUsbDevice = {
@@ -68,6 +68,19 @@ declare global {
 }
 
 export type TransportKind = "webusb" | "webhid";
+
+export interface KeyboardTransportConnectOptions extends TransportOptions {
+  filters?: Array<{ vendorId?: number; productId?: number }>;
+}
+
+export interface KeyboardTransport {
+  id: string;
+  label: string;
+  mode: "real" | "mock";
+  transport: TransportKind;
+  defaultProfile?: DeviceProfile;
+  connect: (options?: KeyboardTransportConnectOptions) => Promise<ConnectionState>;
+}
 
 interface UsbDeviceFilter {
   vendorId?: number;
@@ -301,6 +314,7 @@ async function connectHidDevice(
       vendorId: device.vendorId,
       productId: device.productId,
       productName: device.productName,
+      serialNumber: device.serialNumber,
     },
     capabilities: ["keymap" as const, "layers" as const],
     notes: [error instanceof Error ? error.message : "Could not probe VIA protocol"],
@@ -315,6 +329,7 @@ async function connectHidDevice(
     productName: device.productName ?? "HID keyboard",
     vendorId: device.vendorId,
     productId: device.productId,
+    serialNumber: device.serialNumber,
     detection,
     message: "Connected",
   };
@@ -518,6 +533,7 @@ async function detectViaHid(
       vendorId: device.vendorId,
       productId: device.productId,
       productName: device.productName,
+      serialNumber: device.serialNumber,
     },
     protocolVersion,
     layerCount,
@@ -533,6 +549,19 @@ export async function connectKeyboard(
   options: TransportOptions = {},
 ) {
   return Effect.runPromise(connectKeyboardEffect(transport, filters, options));
+}
+
+export function createWebHidViaTransport(
+  defaultFilters: Array<{ vendorId?: number; productId?: number }> = [],
+): KeyboardTransport {
+  return {
+    id: "webhid-via",
+    label: "WebHID VIA",
+    mode: "real",
+    transport: "webhid",
+    connect: (options = {}) =>
+      connectKeyboard("webhid", options.filters ?? defaultFilters, options),
+  };
 }
 
 export function connectKeyboardEffect(
