@@ -16,6 +16,11 @@
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import type { KeyboardSettings } from "$lib/keyboard/schema";
+  import type {
+    CreatePairingTokenResponse,
+    ExtensionDeviceDto,
+    KeyboardChoicesResponse,
+  } from "$lib/typing-runs/contracts";
   import {
     isSplitKeyboard,
     isSplitTransportAllowed,
@@ -25,6 +30,12 @@
     splitTransportDisabledReason,
     type SplitTransport,
   } from "$lib/keyboard/split-transport";
+  import {
+    createExtensionPairingToken,
+    listExtensionDevices,
+    revokeExtensionDevice,
+    syncExtensionKeyboardChoices,
+  } from "./typing-runs.remote";
 
   type AuthClientError = {
     code?: string;
@@ -46,6 +57,15 @@
   let monkeytypeBusy = $state(false);
   let monkeytypeError = $state<string | null>(null);
   let monkeytypeSeeded = $state(false);
+  let extensionDevices = $state<ExtensionDeviceDto[]>([]);
+  let extensionPairing = $state<CreatePairingTokenResponse | null>(null);
+  let extensionBusy = $state(false);
+  let extensionRevokingId = $state<string | null>(null);
+  let extensionError = $state<string | null>(null);
+  let extensionNotice = $state<string | null>(null);
+  let extensionLoadedFor = $state<string | null>(null);
+  let extensionSyncedChoiceKey = $state("");
+  let extensionSyncStatus = $state<"idle" | "synced" | "error">("idle");
 
   const profile = $derived(workbench.profile);
   const settings = $derived(profile.settings);
@@ -73,6 +93,16 @@
     shell.monkeytype.connected
       ? `${statValue(shell.monkeytype.wpm)} wpm · ${statValue(shell.monkeytype.accuracy, 1)}%`
       : "Not connected",
+  );
+  const extensionChoices = $derived.by(extensionChoicesForWorkbench);
+  const extensionChoiceKey = $derived(JSON.stringify(extensionChoices));
+  const activeExtensionDevices = $derived(
+    extensionDevices.filter((device) => device.revokedAt === null),
+  );
+  const extensionSummary = $derived(
+    monkeytypeSignedIn
+      ? `${activeExtensionDevices.length} paired · ${extensionChoices.keyboards.length} keyboard${extensionChoices.keyboards.length === 1 ? "" : "s"}`
+      : "Sign in required",
   );
   const splitTransportCopy = $derived.by(() => {
     if (isZmkDevice(profile)) return "ZMK wireless split boards use BLE; wired TRRS modes stay locked.";
@@ -139,6 +169,29 @@
     monkeytypeUsername = shell.monkeytype.username ?? "";
     monkeytypePreset = `${shell.monkeytype.mode}:${shell.monkeytype.mode2}`;
     monkeytypeSeeded = true;
+  });
+
+  $effect(() => {
+    if (!browser) return;
+    const userId = shell.account.status === "signed-in" ? (shell.account.id ?? null) : null;
+    if (!userId) {
+      extensionDevices = [];
+      extensionPairing = null;
+      extensionLoadedFor = null;
+      extensionSyncedChoiceKey = "";
+      extensionSyncStatus = "idle";
+      return;
+    }
+    if (extensionLoadedFor === userId) return;
+    extensionLoadedFor = userId;
+    void refreshExtensionDevices(false);
+  });
+
+  $effect(() => {
+    if (!browser || !monkeytypeSignedIn) return;
+    if (extensionChoiceKey === extensionSyncedChoiceKey) return;
+    extensionSyncedChoiceKey = extensionChoiceKey;
+    void syncExtensionChoices(extensionChoices);
   });
 
   function updateTiming(key: "tappingTerm" | "debounce", value: number) {
@@ -246,11 +299,132 @@
     }
   }
 
+  async function createExtensionPairingCode() {
+    if (!monkeytypeSignedIn) {
+      extensionError = "Sign in with GitHub first.";
+      shell.profileOpen = true;
+      return;
+    }
+    if (extensionBusy) return;
+
+    extensionBusy = true;
+    extensionError = null;
+    extensionNotice = null;
+    try {
+      extensionPairing = await createExtensionPairingToken();
+      extensionNotice = "Pairing code created.";
+      await refreshExtensionDevices(false);
+    } catch (error) {
+      extensionError = clientErrorMessage(error, "Pairing code could not be created.");
+    } finally {
+      extensionBusy = false;
+    }
+  }
+
+  async function refreshExtensionDevices(showBusy = true) {
+    if (!monkeytypeSignedIn) return;
+    if (showBusy) extensionBusy = true;
+    extensionError = null;
+    try {
+      extensionDevices = await listExtensionDevices();
+    } catch (error) {
+      extensionError = clientErrorMessage(error, "Extension devices could not be loaded.");
+    } finally {
+      if (showBusy) extensionBusy = false;
+    }
+  }
+
+  async function revokeExtension(id: string) {
+    if (extensionRevokingId) return;
+    extensionRevokingId = id;
+    extensionError = null;
+    extensionNotice = null;
+    try {
+      await revokeExtensionDevice(id);
+      await refreshExtensionDevices(false);
+      extensionNotice = "Device revoked.";
+    } catch (error) {
+      extensionError = clientErrorMessage(error, "Extension device could not be revoked.");
+    } finally {
+      extensionRevokingId = null;
+    }
+  }
+
+  async function syncExtensionChoices(choices: KeyboardChoicesResponse) {
+    extensionSyncStatus = "idle";
+    try {
+      await syncExtensionKeyboardChoices(choices);
+      extensionSyncStatus = "synced";
+    } catch (error) {
+      extensionSyncStatus = "error";
+      extensionError = clientErrorMessage(error, "Extension keyboard choices could not be synced.");
+    }
+  }
+
   function statValue(value: number | null, digits = 0, fallback = "--") {
     if (value === null || !Number.isFinite(value)) return fallback;
     return value.toLocaleString(undefined, {
       maximumFractionDigits: digits,
       minimumFractionDigits: digits,
+    });
+  }
+
+  function extensionChoicesForWorkbench(): KeyboardChoicesResponse {
+    const variants = [
+      {
+        id: "main",
+        name: "main",
+        forkId: undefined,
+        profile: workbench.activeVariantId === "main" ? workbench.profile : workbench.baseProfile,
+      },
+      ...workbench.forks.map((fork) => ({
+        id: fork.id,
+        name: fork.name,
+        forkId: fork.id,
+        profile: workbench.activeVariantId === fork.id ? workbench.profile : fork.device,
+      })),
+    ];
+
+    return {
+      keyboards: variants.map((variant) => {
+        const profile = variant.profile;
+        return {
+          keyboardId: profile.identity?.key ?? profile.id,
+          displayName: variant.id === "main" ? profile.name : `${profile.name} · ${variant.name}`,
+          profileId: profile.id,
+          forkId: variant.forkId,
+          catalogId: profile.id,
+          vendorId: profile.vendorId,
+          productId: profile.productId,
+          boardName: profile.name,
+        };
+      }),
+      layouts: variants.map((variant) => {
+        const profile = variant.profile;
+        return {
+          layoutId: `${variant.id}:${profile.id}`,
+          displayName: variant.id === "main" ? "main" : variant.name,
+          variantId: variant.id,
+          layerNames: profile.layers.map((layer) => layer.name),
+          layoutHash: [
+            profile.id,
+            profile.updatedAt,
+            profile.layers.map((layer) => layer.id).join(","),
+          ].join(":"),
+        };
+      }),
+    };
+  }
+
+  function shortDate(value: string | null) {
+    if (!value) return "never";
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "unknown";
+    return date.toLocaleString(undefined, {
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      month: "short",
     });
   }
 
@@ -509,6 +683,107 @@
         </Card.Content>
       </Card.Root>
 
+      <Card.Root class="settings-card extension-card">
+        <Card.Header class="settings-card-header">
+          <div class="card-title-stack">
+            <Card.Title>Monkeytype run tagger</Card.Title>
+            <Card.Description>{extensionSummary}</Card.Description>
+          </div>
+          <span class="scope-chip extension-scope" data-connected={activeExtensionDevices.length > 0}>
+            extension
+          </span>
+        </Card.Header>
+        <Card.Content class="settings-card-body extension-settings">
+          <div class="extension-sync-grid">
+            <div>
+              <strong>{extensionChoices.keyboards.length}</strong>
+              <span>keyboards</span>
+            </div>
+            <div>
+              <strong>{extensionChoices.layouts.length}</strong>
+              <span>layouts</span>
+            </div>
+            <div>
+              <strong>{activeExtensionDevices.length}</strong>
+              <span>active</span>
+            </div>
+            <div>
+              <strong>{extensionSyncStatus}</strong>
+              <span>sync</span>
+            </div>
+          </div>
+
+          {#if extensionPairing}
+            <div class="extension-pairing-code">
+              <span>Pairing code</span>
+              <strong>{extensionPairing.code}</strong>
+              <small>Expires {shortDate(extensionPairing.expiresAt)}</small>
+            </div>
+          {/if}
+
+          <div class="extension-command-row">
+            <Button
+              variant="coral"
+              size="sm"
+              onclick={createExtensionPairingCode}
+              disabled={!monkeytypeSignedIn || extensionBusy}
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">add_link</span>
+              {extensionBusy ? "Working" : "Create code"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() => refreshExtensionDevices()}
+              disabled={!monkeytypeSignedIn || extensionBusy}
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">sync</span>
+              Refresh
+            </Button>
+          </div>
+
+          {#if !monkeytypeSignedIn}
+            <p class="extension-note" role="status">Sign in with GitHub first.</p>
+          {:else if extensionDevices.length === 0}
+            <p class="extension-note" role="status">No paired devices.</p>
+          {:else}
+            <div class="extension-device-list">
+              {#each extensionDevices as device (device.id)}
+                <div class="extension-device-row" data-revoked={device.revokedAt !== null}>
+                  <span class="material-symbols-outlined" aria-hidden="true">
+                    {device.revokedAt ? "phonelink_erase" : "extension"}
+                  </span>
+                  <div>
+                    <strong>{device.label ?? "Monkeytype tagger"}</strong>
+                    <small>
+                      {device.extensionVersion ?? "unknown"} · last {shortDate(device.lastSeenAt)}
+                    </small>
+                  </div>
+                  {#if device.revokedAt}
+                    <span class="device-state">revoked</span>
+                  {:else}
+                    <button
+                      type="button"
+                      onclick={() => revokeExtension(device.id)}
+                      disabled={extensionRevokingId === device.id}
+                      aria-label={`Revoke ${device.label ?? "extension device"}`}
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">link_off</span>
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          {#if extensionError}
+            <p class="extension-error" role="status">{extensionError}</p>
+          {:else if extensionNotice}
+            <p class="extension-note" role="status">{extensionNotice}</p>
+          {/if}
+        </Card.Content>
+      </Card.Root>
+
       <Card.Root class="settings-card app-card">
         <Card.Header class="settings-card-header">
           <div class="card-title-stack">
@@ -734,6 +1009,17 @@
     color: oklch(0.36 0.12 155);
   }
 
+  .extension-scope {
+    border-color: color-mix(in oklch, var(--teal) 38%, var(--line-2));
+    background: color-mix(in oklch, var(--teal) 9%, var(--paper));
+  }
+
+  .extension-scope[data-connected="true"] {
+    border-color: color-mix(in oklch, var(--mint) 48%, var(--line-2));
+    background: color-mix(in oklch, var(--mint) 12%, var(--paper));
+    color: oklch(0.36 0.12 155);
+  }
+
   .transport-chip {
     border-color: color-mix(in oklch, var(--coral) 40%, var(--line-2));
     background: color-mix(in oklch, var(--coral) 10%, var(--paper));
@@ -870,10 +1156,161 @@
     gap: 12px;
   }
 
+  :global(.extension-settings) {
+    gap: 12px;
+  }
+
   .monkeytype-scoreboard {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .extension-sync-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .extension-sync-grid div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 50px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper-2);
+  }
+
+  .extension-sync-grid strong,
+  .extension-sync-grid span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .extension-sync-grid strong {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .extension-sync-grid span {
+    color: var(--ink-3);
+    font-size: 10px;
+  }
+
+  .extension-pairing-code {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid color-mix(in oklch, var(--coral) 36%, var(--line-2));
+    border-radius: 8px;
+    background: color-mix(in oklch, var(--coral) 10%, var(--paper));
+  }
+
+  .extension-pairing-code span,
+  .extension-pairing-code small {
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .extension-pairing-code strong {
+    overflow-wrap: anywhere;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 18px;
+    letter-spacing: 0.08em;
+  }
+
+  .extension-command-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .extension-command-row :global(button) {
+    width: 100%;
+    justify-content: center;
+    padding-inline: 8px;
+  }
+
+  .extension-device-list {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .extension-device-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+    min-height: 46px;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in oklch, var(--paper-2) 76%, transparent);
+  }
+
+  .extension-device-row[data-revoked="true"] {
+    opacity: 0.62;
+  }
+
+  .extension-device-row > .material-symbols-outlined {
+    color: var(--teal);
+    font-size: 18px;
+  }
+
+  .extension-device-row div {
+    min-width: 0;
+  }
+
+  .extension-device-row strong,
+  .extension-device-row small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .extension-device-row strong {
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+
+  .extension-device-row small,
+  .device-state {
+    color: var(--ink-3);
+    font-size: 10.5px;
+  }
+
+  .extension-device-row button {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink-2);
+    background: var(--paper);
+  }
+
+  .extension-device-row button:hover {
+    border-color: color-mix(in oklch, var(--coral) 44%, var(--line-2));
+    color: var(--coral-ink);
+    background: color-mix(in oklch, var(--coral) 10%, var(--paper));
+  }
+
+  .extension-device-row button:disabled {
+    opacity: 0.5;
+    cursor: wait;
   }
 
   .monkeytype-scoreboard div {
@@ -956,7 +1393,9 @@
   }
 
   .monkeytype-error,
-  .monkeytype-note {
+  .monkeytype-note,
+  .extension-error,
+  .extension-note {
     margin: 0;
     padding: 9px 10px;
     border-radius: 8px;
@@ -964,13 +1403,15 @@
     line-height: 1.4;
   }
 
-  .monkeytype-error {
+  .monkeytype-error,
+  .extension-error {
     border: 1px solid oklch(0.62 0.2 25 / 0.3);
     background: oklch(0.95 0.04 25);
     color: oklch(0.42 0.15 25);
   }
 
-  .monkeytype-note {
+  .monkeytype-note,
+  .extension-note {
     border: 1px solid color-mix(in oklch, var(--mustard) 42%, var(--line-2));
     background: color-mix(in oklch, var(--mustard) 15%, var(--surface));
     color: var(--ink-2);
@@ -1136,7 +1577,9 @@
     :global(.settings-transport-grid),
     .accent-grid,
     .monkeytype-scoreboard,
-    .monkeytype-command-row {
+    .monkeytype-command-row,
+    .extension-sync-grid,
+    .extension-command-row {
       grid-template-columns: 1fr;
     }
   }

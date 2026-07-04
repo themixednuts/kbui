@@ -2,6 +2,7 @@ import type { DurableObjectNamespace, ExecutionContext } from "@cloudflare/worke
 import type { Session, User } from "better-auth";
 import type { AuthAgent } from "./agents/auth-agent";
 import type { CommunityAgent } from "./agents/community-agent";
+import type { TypingRunsAgent } from "./agents/typing-runs-agent";
 import type { UserWorkbenchAgent } from "./agents/user-workbench";
 
 declare global {
@@ -17,6 +18,7 @@ declare global {
       env: Cloudflare.Env & {
         AuthAgent: DurableObjectNamespace<AuthAgent>;
         CommunityAgent: DurableObjectNamespace<CommunityAgent>;
+        TypingRunsAgent: DurableObjectNamespace<TypingRunsAgent>;
         UserWorkbenchAgent: DurableObjectNamespace<UserWorkbenchAgent>;
         BETTER_AUTH_SECRET?: string;
         BETTER_AUTH_URL?: string;
