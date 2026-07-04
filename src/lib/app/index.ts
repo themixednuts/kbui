@@ -11,5 +11,6 @@
  *   const value = await runApp("Load target OS", TargetOS.load);
  */
 export { runApp, runAppSync } from "./runtime.ts";
+export * as Accent from "./services/accent.ts";
 export * as Preferences from "./services/preferences.ts";
 export * as TargetOS from "./services/target-os.ts";

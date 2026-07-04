@@ -7,6 +7,49 @@ import { ShellStore } from "./shell-store.svelte";
 import { WorkbenchStore } from "./workbench-store.svelte";
 
 describe("workbench store library placement", () => {
+  it("updates device-scoped keyboard settings through the shared draft profile", () => {
+    const workbench = new WorkbenchStore({ persist: false });
+
+    workbench.updateSettings({
+      tappingTerm: 210,
+      debounce: 7,
+      nkro: false,
+    });
+
+    expect(workbench.profile.settings).toMatchObject({
+      tappingTerm: 210,
+      debounce: 7,
+      nkro: false,
+    });
+    expect(workbench.baseProfile.settings).toMatchObject({
+      tappingTerm: 185,
+      debounce: 5,
+      nkro: true,
+    });
+    expect(diffProfiles(workbench.baseProfile, workbench.profile)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "setting",
+          path: "settings/tappingTerm",
+          before: "185",
+          after: "210",
+        }),
+        expect.objectContaining({
+          kind: "setting",
+          path: "settings/debounce",
+          before: "5",
+          after: "7",
+        }),
+        expect.objectContaining({
+          kind: "setting",
+          path: "settings/nkro",
+          before: "true",
+          after: "false",
+        }),
+      ]),
+    );
+  });
+
   it("places macros and tap dances on the shared draft profile", () => {
     const workbench = new WorkbenchStore({ persist: false });
     const macro = workbench.addMacro();

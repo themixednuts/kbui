@@ -33,6 +33,7 @@ import {
   type DeviceProfile,
   type KeyBinding,
   type KeyLighting,
+  type KeyboardSettings,
   type Layer,
   type LightingProfile,
   type Macro,
@@ -453,17 +454,22 @@ export class EditorStore {
     this.applyMutation(result);
   }
 
+  updateSettings(patch: Partial<KeyboardSettings>) {
+    const nextSettings = {
+      ...this.profile.settings,
+      ...patch,
+    };
+
+    if (settingsEqual(this.profile.settings, nextSettings)) return;
+    this.commitProfile({
+      ...this.profile,
+      settings: nextSettings,
+    });
+  }
+
   setTappingTerm(value: number) {
     const next = Math.round(value);
-    if (this.profile.settings.tappingTerm === next) return;
-    this.profile = withUpdatedAt({
-      ...this.profile,
-      settings: {
-        ...this.profile.settings,
-        tappingTerm: next,
-      },
-    });
-    this.queuePersistence();
+    this.updateSettings({ tappingTerm: next });
   }
 
   applySwatchToSelection(swatch: LightingSwatchId = this.currentSwatch) {
@@ -1282,6 +1288,17 @@ function bindingEquals(left: KeyBinding, right: KeyBinding): boolean {
     left.hold === right.hold &&
     left.macroId === right.macroId &&
     left.notes === right.notes
+  );
+}
+
+function settingsEqual(left: KeyboardSettings, right: KeyboardSettings): boolean {
+  return (
+    left.tappingTerm === right.tappingTerm &&
+    left.debounce === right.debounce &&
+    left.permissiveHold === right.permissiveHold &&
+    left.retroTapping === right.retroTapping &&
+    left.nkro === right.nkro &&
+    left.splitTransport === right.splitTransport
   );
 }
 

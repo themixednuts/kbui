@@ -2,6 +2,7 @@
   import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { Accent, runApp } from "$lib/app";
   import { authClient } from "$lib/auth-client";
   import { onDestroy } from "svelte";
   import AvatarButton from "$lib/components/ui/AvatarButton.svelte";
@@ -36,6 +37,7 @@
   );
 
   let authRequested = $state(false);
+  let accentRequested = $state(false);
   let previousPathname = $state("");
 
   $effect(() => {
@@ -48,6 +50,12 @@
     if (!browser || authRequested) return;
     authRequested = true;
     void refreshSession();
+  });
+
+  $effect(() => {
+    if (!browser || accentRequested) return;
+    accentRequested = true;
+    void runApp("Load accent", Accent.loadAndApply);
   });
 
   $effect(() => {
