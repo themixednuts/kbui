@@ -5,7 +5,6 @@ import path from "node:path";
 const agentExports = [
   'export { AuthAgent } from "../../src/agents/auth-agent";',
   'export { UserWorkbenchAgent } from "../../src/agents/user-workbench";',
-  'export { LiveStoreSyncDO } from "../../src/agents/livestore-sync";',
 ];
 const usePlatformProxy = process.argv.slice(2).some((arg) => arg === "dev");
 const adapterOptions = usePlatformProxy

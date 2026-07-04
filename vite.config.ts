@@ -18,11 +18,7 @@ export default defineConfig({
   run: {
     tasks: {
       "dev:worker": {
-        command: "vp build && node scripts/generate-wrangler-effect-aliases.mjs && wrangler dev",
-        cache: false,
-      },
-      "worker:aliases": {
-        command: "node scripts/generate-wrangler-effect-aliases.mjs",
+        command: "vp build && wrangler dev",
         cache: false,
       },
       "playwright:install": {
@@ -74,47 +70,6 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
-  },
-  // LiveStore's `@livestore/sync-cf/cf-worker` and friends import
-  // Cloudflare-runtime modules using the `cloudflare:*` URL scheme
-  // (e.g. `cloudflare:workers`). Workerd resolves those at runtime, but
-  // the Vite/Node bundler that runs during SvelteKit's SSR build
-  // doesn't know the scheme and crashes during chunk rendering. Mark
-  // every `cloudflare:*` import as external so it stays as-is in the
-  // emitted worker bundle.
-  build: {
-    rollupOptions: {
-      external: [
-        "cloudflare:workers",
-        "cloudflare:sockets",
-        "cloudflare:email",
-        "cloudflare:test",
-        "@livestore/sync-cf/cf-worker",
-        "@livestore/common-cf",
-        "@livestore/common-cf/declare",
-      ],
-    },
-  },
-  resolve: {
-    alias: {
-      // LiveStore 0.4.0-dev.* is hardcoded against effect v3's module
-      // layout. Effect v4 collapsed `ParseResult` and `RuntimeFlags`
-      // into other modules. Map the two paths LiveStore actually uses
-      // at runtime to lightweight shims so the build resolves and the
-      // runtime keeps moving. Replace these aliases the moment LiveStore
-      // ships v4 support upstream.
-      "effect/ParseResult": new URL("./src/lib/shims/effect-parse-result.ts", import.meta.url)
-        .pathname,
-      "effect/RuntimeFlags": new URL("./src/lib/shims/effect-runtime-flags.ts", import.meta.url)
-        .pathname,
-    },
-  },
-  ssr: {
-    // Inline LiveStore into the SSR bundle so our `resolve.alias`
-    // rewrites for `effect/ParseResult` / `effect/RuntimeFlags` get
-    // applied before wrangler's downstream pre-bundler walks node_modules
-    // and re-resolves the v3 paths.
-    noExternal: [/^@livestore\//],
   },
   preview: {
     headers: {

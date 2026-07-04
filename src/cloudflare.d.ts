@@ -3,7 +3,7 @@
 declare namespace Cloudflare {
   interface GlobalProps {
     mainModule: unknown;
-    durableNamespaces: "UserWorkbenchAgent" | "AuthAgent" | "LiveStoreSyncDO";
+    durableNamespaces: "UserWorkbenchAgent" | "AuthAgent";
   }
   interface Env {
     ASSETS: Fetcher;
@@ -11,12 +11,6 @@ declare namespace Cloudflare {
       import("./agents/user-workbench").UserWorkbenchAgent
     >;
     AuthAgent: DurableObjectNamespace<import("./agents/auth-agent").AuthAgent>;
-    // Hand-written until `wrangler types` regenerates this file:
-    // `makeDurableObject(...)` returns an anonymous class so we
-    // type-ref the module export.
-    LiveStoreSyncDO: DurableObjectNamespace<
-      InstanceType<typeof import("./agents/livestore-sync").LiveStoreSyncDO>
-    >;
   }
 }
 interface Env extends Cloudflare.Env {}

@@ -64,15 +64,3 @@ export const verification = sqliteTable(
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
-
-// JWT plugin's keypair store. better-auth's `jwt` plugin rotates RSA /
-// Ed25519 keys and serves the public set from /api/auth/jwks. The
-// drizzle adapter needs this model declared so it can read/write the
-// `jwks` table that AuthAgent.ensureAuthTables creates at SQL level.
-export const jwks = sqliteTable("jwks", {
-  id: text("id").primaryKey(),
-  publicKey: text("public_key").notNull(),
-  privateKey: text("private_key").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-  expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
-});

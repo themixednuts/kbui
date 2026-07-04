@@ -1,6 +1,4 @@
 import { dev } from "$app/environment";
-import { catchCompat } from "$lib/effect/compat";
-import { Effect } from "effect";
 import type { RequestHandler } from "./$types";
 
 const authAgentName = "global-auth";
@@ -43,25 +41,17 @@ const handleAuth: RequestHandler = async ({ request, platform }) => {
     init.body = request.body;
   }
 
-  const response = await Effect.runPromise(
-    Effect.tryPromise({
-      try: () => agent.fetch(request.url, init),
-      catch: (error) => error,
-    }).pipe(
-      catchCompat(() =>
-        Effect.succeed(
-          Response.json(
-            {
-              error:
-                "AuthAgent is unavailable in this local dev server. Use `vp run dev:worker` for Wrangler-backed agent bindings.",
-            },
-            { status: 503 },
-          ),
-        ),
-      ),
-    ),
-  );
-  return response as Response;
+  try {
+    return await agent.fetch(request.url, init);
+  } catch {
+    return Response.json(
+      {
+        error:
+          "AuthAgent is unavailable in this local dev server. Use `vp run dev:worker` for Wrangler-backed agent bindings.",
+      },
+      { status: 503 },
+    );
+  }
 };
 
 export const GET = handleAuth;

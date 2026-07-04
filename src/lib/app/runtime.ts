@@ -1,5 +1,4 @@
 import { Cause, Effect } from "effect";
-import { catchCauseCompat } from "$lib/effect/compat";
 
 /**
  * `runApp` — fire-and-forget an Effect from imperative call sites (event
@@ -20,7 +19,7 @@ export function runApp<A>(
 ): Promise<A | undefined> {
   return Effect.runPromise(
     effect.pipe(
-      catchCauseCompat((cause) =>
+      Effect.catchCause((cause) =>
         Effect.sync(() => {
           const message = Cause.pretty(cause);
           if (onError) {

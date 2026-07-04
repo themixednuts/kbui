@@ -1,5 +1,4 @@
 import { browser } from "$app/environment";
-import { catchCompat } from "$lib/effect/compat";
 import { Effect } from "effect";
 
 import type { Capability, KeyboardDetection } from "./schema";
@@ -591,7 +590,7 @@ export function connectKeyboardEffect(
     },
     catch: (error) => error,
   }).pipe(
-    catchCompat((error) =>
+    Effect.catch((error) =>
       Effect.succeed({
         ...getConnectionState(environment),
         status: "error" as const,
@@ -626,7 +625,7 @@ export function detectGrantedKeyboardEffect(options: TransportOptions = {}) {
     },
     catch: (error) => error,
   }).pipe(
-    catchCompat((error) =>
+    Effect.catch((error) =>
       Effect.succeed({
         ...getConnectionState(environment),
         status: "error" as const,

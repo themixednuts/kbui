@@ -57,7 +57,6 @@
   import { WORKBENCH_ROUTES, type WorkbenchRoute } from "$lib/workbench/routes";
   import { workbenchHref, type InspectorTab, type KeymapMode, type LogicTab, type WorkbenchSearchPatch } from "$lib/workbench/url-search";
   import { WorkbenchStore } from "$lib/workbench/workbench-store.svelte";
-  import { catchCauseCompat } from "$lib/effect/compat";
   import { Cause, Effect } from "effect";
 
   import { authClient } from "$lib/auth-client";
@@ -527,7 +526,7 @@
   function runAppEffect<A>(title: string, effect: Effect.Effect<A, unknown, never>) {
     return Effect.runPromise(
       effect.pipe(
-        catchCauseCompat((cause) =>
+        Effect.catchCause((cause) =>
           Effect.sync(() => {
             captureAppError(title, causeMessage(cause));
             return undefined as A | undefined;
@@ -562,7 +561,7 @@
             syncStatus = "ok";
           }
           showNotice(`Restored ${profile.name} from your synced workspace.`, "success");
-        }).pipe(catchCauseCompat(() => Effect.succeed(undefined))),
+        }).pipe(Effect.catchCause(() => Effect.succeed(undefined))),
       );
     });
 
@@ -832,7 +831,7 @@
       catalogStatus = `${payload.count} VIA definitions via ${catalogSource}`;
       cloudStatus = catalogStatus;
       }),
-      catchCauseCompat((cause) =>
+      Effect.catchCause((cause) =>
         Effect.sync(() => {
           if (requestId !== catalogRequestId) return;
           catalogStatus = causeMessage(cause) || "Keyboard catalog unavailable";
@@ -888,12 +887,12 @@
 
   function matrixHintForConnectionEffect(identity: CatalogIdentity) {
     return matchCatalogSummaryEffect(identity).pipe(
-      catchCauseCompat(() => Effect.succeed(undefined)),
+      Effect.catchCause(() => Effect.succeed(undefined)),
       Effect.flatMap((summary) => {
         if (summary) return Effect.succeed(summary.matrix);
 
         return loadLocalDeviceEffect(identityStorageKey(identity)).pipe(
-          catchCauseCompat(() => Effect.succeed(undefined)),
+          Effect.catchCause(() => Effect.succeed(undefined)),
           Effect.map((storedProfile) => {
             if (storedProfile) return storedProfile.matrix;
             if (device.identity?.key === identityStorageKey(identity) || selectedCatalogId) return device.matrix;
@@ -2070,7 +2069,7 @@
     const detection = connection.detection;
       const catalogEntry = await Effect.runPromise(
         matchCatalogEntryEffect(detection.identity).pipe(
-          catchCauseCompat(() => Effect.succeed(undefined)),
+          Effect.catchCause(() => Effect.succeed(undefined)),
         ),
       );
     const [existingProfile, existingDraft] = await Promise.all([
@@ -2160,7 +2159,7 @@
         authStatus = "Local draft";
       }
     }).pipe(
-      catchCauseCompat((cause) =>
+      Effect.catchCause((cause) =>
         Effect.sync(() => {
       authSession = null;
           authStatus = causeMessage(cause) || "Auth unavailable";
@@ -2207,7 +2206,7 @@
       authStatus = "GitHub sign-in did not return a redirect URL";
       showNotice(authStatus, "error");
     }).pipe(
-      catchCauseCompat((cause) =>
+      Effect.catchCause((cause) =>
         Effect.sync(() => {
           authStatus = causeMessage(cause) || "GitHub sign-in failed";
           showNotice(authStatus, "error");
@@ -2320,7 +2319,7 @@
         cloudStatus = result.reason ?? "Sync queued — server unavailable";
       }
     }).pipe(
-      catchCauseCompat((cause) =>
+      Effect.catchCause((cause) =>
         Effect.sync(() => {
           syncStatus = "error";
           cloudStatus = causeMessage(cause) || "Agent sync failed";

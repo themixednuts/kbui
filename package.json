@@ -4,14 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-vite-plus-test-bin.mjs",
     "prepare": "svelte-kit sync || echo ''"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.23",
-    "@livestore/adapter-web": "0.4.0-dev.26",
-    "@livestore/livestore": "0.4.0-dev.26",
-    "@livestore/svelte": "0.4.0-dev.26",
-    "@livestore/sync-cf": "0.4.0-dev.26",
     "@lucide/svelte": "^1.23.0",
     "agents": "^0.17.3",
     "better-auth": "^1.6.23",
@@ -20,7 +17,6 @@
     "drizzle-orm": "^0.45.2",
     "effect": "^4.0.0-beta.60",
     "fflate": "^0.8.3",
-    "jose": "^6.2.3",
     "paneforge": "^1.0.2",
     "sqlocal": "^0.18.0",
     "tailwind-merge": "^3.6.0",
@@ -40,7 +36,6 @@
     "@tailwindcss/vite": "^4.3.2",
     "@types/node": "^26.1.0",
     "drizzle-kit": "^0.31.10",
-    "effect-v3": "npm:effect@3.21.2",
     "mode-watcher": "^1.1.0",
     "shadcn-svelte": "^1.3.0",
     "storybook": "^10.4.6",

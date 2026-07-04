@@ -1,6 +1,4 @@
 import { dev } from "$app/environment";
-import { Effect } from "effect";
-import { catchCauseCompat } from "$lib/effect/compat";
 import type { Handle } from "@sveltejs/kit";
 
 const authAgentName = "global-auth";
@@ -12,38 +10,40 @@ export const handle: Handle = async ({ event, resolve }) => {
   let authSetCookie: string | null = null;
 
   if (!dev && !event.url.pathname.startsWith("/api/auth") && event.platform?.env.AuthAgent) {
-    const sessionResult = await Effect.runPromise(
-      Effect.tryPromise(async () => {
-        const id = event.platform?.env.AuthAgent.idFromName(authAgentName);
-        const agent = id ? event.platform?.env.AuthAgent.get(id) : undefined;
-        const sessionUrl = new URL("/api/auth/get-session", event.url);
+    let sessionResult: Response | undefined;
 
-        // Only forward headers that auth actually needs (cookies + a few
-        // identifying ones). Carrying the original request's
-        // content-type / content-length over to this synthetic GET makes
-        // better-auth's body parser try to read a body that isn't there
-        // → 500 → null user → bogus 401s on legitimately-signed-in
-        // requests. The repro: any POST to /api/agent/* would mis-401.
-        const authHeaders = new Headers();
-        const passthrough = [
-          "cookie",
-          "authorization",
-          "user-agent",
-          "accept-language",
-          "x-forwarded-for",
-          "x-real-ip",
-        ];
-        for (const name of passthrough) {
-          const value = event.request.headers.get(name);
-          if (value) authHeaders.set(name, value);
-        }
+    try {
+      const id = event.platform?.env.AuthAgent.idFromName(authAgentName);
+      const agent = id ? event.platform?.env.AuthAgent.get(id) : undefined;
+      const sessionUrl = new URL("/api/auth/get-session", event.url);
 
-        return agent?.fetch(sessionUrl.toString(), {
-          headers: authHeaders,
-          method: "GET",
-        });
-      }).pipe(catchCauseCompat(() => Effect.succeed(undefined as Response | undefined))),
-    );
+      // Only forward headers that auth actually needs (cookies + a few
+      // identifying ones). Carrying the original request's
+      // content-type / content-length over to this synthetic GET makes
+      // better-auth's body parser try to read a body that isn't there
+      // -> 500 -> null user -> bogus 401s on legitimately-signed-in
+      // requests. The repro: any POST to /api/agent/* would mis-401.
+      const authHeaders = new Headers();
+      const passthrough = [
+        "cookie",
+        "authorization",
+        "user-agent",
+        "accept-language",
+        "x-forwarded-for",
+        "x-real-ip",
+      ];
+      for (const name of passthrough) {
+        const value = event.request.headers.get(name);
+        if (value) authHeaders.set(name, value);
+      }
+
+      sessionResult = await agent?.fetch(sessionUrl.toString(), {
+        headers: authHeaders,
+        method: "GET",
+      });
+    } catch {
+      sessionResult = undefined;
+    }
 
     authSetCookie = sessionResult?.headers.get("set-cookie") ?? null;
 

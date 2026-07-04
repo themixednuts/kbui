@@ -1,7 +1,6 @@
 import { Agent, type AgentContext } from "agents";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
-import { jwt } from "better-auth/plugins/jwt";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 
 import * as authSchema from "$lib/server/auth/schema";
@@ -137,22 +136,6 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
             handler: (promise) => this.#agentCtx.waitUntil(promise),
           },
         },
-        // JWT plugin — exposes `GET /api/auth/jwks` (public key set) and
-        // `GET /api/auth/token` (issues a bearer for the signed-in user).
-        // LiveStore's Sync DO uses these: client passes the token in
-        // `syncPayload`, the DO verifies it against the JWKS. The `sub`
-        // claim is the better-auth user id — that's the stable identity
-        // we key LiveStore stores on.
-        plugins: [
-          jwt({
-            jwt: {
-              // 30-day tokens. LiveStore reconnects continuously so a
-              // long-lived token avoids forcing a re-issue mid-session;
-              // shorter is fine too if we want tighter revocation.
-              expirationTime: "30d",
-            },
-          }),
-        ],
       });
     }
 
@@ -228,20 +211,5 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
 
     void this
       .sql`CREATE INDEX IF NOT EXISTS verification_identifier_idx ON verification (identifier)`;
-
-    // JWT plugin tables. Holds the rotating RSA/Ed25519 keypairs that
-    // back the JWKS endpoint and the issued-token signing key. The plugin
-    // expects exact column names — `id`, `public_key`, `private_key`,
-    // `created_at`, `expires_at` (snake_case under drizzleAdapter's
-    // camelCase mode).
-    void this.sql`
-      CREATE TABLE IF NOT EXISTS jwks (
-        id TEXT PRIMARY KEY,
-        public_key TEXT NOT NULL,
-        private_key TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        expires_at INTEGER
-      )
-    `;
   }
 }
