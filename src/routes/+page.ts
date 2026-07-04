@@ -14,5 +14,5 @@ export function load({ url }: { url: URL }) {
     }
     redirect(307, search ? `/${view}?${search}` : `/${view}`);
   }
-  redirect(307, "/keymap");
+  redirect(307, "/editor");
 }
