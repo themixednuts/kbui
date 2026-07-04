@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from "$app/state";
   import { Eye, EyeOff, Keyboard, Lightbulb, MousePointer2 } from "@lucide/svelte";
   import { onDestroy } from "svelte";
 
@@ -18,17 +19,41 @@
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
   import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
+  import {
+    sampleBoardIdFromParam,
+    sampleBoards,
+    type SampleBoardId,
+  } from "$lib/keyboard/sample-boards";
 
-  const editor = new EditorStore();
   const shell = getShellContext();
+  const initialBoardId = sampleBoardIdFromParam(page.url.searchParams.get("board"));
 
+  let activeBoardId = $state<SampleBoardId>(initialBoardId);
+  let editor = $state(new EditorStore({ baseProfile: sampleBoards[initialBoardId] }));
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
 
+  const requestedBoardId = $derived(sampleBoardIdFromParam(page.url.searchParams.get("board")));
   const lensItems: SegmentItem<EditorLens>[] = [
     { value: "keys", label: "Keys", icon: Keyboard, title: "Edit key bindings" },
     { value: "lighting", label: "Lighting", icon: Lightbulb, title: "Lighting lens" },
   ];
+  const boardItems = $derived.by(
+    (): SegmentItem<SampleBoardId>[] => [
+      {
+        value: "default",
+        label: "Workbench",
+        href: boardHref("default"),
+        title: "Temporary demo board selector",
+      },
+      {
+        value: "split",
+        label: "Split demo",
+        href: boardHref("split"),
+        title: "Temporary split-board demo selector",
+      },
+    ],
+  );
 
   const boardModel = $derived(
     createBoardViewModel({
@@ -64,6 +89,17 @@
     });
   });
 
+  $effect(() => {
+    if (requestedBoardId === activeBoardId) return;
+
+    const previousEditor = editor;
+    void previousEditor.flushPersistence();
+    activeBoardId = requestedBoardId;
+    editor = new EditorStore({ baseProfile: sampleBoards[activeBoardId] });
+    boardZoom = 1;
+    boardPan = { x: 0, y: 0 };
+  });
+
   onDestroy(() => {
     void editor.flushPersistence();
   });
@@ -77,6 +113,15 @@
   function handleLightingDrag(keyIds: string[], mode: EditorLightingDragMode) {
     editor.applyLightingDrag(keyIds, mode);
   }
+
+  function boardHref(boardId: SampleBoardId) {
+    const params = new URLSearchParams(page.url.searchParams);
+    if (boardId === "default") params.delete("board");
+    else params.set("board", boardId);
+
+    const query = params.toString();
+    return `${page.url.pathname}${query ? `?${query}` : ""}`;
+  }
 </script>
 
 {#snippet editorMain()}
@@ -87,6 +132,13 @@
         value={editor.lens}
         onselect={(lens) => editor.setLens(lens)}
         ariaLabel="Editor lens"
+      />
+
+      <SegmentedNav
+        items={boardItems}
+        value={activeBoardId}
+        ariaLabel="Temporary editor board selector"
+        class="board-switcher"
       />
 
       <EditorLayerStack {editor} />
@@ -136,7 +188,9 @@
         />
       </section>
 
-      <ActiveStackCard {editor} />
+      {#if !splitLayout}
+        <ActiveStackCard {editor} />
+      {/if}
     {:else}
       <section class="board-stage lighting-stage" aria-label="Keyboard lighting editor">
         <KeyboardBoard
@@ -153,10 +207,12 @@
         />
       </section>
 
-      <div class="lighting-hint">
-        <MousePointer2 size={15} aria-hidden="true" />
-        <span>Drag across keys to select</span>
-      </div>
+      {#if !splitLayout}
+        <div class="lighting-hint">
+          <MousePointer2 size={15} aria-hidden="true" />
+          <span>Drag across keys to select</span>
+        </div>
+      {/if}
     {/if}
   </div>
 {/snippet}
@@ -223,6 +279,10 @@
     min-width: 10px;
   }
 
+  :global(.board-switcher) {
+    opacity: 0.86;
+  }
+
   .board-stage {
     display: flex;
     min-width: 0;
@@ -253,9 +313,49 @@
 
   .split-inspector-dock {
     min-width: 0;
-    padding: 14px 22px 18px;
+    padding: 10px 22px 12px;
     border-top: 1px solid var(--line);
-    background: color-mix(in oklch, var(--surface) 86%, var(--paper));
+    background: color-mix(in oklch, var(--surface) 90%, var(--paper));
+    box-shadow: 0 -18px 44px -34px rgba(27, 25, 23, 0.42);
+  }
+
+  .editor-route.split .editor-main {
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 18px 22px 12px;
+  }
+
+  .editor-route.split .board-stage {
+    min-height: 300px;
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .editor-route.split .lighting-stage {
+    min-height: 312px;
+  }
+
+  .editor-route.split :global(.keyboard-board-viewport) {
+    min-height: 282px;
+    padding: 20px 18px 34px;
+    background:
+      linear-gradient(to right, oklch(0.13 0.01 60 / 0.028) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.13 0.01 60 / 0.028) 1px, transparent 1px),
+      radial-gradient(ellipse 58% 62% at 50% 42%, oklch(0.97 0.035 72 / 0.54), transparent 78%);
+    background-size:
+      24px 24px,
+      24px 24px,
+      100% 100%;
+  }
+
+  .editor-route.split :global(.split-seam) {
+    border-left-color: color-mix(in oklch, var(--ink-3) 38%, transparent);
+  }
+
+  .editor-route.split :global(.split-label) {
+    color: color-mix(in oklch, var(--ink-3) 84%, var(--ink));
   }
 
   :global(.editor-route .keymap-pane-group) {

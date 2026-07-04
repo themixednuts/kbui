@@ -12,13 +12,13 @@ import {
 } from "$lib/keyboard/lighting-swatches";
 import { logicBindingOptions, type LogicBindingOption } from "$lib/keyboard/logic-bindings";
 import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from "$lib/keyboard/local-store";
+import { defaultSampleKeyboard } from "$lib/keyboard/sample-boards";
 import {
   bindingFor,
   cloneDevice,
   emptyBindingsForKeys,
   normalizeQmkKeycode,
   qmkKeycodeLabel,
-  sampleKeyboard,
   type DeviceProfile,
   type KeyBinding,
   type KeyLighting,
@@ -194,11 +194,11 @@ const MOD_TAP_PATTERN = /^(LCTL|RCTL|LSFT|RSFT|LALT|RALT|LGUI|RGUI)_T\((.+)\)$/;
 const LAYER_TAP_PATTERN = /^LT\((\d+),\s*(.+)\)$/;
 
 export class EditorStore {
-  baseProfile = $state<DeviceProfile>(cloneDevice(sampleKeyboard));
-  profile = $state<DeviceProfile>(cloneDevice(sampleKeyboard));
-  activeLayer = $state(sampleKeyboard.layers[0]?.id ?? "base");
+  baseProfile = $state<DeviceProfile>(cloneDevice(defaultSampleKeyboard));
+  profile = $state<DeviceProfile>(cloneDevice(defaultSampleKeyboard));
+  activeLayer = $state(defaultSampleKeyboard.layers[0]?.id ?? "base");
   lens = $state<EditorLens>("keys");
-  selection = $state<Set<string>>(new Set([defaultSelectedKeyId(sampleKeyboard)]));
+  selection = $state<Set<string>>(new Set([defaultSelectedKeyId(defaultSampleKeyboard)]));
   currentSwatch = $state<LightingSwatchId>(defaultLightingSwatchId);
   tintByLayer = $state(false);
   targetOs = $state<EditorTargetOs>("win");
@@ -255,12 +255,14 @@ export class EditorStore {
   readonly lightingSpeed = $derived(this.profile.lighting.speed);
 
   private readonly persistEnabled: boolean;
+  private readonly draftProfileId: string;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: EditorStoreOptions = {}) {
     this.persistEnabled = options.persist ?? true;
-    this.baseProfile = cloneDevice(options.baseProfile ?? sampleKeyboard);
+    this.baseProfile = cloneDevice(options.baseProfile ?? defaultSampleKeyboard);
     this.profile = cloneDevice(options.profile ?? this.baseProfile);
+    this.draftProfileId = this.baseProfile.id;
     this.activeLayer = this.profile.layers[0]?.id ?? "base";
     this.selection = new Set([defaultSelectedKeyId(this.profile)]);
 
@@ -494,7 +496,7 @@ export class EditorStore {
     }
 
     try {
-      const draft = await loadLocalDraft();
+      const draft = await loadLocalDraft(this.draftProfileId);
       if (draft) {
         this.profile = cloneDevice(draft);
         this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)

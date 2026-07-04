@@ -337,13 +337,19 @@
 
   .compact {
     display: grid;
-    grid-template-columns: minmax(250px, 0.85fr) minmax(0, 1.15fr);
-    align-items: start;
+    grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.05fr);
+    align-items: stretch;
     gap: 16px;
+  }
+
+  .compact .paint-section {
+    grid-template-columns: minmax(210px, 0.42fr) minmax(0, 1fr) auto;
+    align-items: center;
   }
 
   .compact .lighting-hero {
     grid-template-columns: 52px minmax(0, 1fr);
+    padding: 10px;
   }
 
   .compact .led-preview {
@@ -351,8 +357,30 @@
     height: 52px;
   }
 
+  .compact .selection-actions {
+    width: 168px;
+  }
+
+  .compact .control-section {
+    grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.25fr) minmax(150px, 0.8fr);
+    align-content: start;
+    align-items: center;
+    gap: 10px 14px;
+  }
+
+  .compact .divider {
+    display: none;
+  }
+
+  .compact .tint-row,
+  .compact .drag-status {
+    align-self: end;
+  }
+
   @media (max-width: 680px) {
     .compact,
+    .compact .paint-section,
+    .compact .control-section,
     .selection-actions {
       grid-template-columns: minmax(0, 1fr);
     }

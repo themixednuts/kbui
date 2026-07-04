@@ -74,13 +74,7 @@
 </script>
 
 <div class="editor-inspector" class:compact>
-  {#if editor.lens === "lighting"}
-    <div class="empty-state">
-      <span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>
-      <strong>Lighting is coming soon</strong>
-      <p>Wave 1b will replace this panel with per-key paint controls.</p>
-    </div>
-  {:else if selectionCount === 0}
+  {#if selectionCount === 0}
     <div class="empty-state">
       <Keyboard size={24} strokeWidth={1.5} aria-hidden="true" />
       <strong>No key selected</strong>
@@ -514,29 +508,70 @@
     line-height: 1.4;
   }
 
-  .empty-state .material-symbols-outlined {
-    font-size: 24px;
-  }
-
   .compact {
     display: grid;
-    grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
-    align-items: start;
+    grid-template-areas:
+      "hero tabs"
+      "hero body";
+    grid-template-columns: minmax(238px, 0.34fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    align-items: stretch;
     gap: 14px;
   }
 
   .compact .key-hero {
-    min-width: 260px;
+    grid-area: hero;
+    min-width: 0;
+    align-content: start;
+  }
+
+  .compact :global(.inspector-tabs) {
+    grid-area: tabs;
   }
 
   .compact .inspector-scroll {
-    max-height: 220px;
+    grid-area: body;
+    max-height: 132px;
+    padding-right: 6px;
+  }
+
+  .compact .quick-groups {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .compact .quick-group {
+    min-width: max-content;
+  }
+
+  .compact .logic-section {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .compact pre {
+    min-height: 76px;
+    max-height: 108px;
+  }
+
+  .compact .empty-state {
+    grid-column: 1 / -1;
+    min-height: 98px;
   }
 
   @media (max-width: 640px) {
     .key-hero,
     .compact {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .compact {
+      grid-template-areas:
+        "hero"
+        "tabs"
+        "body";
     }
 
     .big-cap {

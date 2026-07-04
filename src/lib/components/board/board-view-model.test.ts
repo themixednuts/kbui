@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  cloneDevice,
-  sampleKeyboard,
-  type DeviceProfile,
-  type KeyboardKey,
-} from "$lib/keyboard/schema";
+import { splitDemoKeyboard } from "$lib/keyboard/sample-boards";
+import { cloneDevice, sampleKeyboard } from "$lib/keyboard/schema";
 
 import {
   computeBoardUnit,
@@ -113,8 +109,11 @@ describe("board view model", () => {
   });
 
   it("detects split layouts from split transport and large positioned row gaps", () => {
-    const profile = splitFixture();
-    const model = createBoardViewModel({ profile, activeLayer: "base", lens: "keys" });
+    const model = createBoardViewModel({
+      profile: splitDemoKeyboard,
+      activeLayer: "base",
+      lens: "keys",
+    });
 
     expect(model.positioned).toBe(true);
     expect(model.split.enabled).toBe(true);
@@ -130,32 +129,3 @@ describe("board view model", () => {
     expect(computeBoardUnit(model, 1200)).toBe(58);
   });
 });
-
-function splitFixture(): DeviceProfile {
-  const keys: KeyboardKey[] = Array.from({ length: 10 }, (_, col) => ({
-    id: `s0-${col}`,
-    label: col < 5 ? "L" : "R",
-    row: 0,
-    col,
-    x: col < 5 ? col : col + 2,
-    y: 0,
-  }));
-  const bindings = Object.fromEntries(keys.map((fixtureKey) => [fixtureKey.id, { code: "KC_A" }]));
-
-  return {
-    ...cloneDevice(sampleKeyboard),
-    id: "split-fixture",
-    name: "Split Fixture",
-    keys,
-    matrix: { rows: 1, cols: 10 },
-    settings: { ...sampleKeyboard.settings, splitTransport: "serial" },
-    layers: [
-      {
-        id: "base",
-        name: "Base",
-        color: "var(--ink)",
-        bindings,
-      },
-    ],
-  };
-}
