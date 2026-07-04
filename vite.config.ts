@@ -18,7 +18,7 @@ export default defineConfig({
   run: {
     tasks: {
       "dev:worker": {
-        command: "vp build && wrangler dev",
+        command: "vp build && vp exec wrangler dev --ip 127.0.0.1 --port 8787",
         cache: false,
       },
       "playwright:install": {
