@@ -32,12 +32,14 @@ Each wave = one or more `codex exec` runs (orchestrated + reviewed here), gated 
 | **0d** | **App shell**: left-rail nav (Connect/Editor/Browse/Library/Versions/Settings), appbar, profile popover, overlays; route restructure. | 0b | Replaces topbar shell in `+layout.svelte`. |
 | **1** | **Editor**: keys lens → lighting lens (OKLCH model decision) → split layout. | 0c, 0d | Core workflow. Reuse `components/keymap/*` + `keyboard/*`. |
 | **2** | **Library · Versions · Settings**: Library (macros/combos/tap-dances + place/use); Versions changes + save-point timeline (engine ext); Settings nav screen. | 0d, 1 | Save-point entities are new engine model. |
-| **3** | **Auth/Profile + Monkeytype** (both real). | 0d | Re-wire better-auth GitHub; build Monkeytype stack per `06-integrations.md`. |
+| **3-pre** | Update **wrangler** to latest + get the AuthAgent (better-auth) **Durable Object running under local dev** (workerd local DO support has improved). Read latest wrangler docs/source. | 2 | Prereq so Wave 3 auth is locally testable. |
+| **3** | **Auth/Profile + Monkeytype** (both real). | 0d, 3-pre | GitHub via the **better-auth client** into the profile popover. Monkeytype = a **custom better-auth plugin** (ApeKey **data-sync, NOT OAuth**): connect/validate/encrypt-store/disconnect/status/refresh + `authClient.monkeytype.*`. Public stats need only username; per-run results need the ApeKey. |
 | **4a** | **Browse** — real Cloudflare community-keymap backend + UI + adopt-as-variant. | 0c, 1 | New D1/DO data model, API, moderation surface. Own design pass. |
 | **4b** | **Flash** — real QMK/ZMK build + flash pipeline behind the overlay. | 1 | Own design pass; hardware/infra dependent. |
 | **4c** | **ZMK/BLE** — real ZMK Studio / Web Bluetooth transport. | 1 | Own design pass; extends `transport.ts`. |
+| **5** | **kbgui Chrome extension** — tag Monkeytype runs with the active keyboard+layout; capture run data from the MT page and post to a kbgui ingest endpoint using the existing better-auth session (pairing-token fallback), correlated with synced results. | 3 | New: extension + ingest endpoint + correlation. Account-linked, transparent sign-in (no separate login). |
 
-Waves 4a/4b/4c each get a dedicated research/design run before implementation.
+Waves 4a/4b/4c and 5 each get a dedicated research/design run before implementation.
 
 ## Open product `VERIFY`s (resolve at their wave)
 
