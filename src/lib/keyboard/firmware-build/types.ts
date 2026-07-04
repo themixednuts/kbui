@@ -116,6 +116,7 @@ export interface FirmwareBuildTiming {
   compileMs?: number;
   fetchMs?: number;
   linkMs?: number;
+  objcopyMs?: number;
   totalMs: number;
   uf2Ms?: number;
 }
@@ -149,7 +150,15 @@ export type FirmwareBuildResult =
       cache?: FirmwareBuildCachePlan;
       diagnostics: FirmwareDiagnostic[];
       error: {
-        code: "browser_build_unavailable" | "bundle_missing" | "compile_failed" | "link_failed";
+        code:
+          | "browser_build_unavailable"
+          | "bundle_missing"
+          | "compile_failed"
+          | "link_failed"
+          | "objcopy_failed"
+          | "toolchain_missing"
+          | "toolchain_unsupported"
+          | "uf2_failed";
         message: string;
       };
       log: FirmwareBuildLogEntry[];

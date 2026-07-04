@@ -1,6 +1,8 @@
 import {
   firmwareObjectBundleCacheKey,
   type FirmwareBuildCachePlan,
+  type FirmwareBuildRequest,
+  type FirmwareBuildResult,
   type FirmwareBuildWorkerMessage,
   type FirmwareBuildWorkerResponse,
 } from "./types";
@@ -12,6 +14,8 @@ type WorkerLikeScope = {
 };
 
 const workerScope = globalThis as unknown as WorkerLikeScope;
+const wasmLlvmArmBlocker =
+  "No configured WASM-hosted LLVM build has ARM codegen for thumbv6m-none-eabi; tested builds only reached ELF lld/llvm-objcopy.";
 
 function cachePlanFor(message: FirmwareBuildWorkerMessage): FirmwareBuildCachePlan | undefined {
   if (message.type === "warm-cache") return message.cache;
@@ -26,27 +30,73 @@ function cachePlanFor(message: FirmwareBuildWorkerMessage): FirmwareBuildCachePl
   };
 }
 
-/*
- * Future implementation boundary:
- * - Fetch the manifest-selected WASM clang/lld/objcopy toolchain and object bundle.
- * - Store decoded toolchain files and per-board objects in OPFS under cachePlan.cacheKey.
- * - Write generated keymap.c/config/rules files to sourceDirectory.
- * - Compile only generated keymap sources in this worker.
- * - Link with the manifest's object/library list and linker script.
- * - Convert the linked image to the manifest output format, UF2 first for RP2040.
- *
- * This stub intentionally refuses so the UI cannot imply browser builds are ready.
- */
+function performanceNow() {
+  return typeof performance === "undefined" ? 0 : performance.now();
+}
+
+function elapsedSince(started: number) {
+  return Math.max(0, Math.round((performanceNow() - started) * 10) / 10);
+}
+
+function unsupportedToolchainResult(
+  request: FirmwareBuildRequest,
+  cache: FirmwareBuildCachePlan,
+  started: number,
+): FirmwareBuildResult {
+  return {
+    cache,
+    diagnostics: [
+      ...request.generatedSource.diagnostics,
+      {
+        code: "wasm-arm-toolchain-unavailable",
+        message: wasmLlvmArmBlocker,
+        severity: "error",
+      },
+    ],
+    error: {
+      code: "toolchain_unsupported",
+      message: `${firmwareBuildUnavailableMessage}. ${wasmLlvmArmBlocker}`,
+    },
+    log: [
+      {
+        message: `OPFS cache root ${cache.cacheKey}`,
+        phase: "cache",
+      },
+      {
+        message: "compile/link/objcopy skipped because the WASM Clang binary has no ARM target",
+        phase: "worker",
+      },
+      {
+        message: wasmLlvmArmBlocker,
+        phase: "worker",
+      },
+    ],
+    manifest: request.manifest,
+    ok: false,
+    requestId: request.requestId,
+    timings: {
+      totalMs: elapsedSince(started),
+    },
+  };
+}
+
 workerScope.onmessage = (event) => {
   const requestId = event.data.type === "build" ? event.data.request.requestId : undefined;
   const cache = cachePlanFor(event.data);
-  const message =
-    cache === undefined
-      ? firmwareBuildUnavailableMessage
-      : `${firmwareBuildUnavailableMessage}; planned cache key ${cache.cacheKey}`;
+  if (event.data.type === "build" && cache) {
+    workerScope.postMessage({
+      requestId,
+      result: unsupportedToolchainResult(event.data.request, cache, performanceNow()),
+      type: "result",
+    });
+    return;
+  }
 
   workerScope.postMessage({
-    message,
+    message:
+      cache === undefined
+        ? firmwareBuildUnavailableMessage
+        : `${firmwareBuildUnavailableMessage}; planned cache key ${cache.cacheKey}`,
     requestId,
     type: "unavailable",
   });

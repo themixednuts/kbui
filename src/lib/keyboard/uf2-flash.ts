@@ -1,14 +1,23 @@
 import type { KeyboardProtocol } from "./transport";
 
 export const uf2BlockSize = 512;
+export const rp2040Uf2FamilyId = 0xe48bff56;
+export const rp2040FlashBaseAddress = 0x10000000;
 
 const uf2MagicStart0 = 0x0a324655;
 const uf2MagicStart1 = 0x9e5d5157;
 const uf2MagicEnd = 0x0ab16f30;
 const uf2FlagFamilyIdPresent = 0x00002000;
 const uf2MaxPayloadSize = 476;
+const defaultUf2PayloadSize = 256;
 
 export type Uf2Bytes = ArrayBuffer | ArrayBufferView;
+
+export interface PackUf2Options {
+  baseAddress: number;
+  familyId: number;
+  payloadSize?: number;
+}
 
 export interface Uf2TargetAddressRange {
   endExclusive: number;
@@ -217,6 +226,52 @@ function arrayBufferCopy(bytes: Uint8Array): ArrayBuffer {
 function normalizedUf2FileName(fileName: string | undefined) {
   const candidate = fileName?.trim() || "firmware.uf2";
   return candidate.toLowerCase().endsWith(".uf2") ? candidate : `${candidate}.uf2`;
+}
+
+function requireUint32(name: string, value: number) {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+    throw new Error(`${name} must be a 32-bit unsigned integer.`);
+  }
+}
+
+export function packUf2(bytes: Uf2Bytes, options: PackUf2Options): Uint8Array {
+  const input = bytesView(bytes);
+  if (input.byteLength === 0) throw new Error("UF2 payload must not be empty.");
+
+  const payloadSize = options.payloadSize ?? defaultUf2PayloadSize;
+  if (!Number.isInteger(payloadSize) || payloadSize <= 0 || payloadSize > uf2MaxPayloadSize) {
+    throw new Error(`UF2 payload size must be between 1 and ${uf2MaxPayloadSize} bytes.`);
+  }
+  requireUint32("UF2 base address", options.baseAddress);
+  requireUint32("UF2 family id", options.familyId);
+  if (options.baseAddress > 0xffffffff - input.byteLength) {
+    throw new Error("UF2 target address range overflows 32-bit address space.");
+  }
+
+  const blockCount = Math.ceil(input.byteLength / payloadSize);
+  const output = new Uint8Array(blockCount * uf2BlockSize);
+  const view = new DataView(output.buffer);
+
+  for (let block = 0; block < blockCount; block += 1) {
+    const blockOffset = block * uf2BlockSize;
+    const inputOffset = block * payloadSize;
+    const chunk = input.subarray(
+      inputOffset,
+      Math.min(inputOffset + payloadSize, input.byteLength),
+    );
+    view.setUint32(blockOffset, uf2MagicStart0, true);
+    view.setUint32(blockOffset + 4, uf2MagicStart1, true);
+    view.setUint32(blockOffset + 8, uf2FlagFamilyIdPresent, true);
+    view.setUint32(blockOffset + 12, options.baseAddress + inputOffset, true);
+    view.setUint32(blockOffset + 16, payloadSize, true);
+    view.setUint32(blockOffset + 20, block, true);
+    view.setUint32(blockOffset + 24, blockCount, true);
+    view.setUint32(blockOffset + 28, options.familyId, true);
+    output.set(chunk, blockOffset + 32);
+    view.setUint32(blockOffset + uf2BlockSize - 4, uf2MagicEnd, true);
+  }
+
+  return output;
 }
 
 export function parseUf2(bytes: Uf2Bytes): ParsedUf2 {

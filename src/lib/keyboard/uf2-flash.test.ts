@@ -6,7 +6,10 @@ import {
   createUf2FlashPlan,
   detectUf2FileSystemAccessSupport,
   flashUf2ViaFileSystemAccess,
+  packUf2,
   parseUf2,
+  rp2040FlashBaseAddress,
+  rp2040Uf2FamilyId,
   verifyUf2Reconnect,
 } from "./uf2-flash";
 
@@ -112,6 +115,30 @@ class MockDirectoryHandle {
 }
 
 describe("UF2 flashing helpers", () => {
+  it("packs raw RP2040 firmware bytes into UF2 blocks that the parser accepts", () => {
+    const raw = new Uint8Array(300);
+    for (let index = 0; index < raw.byteLength; index += 1) raw[index] = index & 0xff;
+
+    const uf2 = packUf2(raw, {
+      baseAddress: rp2040FlashBaseAddress,
+      familyId: rp2040Uf2FamilyId,
+    });
+    const parsed = parseUf2(uf2);
+
+    expect(uf2.byteLength).toBe(1024);
+    expect(parsed.blockCount).toBe(2);
+    expect(parsed.familyId).toBe(rp2040Uf2FamilyId);
+    expect(parsed.familyIdHex).toBe("0xe48bff56");
+    expect(parsed.payloadSize).toBe(512);
+    expect(parsed.payloadSizePerBlock).toBe(256);
+    expect(parsed.targetAddressRange).toEqual({
+      start: rp2040FlashBaseAddress,
+      endExclusive: rp2040FlashBaseAddress + 512,
+    });
+    expect(Array.from(uf2.slice(32, 32 + 256))).toEqual(Array.from(raw.slice(0, 256)));
+    expect(Array.from(uf2.slice(512 + 32, 512 + 32 + 44))).toEqual(Array.from(raw.slice(256)));
+  });
+
   it("parses a valid UF2 container and extracts family and target metadata", () => {
     const bytes = syntheticUf2({
       blocks: 3,

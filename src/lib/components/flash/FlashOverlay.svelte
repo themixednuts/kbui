@@ -11,7 +11,14 @@
     generateFirmwareArtifacts,
     type FirmwareArtifacts,
     type FirmwareDiagnostic,
+    type FirmwareSourceBundle,
   } from "$lib/keyboard/firmware-source";
+  import { WasmFirmwareBuilder, isBrowserBuildAvailable } from "$lib/keyboard/firmware-build/builder";
+  import type {
+    FirmwareBuildRequest,
+    FirmwareBuildResult,
+    FirmwareObjectBundleManifest,
+  } from "$lib/keyboard/firmware-build/types";
   import type { DeviceProfile } from "$lib/keyboard/schema";
   import { createWebHidViaTransport } from "$lib/keyboard/transport";
   import {
@@ -82,12 +89,27 @@
   let flashProgress = $state<Uf2FlashProgress | null>(null);
   let flashResult = $state<Uf2FileSystemFlashResult | null>(null);
   let verifyResult = $state<Uf2VerifyResult | null>(null);
+  let browserBuildAvailable = $state(false);
+  let browserBuilding = $state(false);
+  let browserBuildResult = $state<FirmwareBuildResult | null>(null);
+  let browserBuildError = $state<string | null>(null);
   let fsSupport = $state<Uf2FlashSupport>(
     detectUf2FileSystemAccessSupport({ isBrowser: false }),
   );
 
   const commandLog = $derived(
-    result ? commandLogFor(result, profile, changes, uf2Plan, uf2Log, fsSupport, flashResult) : "",
+    result
+      ? commandLogFor(
+          result,
+          profile,
+          changes,
+          uf2Plan,
+          uf2Log,
+          fsSupport,
+          flashResult,
+          browserBuildResult,
+        )
+      : "",
   );
   const diagnosticPreview = $derived(result?.diagnostics.slice(0, 4) ?? []);
   const targetLabel = $derived(result?.target === "zmk" ? "ZMK" : "QMK");
@@ -114,11 +136,13 @@
       return;
     }
 
-    result = generateFirmwareArtifacts(profile);
+    const generated = generateFirmwareArtifacts(profile);
+    result = generated;
     resetUf2State();
     copied = false;
     copyError = null;
     fsSupport = currentFileSystemSupport();
+    browserBuildAvailable = canOfferBrowserBuild(profile, generated);
   });
 
   function resetOverlayState() {
@@ -141,6 +165,10 @@
     flashProgress = null;
     flashResult = null;
     verifyResult = null;
+    browserBuildAvailable = false;
+    browserBuilding = false;
+    browserBuildResult = null;
+    browserBuildError = null;
   }
 
   function close() {
@@ -216,6 +244,73 @@
       appendUf2Log(`UF2 rejected: ${uf2Error}`);
     } finally {
       input.value = "";
+    }
+  }
+
+  async function buildFirmwareInBrowser() {
+    if (!result || browserBuilding) return;
+
+    const manifest = experimentalBrowserBuildManifest(profile);
+    if (!manifest) {
+      browserBuildError =
+        "Browser build unavailable: no RP2040 QMK object-bundle manifest is installed for this board.";
+      appendUf2Log(browserBuildError);
+      return;
+    }
+
+    browserBuilding = true;
+    browserBuildResult = null;
+    browserBuildError = null;
+    phase = "generate";
+    appendUf2Log("starting experimental in-browser firmware build");
+
+    const request: FirmwareBuildRequest = {
+      cache: {
+        backend: "opfs",
+        mode: "cache-first",
+      },
+      generatedSource: sourceBundleFor(result),
+      manifest,
+      outputFileName: `${bundleSlug(profile)}-${result.sourceHash}.uf2`,
+      requestId: `flash-${result.sourceHash}`,
+    };
+
+    try {
+      const build = await new WasmFirmwareBuilder().build(request);
+      browserBuildResult = build;
+      for (const line of build.log) appendUf2Log(`${line.phase}: ${line.message}`);
+      if (!build.ok) {
+        browserBuildError = build.error.message;
+        phase = "artifact";
+        appendUf2Log(`browser build failed: ${build.error.message}`);
+        return;
+      }
+
+      const bytes = build.artifact.bytes;
+      const plan = createUf2FlashPlan({
+        boardName: profile.name,
+        expectedFamilyId: manifest.output.uf2FamilyId,
+        expectedVolumeHints: volumeHintsFor(profile),
+        fileName: build.artifact.fileName,
+        uf2Bytes: bytes,
+      });
+      uf2Bytes = bytes;
+      uf2Plan = plan;
+      uf2Error = null;
+      flashProgress = null;
+      flashResult = null;
+      verifyResult = null;
+      manualCopied = false;
+      phase = "enter_bootloader";
+      appendUf2Log(
+        `browser build produced ${plan.artifact.fileName} (${formatBytes(plan.artifact.size)}, ${plan.artifact.blockCount} UF2 blocks)`,
+      );
+    } catch (error) {
+      browserBuildError = error instanceof Error ? error.message : "Browser firmware build failed.";
+      phase = "artifact";
+      appendUf2Log(`browser build failed: ${browserBuildError}`);
+    } finally {
+      browserBuilding = false;
     }
   }
 
@@ -403,6 +498,30 @@
     return defaultUf2VolumeHints(activeProfile.name);
   }
 
+  function sourceBundleFor(artifacts: FirmwareArtifacts): FirmwareSourceBundle {
+    return {
+      buildCommand: artifacts.buildCommand,
+      diagnostics: artifacts.diagnostics,
+      files: artifacts.artifacts,
+      sourceHash: artifacts.sourceHash,
+    };
+  }
+
+  function canOfferBrowserBuild(activeProfile: DeviceProfile, artifacts: FirmwareArtifacts) {
+    return (
+      browser &&
+      artifacts.target === "qmk" &&
+      isBrowserBuildAvailable() &&
+      experimentalBrowserBuildManifest(activeProfile) !== null
+    );
+  }
+
+  function experimentalBrowserBuildManifest(
+    _activeProfile: DeviceProfile,
+  ): FirmwareObjectBundleManifest | null {
+    return null;
+  }
+
   function bundleSlug(activeProfile: DeviceProfile) {
     return activeProfile.name
       .trim()
@@ -419,6 +538,7 @@
     log: readonly string[],
     support: Uf2FlashSupport,
     written: Uf2FileSystemFlashResult | null,
+    browserBuild: FirmwareBuildResult | null,
   ) {
     const changeLines =
       rebuildChanges.length > 0
@@ -454,6 +574,21 @@
           `  direct-copy support: ${support.supported ? "available after UF2 selection" : support.reason ?? "unavailable"}`,
         ];
     const flashLines = log.length > 0 ? ["", "flash log:", ...log.map((line) => `  ${line}`)] : [];
+    const browserBuildLines =
+      browserBuild === null
+        ? []
+        : [
+            "",
+            "browser build:",
+            `  status: ${browserBuild.ok ? "ok" : browserBuild.error.code}`,
+            `  total: ${browserBuild.timings?.totalMs ?? 0} ms`,
+            ...(browserBuild.ok
+              ? [
+                  `  artifact: ${browserBuild.artifact.fileName}`,
+                  `  size: ${browserBuild.artifact.sizeBytes} bytes`,
+                ]
+              : [`  error: ${browserBuild.error.message}`]),
+          ];
 
     return [
       `$ kbgui firmware-source generate --target ${artifacts.target}`,
@@ -472,6 +607,7 @@
       "manual local build command:",
       `  ${artifacts.buildCommand}`,
       ...uf2Lines,
+      ...browserBuildLines,
       ...flashLines,
       "",
       "notes:",
@@ -585,6 +721,33 @@
 
           {#if uf2Error}
             <p class="copy-error" role="status">{uf2Error}</p>
+          {/if}
+
+          {#if browserBuildAvailable}
+            <div class="browser-build-callout" aria-label="Experimental browser firmware build">
+              <div>
+                <strong>Experimental browser build</strong>
+                <small>WASM LLVM · OPFS cache · RP2040 UF2 output</small>
+              </div>
+              <Button variant="coral" size="sm" disabled={browserBuilding} onclick={buildFirmwareInBrowser}>
+                <span class="material-symbols-outlined" aria-hidden="true">memory</span>
+                {browserBuilding ? "Building..." : "Build firmware"}
+              </Button>
+            </div>
+          {/if}
+
+          {#if browserBuildError}
+            <p class="copy-error" role="status">{browserBuildError}</p>
+          {/if}
+
+          {#if browserBuildResult}
+            <dl class="artifact-meta browser-build-meta">
+              <div><dt>Browser build</dt><dd>{browserBuildResult.ok ? "ok" : browserBuildResult.error.code}</dd></div>
+              <div><dt>Total</dt><dd>{browserBuildResult.timings?.totalMs ?? 0} ms</dd></div>
+              {#if browserBuildResult.ok}
+                <div><dt>Artifact</dt><dd>{browserBuildResult.artifact.fileName}</dd></div>
+              {/if}
+            </dl>
           {/if}
 
           <div class="button-row">
@@ -974,6 +1137,42 @@
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .browser-build-callout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid color-mix(in oklch, var(--coral) 35%, var(--line));
+    border-radius: 8px;
+    background: color-mix(in oklch, var(--coral) 8%, var(--surface));
+  }
+
+  .browser-build-callout strong,
+  .browser-build-callout small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .browser-build-callout strong {
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .browser-build-callout small {
+    margin-top: 2px;
+    color: var(--ink-3);
+    font-size: 10px;
+  }
+
+  .browser-build-meta {
+    padding-top: 2px;
   }
 
   .manual-steps {

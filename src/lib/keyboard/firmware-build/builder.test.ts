@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  FirmwareBuildUnavailableError,
-  NotImplementedFirmwareBuilder,
-  firmwareBuildUnavailableMessage,
-  isBrowserBuildAvailable,
-} from "./builder";
+import { WasmFirmwareBuilder, isBrowserBuildAvailable } from "./builder";
 import {
   firmwareObjectBundleCacheKey,
   type FirmwareBuildRequest,
@@ -150,14 +145,36 @@ describe("firmware build scaffold", () => {
     expect(manifest.resourceBudgets.flash.bytes).toBe(2 * 1024 * 1024);
   });
 
-  it("reports that browser builds are disabled until a real WASM toolchain is wired", () => {
+  it("reports that browser builds are disabled until a real ARM-capable WASM toolchain is wired", () => {
     expect(isBrowserBuildAvailable()).toBe(false);
+    expect(
+      isBrowserBuildAvailable({
+        isBrowser: true,
+        navigator: { storage: { getDirectory: () => undefined } },
+        toolchainAvailable: false,
+        Worker: class {
+          terminate() {}
+        } as unknown as typeof Worker,
+      }),
+    ).toBe(false);
   });
 
-  it("refuses builds with a clear unavailable error instead of faking an artifact", async () => {
-    const builder = new NotImplementedFirmwareBuilder();
+  it("refuses builds with a structured unsupported-toolchain result instead of faking an artifact", async () => {
+    const builder = new WasmFirmwareBuilder({
+      isBrowser: false,
+      toolchainAvailable: false,
+    });
 
-    await expect(builder.build(sampleRequest())).rejects.toThrow(FirmwareBuildUnavailableError);
-    await expect(builder.build(sampleRequest())).rejects.toThrow(firmwareBuildUnavailableMessage);
+    const result = await builder.build(sampleRequest());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("toolchain_unsupported");
+      expect(result.error.message).toContain("thumbv6m-none-eabi");
+      expect(result.cache?.cacheKey).toBe(firmwareObjectBundleCacheKey(sampleManifest()));
+      expect(
+        result.diagnostics.some((item) => item.code === "wasm-arm-toolchain-unavailable"),
+      ).toBe(true);
+    }
   });
 });

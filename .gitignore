@@ -39,3 +39,7 @@ docs/redesign/screenshots/
 
 # Full Material Symbols source font (regen source for the shipped subset)
 resources/fonts/
+
+# Runtime-fetched WASM firmware toolchains and object bundles
+static/wasm-toolchain/
+resources/wasm-*/
