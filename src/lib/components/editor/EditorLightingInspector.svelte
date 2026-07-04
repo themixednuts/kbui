@@ -21,6 +21,7 @@
     swatchToKeyLighting,
     type LightingSwatchId,
   } from "$lib/keyboard/lighting-swatches";
+  import { cn } from "$lib/utils.js";
 
   type Props = {
     editor: EditorStore;
@@ -34,6 +35,14 @@
     { value: "reactive", label: "Reactive", icon: Sparkles, title: "Reactive lighting" },
     { value: "rainbow", label: "Rainbow", icon: Blend, title: "Rainbow lighting" },
   ];
+
+  const labelTextClass = "block text-ink-3 font-mono text-kb-10 tracking-[0.1em] uppercase";
+  const fieldLabelClass = `field-label ${labelTextClass}`;
+  const fieldClass = "field !grid !gap-[8px]";
+  const navFillClass =
+    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-[8px]";
+  const inactivePreviewClass =
+    "bg-[var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap";
 
   const selection = $derived(editor.lightingSelection);
   const heroLighting = $derived(selection.keyLighting ?? swatchToKeyLighting(editor.currentSwatch));
@@ -54,13 +63,35 @@
   }
 </script>
 
-<div class="lighting-inspector" class:compact>
-  <section class="paint-section" aria-label="Per-key lighting paint">
-    <header class="lighting-hero">
+<div
+  class={cn(
+    "lighting-inspector flex flex-1 min-h-0 flex-col gap-[14px]",
+    compact &&
+      "compact grid grid-cols-[minmax(360px,0.95fr)_minmax(0,1.05fr)] items-stretch gap-[16px] max-[680px]:grid-cols-[minmax(0,1fr)]",
+  )}
+>
+  <section
+    class={cn(
+      "paint-section grid min-w-0 gap-[13px]",
+      compact &&
+        "grid-cols-[minmax(210px,0.42fr)_minmax(0,1fr)_auto] items-center max-[680px]:grid-cols-[minmax(0,1fr)]",
+    )}
+    aria-label="Per-key lighting paint"
+  >
+    <header
+      class={cn(
+        "lighting-hero grid grid-cols-[58px_minmax(0,1fr)] items-center gap-[12px] rounded-[12px] border border-[color-mix(in_oklch,var(--surface-3)_58%,transparent)] bg-[color-mix(in_oklch,var(--surface-2)_62%,var(--surface))] p-[14px]",
+        compact && "grid-cols-[52px_minmax(0,1fr)] p-[10px]",
+      )}
+    >
       <div
-        class="led-preview"
-        class:mixed={selection.mixed}
-        class:off={heroOff}
+        class={cn(
+          "led-preview grid size-[58px] place-items-center rounded-big-cap border border-[rgba(24,22,20,0.22)] bg-[linear-gradient(180deg,color-mix(in_oklch,var(--hero-color)_42%,#fffdf7),var(--hero-color))] text-[rgba(242,237,227,0.72)] shadow-[inset_0_-4px_7px_color-mix(in_oklch,var(--hero-color)_48%,transparent),var(--shadow-cap)]",
+          compact && "size-[52px]",
+          selection.mixed &&
+            "mixed bg-[linear-gradient(135deg,transparent_0_42%,rgba(255,255,255,0.18)_42%_58%,transparent_58%),var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap",
+          heroOff && cn("off", inactivePreviewClass),
+        )}
         style={heroStyle}
         aria-hidden="true"
       >
@@ -70,22 +101,26 @@
           <Power size={22} />
         {/if}
       </div>
-      <div class="hero-copy">
-        <span>{heroMeta}</span>
-        <h2>{heroTitle}</h2>
+      <div class="hero-copy min-w-0">
+        <span class={labelTextClass}>{heroMeta}</span>
+        <h2 class="mt-[2px] mb-0 overflow-hidden text-ellipsis whitespace-nowrap text-[18px] leading-[1.15]">
+          {heroTitle}
+        </h2>
       </div>
     </header>
 
-    <div class="field">
-      <span class="field-label">Paint selection</span>
-      <div class="swatches" aria-label="Lighting swatches">
+    <div class={fieldClass}>
+      <span class={fieldLabelClass}>Paint selection</span>
+      <div class="swatches flex flex-wrap gap-[8px]" aria-label="Lighting swatches">
         {#each lightingSwatches as swatch (swatch.id)}
           {@const active = activeSwatchId === swatch.id}
           <button
             type="button"
-            class="swatch-button"
-            class:active
-            class:off={swatch.off}
+            class={cn(
+              "swatch-button relative grid size-[28px] place-items-center rounded-pill !border !border-[rgba(27,25,23,0.2)] !bg-[var(--swatch-color)] !text-[rgba(242,237,227,0.72)] shadow-[inset_0_-2px_3px_rgba(0,0,0,0.14)] transition-[transform,box-shadow,border-color] duration-[90ms] ease-[var(--ease-out-soft)] hover:scale-[1.08]",
+              active && "active !border-ink shadow-swatch-pressed",
+              swatch.off && "off !bg-[#1b1917]",
+            )}
             style={`--swatch-color: ${swatch.displayColor}`}
             title={swatch.label}
             aria-label={swatch.label}
@@ -100,12 +135,18 @@
       </div>
     </div>
 
-    <div class="selection-actions">
-      <Button variant="ghost" size="sm" onclick={() => editor.selectAllKeys()}>
+    <div
+      class={cn(
+        "selection-actions grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[8px] max-[680px]:grid-cols-[minmax(0,1fr)]",
+        compact && "w-[168px]",
+      )}
+    >
+      <Button class="w-full" variant="ghost" size="sm" onclick={() => editor.selectAllKeys()}>
         <Grid2x2Check size={14} aria-hidden="true" />
         Select all
       </Button>
       <Button
+        class="w-full"
         variant="ghost"
         size="sm"
         disabled={selection.count === 0}
@@ -117,7 +158,15 @@
     </div>
   </section>
 
-  <section class="control-section" aria-label="Global lighting controls">
+  <section
+    class={cn(
+      "control-section grid min-w-0",
+      compact
+        ? "grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.25fr)_minmax(150px,0.8fr)] content-start items-center gap-x-[14px] gap-y-[10px] max-[680px]:grid-cols-[minmax(0,1fr)]"
+        : "gap-[13px]",
+    )}
+    aria-label="Global lighting controls"
+  >
     <SliderField
       compact
       label="Brightness"
@@ -128,16 +177,16 @@
       onValueChange={(next) => editor.setBrightness(next)}
     />
 
-    <div class="divider"></div>
+    <div class={cn("divider h-px bg-line", compact && "hidden")}></div>
 
-    <div class="field">
-      <span class="field-label">Global effect</span>
+    <div class={fieldClass}>
+      <span class={fieldLabelClass}>Global effect</span>
       <SegmentedNav
         items={effectItems}
         value={editor.lightingEffect}
         onselect={(next) => editor.setEffect(next)}
         ariaLabel="Global lighting effect"
-        class="lighting-effect-nav"
+        class={cn("lighting-effect-nav", navFillClass)}
       />
     </div>
 
@@ -151,7 +200,12 @@
       onValueChange={(next) => editor.setSpeed(next)}
     />
 
-    <label class="tint-row">
+    <label
+      class={cn(
+        "tint-row flex min-h-[28px] items-center justify-between gap-[12px] text-[12px] text-ink-2",
+        compact && "self-end",
+      )}
+    >
       <span>Tint by active layer</span>
       <Switch
         checked={editor.tintByLayer}
@@ -161,228 +215,15 @@
       />
     </label>
 
-    <div class="drag-status" aria-live="polite">
+    <div
+      class={cn(
+        "drag-status inline-flex min-w-0 items-center gap-[7px] rounded-[9px] bg-surface-2 px-[11px] py-[9px] font-mono text-[11px] text-ink-2",
+        compact && "self-end",
+      )}
+      aria-live="polite"
+    >
       <MousePointer2 size={14} aria-hidden="true" />
       <span>{selection.count} selected</span>
     </div>
   </section>
 </div>
-
-<style>
-  .lighting-inspector {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .paint-section,
-  .control-section {
-    display: grid;
-    gap: 13px;
-    min-width: 0;
-  }
-
-  .lighting-hero {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    padding: 14px;
-    border: 1px solid color-mix(in oklch, var(--surface-3) 58%, transparent);
-    border-radius: 12px;
-    background: color-mix(in oklch, var(--surface-2) 62%, var(--surface));
-  }
-
-  .led-preview {
-    display: grid;
-    width: 58px;
-    height: 58px;
-    place-items: center;
-    border: 1px solid rgba(24, 22, 20, 0.22);
-    border-radius: var(--r-big-cap);
-    background: linear-gradient(180deg, color-mix(in oklch, var(--hero-color) 42%, #fffdf7), var(--hero-color));
-    box-shadow:
-      inset 0 -4px 7px color-mix(in oklch, var(--hero-color) 48%, transparent),
-      var(--shadow-cap);
-    color: rgba(242, 237, 227, 0.72);
-  }
-
-  .led-preview.mixed,
-  .led-preview.off {
-    background: var(--led-off);
-    color: rgba(242, 237, 227, 0.68);
-    box-shadow: var(--shadow-cap);
-  }
-
-  .led-preview.mixed {
-    background:
-      linear-gradient(135deg, transparent 0 42%, rgba(255, 255, 255, 0.18) 42% 58%, transparent 58%),
-      var(--led-off);
-  }
-
-  .hero-copy {
-    min-width: 0;
-  }
-
-  .hero-copy span,
-  .field-label {
-    display: block;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  h2 {
-    overflow: hidden;
-    margin: 2px 0 0;
-    font-size: 18px;
-    line-height: 1.15;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .field {
-    display: grid;
-    gap: 8px;
-  }
-
-  .swatches {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .swatch-button {
-    position: relative;
-    display: grid;
-    width: 28px;
-    height: 28px;
-    place-items: center;
-    border: 1px solid rgba(27, 25, 23, 0.2);
-    border-radius: var(--r-pill);
-    background: var(--swatch-color);
-    box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.14);
-    color: rgba(242, 237, 227, 0.72);
-    transition:
-      transform 90ms var(--ease-out-soft),
-      box-shadow 90ms var(--ease-out-soft),
-      border-color 90ms var(--ease-out-soft);
-  }
-
-  .swatch-button:hover {
-    transform: scale(1.08);
-  }
-
-  .swatch-button.active {
-    border-color: var(--ink);
-    box-shadow: var(--shadow-swatch-pressed);
-  }
-
-  .swatch-button.off {
-    background: #1b1917;
-  }
-
-  .selection-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .selection-actions :global(button) {
-    width: 100%;
-  }
-
-  .divider {
-    height: 1px;
-    background: var(--line);
-  }
-
-  :global(.lighting-effect-nav) {
-    display: flex !important;
-    width: 100%;
-  }
-
-  :global(.lighting-effect-nav > button) {
-    flex: 1;
-    min-width: 0;
-    padding-inline: 8px;
-  }
-
-  .tint-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 28px;
-    color: var(--ink-2);
-    font-size: 12px;
-  }
-
-  .drag-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-    padding: 9px 11px;
-    border-radius: 9px;
-    background: var(--surface-2);
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .compact {
-    display: grid;
-    grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.05fr);
-    align-items: stretch;
-    gap: 16px;
-  }
-
-  .compact .paint-section {
-    grid-template-columns: minmax(210px, 0.42fr) minmax(0, 1fr) auto;
-    align-items: center;
-  }
-
-  .compact .lighting-hero {
-    grid-template-columns: 52px minmax(0, 1fr);
-    padding: 10px;
-  }
-
-  .compact .led-preview {
-    width: 52px;
-    height: 52px;
-  }
-
-  .compact .selection-actions {
-    width: 168px;
-  }
-
-  .compact .control-section {
-    grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.25fr) minmax(150px, 0.8fr);
-    align-content: start;
-    align-items: center;
-    gap: 10px 14px;
-  }
-
-  .compact .divider {
-    display: none;
-  }
-
-  .compact .tint-row,
-  .compact .drag-status {
-    align-self: end;
-  }
-
-  @media (max-width: 680px) {
-    .compact,
-    .compact .paint-section,
-    .compact .control-section,
-    .selection-actions {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>

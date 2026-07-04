@@ -12,6 +12,7 @@
   import TargetOsChip from "$lib/components/keymap/TargetOsChip.svelte";
   import { Button, Input, SegmentedNav, SliderField } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
+  import { cn } from "$lib/utils.js";
 
   type Props = {
     editor: EditorStore;
@@ -25,6 +26,15 @@
     { value: "hold", label: "Hold-Tap", icon: SlidersHorizontal, title: "Tap and hold behavior" },
     { value: "notes", label: "Notes", icon: StickyNote, title: "Notes and source" },
   ];
+
+  const labelTextClass = "block text-ink-3 font-mono text-kb-10 tracking-[0.1em] uppercase";
+  const fieldLabelClass = `field-label ${labelTextClass}`;
+  const h2Class =
+    "!mt-[2px] !mb-0 !overflow-hidden !text-[18px] !leading-[1.15] !text-ellipsis !whitespace-nowrap";
+  const inspectorSectionClass = "inspector-section grid min-w-0 gap-[12px]";
+  const fieldClass = "field grid gap-[6px]";
+  const navFillClass =
+    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-[8px]";
 
   let keycodeDraft = $state("");
   let tapDraft = $state("");
@@ -73,24 +83,48 @@
   }
 </script>
 
-<div class="editor-inspector" class:compact>
+<div
+  class={cn(
+    "editor-inspector flex flex-1 min-h-0 flex-col gap-[10px]",
+    compact &&
+      "compact grid grid-cols-[minmax(238px,0.34fr)_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] items-stretch gap-[14px] max-[640px]:grid-cols-[minmax(0,1fr)]",
+  )}
+>
   {#if selectionCount === 0}
-    <div class="empty-state">
+    <div
+      class={cn(
+        "empty-state !grid !min-h-[150px] place-items-center gap-[8px] p-[18px] text-center text-ink-3",
+        compact && "col-span-full !min-h-[98px]",
+      )}
+    >
       <Keyboard size={24} strokeWidth={1.5} aria-hidden="true" />
-      <strong>No key selected</strong>
-      <p>Select a key on the board to edit its binding.</p>
+      <strong class="text-[13px] text-ink">No key selected</strong>
+      <p class="m-0 text-[12px] leading-[1.4]">Select a key on the board to edit its binding.</p>
     </div>
   {:else}
-    <header class="key-hero" class:multi={selectionCount > 1}>
-      <div class="big-cap" aria-hidden="true">
+    <header
+      class={cn(
+        "key-hero !grid !grid-cols-[58px_minmax(0,1fr)_auto] !items-center !gap-[12px] !rounded-[12px] !border !border-[color-mix(in_oklch,var(--surface-3)_58%,transparent)] !bg-[color-mix(in_oklch,var(--surface-2)_58%,var(--surface))] !p-[14px] max-[640px]:!grid-cols-[minmax(0,1fr)]",
+        selectionCount > 1 && "multi",
+        compact &&
+          "col-start-1 row-start-1 row-span-2 min-w-0 content-start max-[640px]:col-start-1 max-[640px]:row-start-1 max-[640px]:row-span-1",
+      )}
+    >
+      <div
+        class={cn(
+          "big-cap !grid !size-[58px] place-items-center overflow-hidden !rounded-big-cap !border !border-[rgba(24,22,20,0.18)] !bg-[var(--keycap-base)] !shadow-cap font-mono !text-[20px] !font-strong !leading-none text-center max-[640px]:!size-[52px]",
+          selectionCount > 1 && "!bg-coral !text-[#1c0a04]",
+        )}
+        aria-hidden="true"
+      >
         {#if selectionCount > 1}
           {selectionCount}
         {:else}
           {capLegend(rendered)}
         {/if}
       </div>
-      <div class="hero-copy">
-        <div class="hero-meta">
+      <div class="hero-copy min-w-0">
+        <div class={cn("hero-meta", labelTextClass)}>
           {#if selectionCount > 1}
             {selectionCount} keys selected
           {:else if selectedKey}
@@ -99,18 +133,24 @@
             selected key
           {/if}
         </div>
-        <h2>{titleCode}</h2>
+        <h2 class={h2Class}>{titleCode}</h2>
         {#if rendered?.transparent}
-          <span class="source-pill" style={`--source-color: ${rendered.sourceColor}`}>
+          <span
+            class="source-pill mt-[5px] inline-flex items-center gap-[6px] font-mono text-[10px] text-ink-2 before:size-[8px] before:rounded-[3px] before:bg-[var(--source-color)] before:content-['']"
+            style={`--source-color: ${rendered.sourceColor}`}
+          >
             from {rendered.sourceLayerName}
           </span>
         {:else if editor.activeLayerRecord}
-          <span class="source-pill" style={`--source-color: ${editor.activeLayerRecord.color}`}>
+          <span
+            class="source-pill mt-[5px] inline-flex items-center gap-[6px] font-mono text-[10px] text-ink-2 before:size-[8px] before:rounded-[3px] before:bg-[var(--source-color)] before:content-['']"
+            style={`--source-color: ${editor.activeLayerRecord.color}`}
+          >
             {editor.activeLayerRecord.name}
           </span>
         {/if}
       </div>
-      <div class="hero-actions">
+      <div class="hero-actions flex items-center gap-[6px] max-[640px]:justify-start">
         <TargetOsChip value={editor.targetOs} onclick={() => editor.cycleTargetOs()} />
         <Button
           variant="ghost"
@@ -129,14 +169,25 @@
       value={editor.inspectorTab}
       onselect={(tab) => editor.setInspectorTab(tab)}
       ariaLabel="Selected key inspector"
-      class="inspector-tabs"
+      class={cn(
+        "inspector-tabs",
+        navFillClass,
+        compact &&
+          "col-start-2 row-start-1 max-[640px]:col-start-1 max-[640px]:row-start-2",
+      )}
     />
 
-    <div class="inspector-scroll">
+    <div
+      class={cn(
+        "inspector-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-kb-3",
+        compact &&
+          "col-start-2 row-start-2 max-h-[132px] pr-kb-6 max-[640px]:col-start-1 max-[640px]:row-start-3",
+      )}
+    >
       {#if editor.inspectorTab === "bind"}
-        <section class="inspector-section">
-          <span class="field-label">Keycode</span>
-          <div class="keycode-row">
+        <section class={inspectorSectionClass}>
+          <span class={fieldLabelClass}>Keycode</span>
+          <div class="keycode-row grid grid-cols-[minmax(0,1fr)_auto] gap-[8px] max-[640px]:grid-cols-[minmax(0,1fr)]">
             <Input
               bind:value={keycodeDraft}
               class="keycode-input font-mono text-sm"
@@ -148,16 +199,25 @@
             <Button variant="solid" size="sm" onclick={commitKeycode}>Apply</Button>
           </div>
 
-          <div class="quick-groups">
+          <div
+            class={cn(
+              "quick-groups grid gap-[13px]",
+              compact && "flex gap-[10px] overflow-x-auto pb-kb-2",
+            )}
+          >
             {#each EDITOR_QUICK_PICK_GROUPS as group (group.name)}
-              <div class="quick-group">
-                <span class="field-label">{group.name}</span>
-                <div class="keycode-pills">
+              <div class={cn("quick-group grid gap-[7px]", compact && "min-w-max")}>
+                <span class={fieldLabelClass}>{group.name}</span>
+                <div class="keycode-pills flex flex-wrap gap-[6px]">
                   {#each group.codes as code (code)}
+                    {@const active = !selectedCodeSummary.mixed && selectedBinding.code === code}
                     <button
                       type="button"
-                      class="keycode-pill"
-                      class:active={!selectedCodeSummary.mixed && selectedBinding.code === code}
+                      class={cn(
+                        "keycode-pill min-h-[28px] rounded-[8px] !border !border-transparent !bg-paper-2 px-[10px] py-[4px] !font-mono !text-[11px] !leading-none !text-ink-2 transition-[border-color,background,color] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:!border-line-2 hover:!text-ink",
+                        active &&
+                          "active !border-coral !bg-coral !text-[#1c0a04] hover:!border-coral hover:!text-[#1c0a04]",
+                      )}
                       title={code}
                       onclick={() => editor.applyKeycode(code)}
                     >
@@ -170,8 +230,14 @@
           </div>
         </section>
 
-        <section class="inspector-section logic-section">
-          <span class="field-label">Workspace logic</span>
+        <section
+          class={cn(
+            inspectorSectionClass,
+            "logic-section mt-[15px] border-t border-line pt-[14px]",
+            compact && "mt-[10px] pt-[10px]",
+          )}
+        >
+          <span class={fieldLabelClass}>Workspace logic</span>
           <KeyBindingLogicPicker
             items={editor.logicBindings}
             activeCode={selectedCodeSummary.mixed ? "" : selectedBinding.code}
@@ -179,7 +245,7 @@
           />
         </section>
 
-        <div class="inspector-actions">
+        <div class="inspector-actions mt-[14px] flex gap-[8px]">
           <Button variant="ghost" size="sm" onclick={() => editor.resetSelectionToBase()}>
             <RotateCcw size={14} aria-hidden="true" />
             Reset
@@ -190,10 +256,10 @@
           </Button>
         </div>
       {:else if editor.inspectorTab === "hold"}
-        <section class="inspector-section">
-          <div class="tap-grid">
-            <label class="field">
-              <span class="field-label">Tap</span>
+        <section class={inspectorSectionClass}>
+          <div class="tap-grid !grid !grid-cols-[repeat(2,minmax(0,1fr))] !gap-[10px] max-[640px]:!grid-cols-[minmax(0,1fr)]">
+            <label class={fieldClass}>
+              <span class={fieldLabelClass}>Tap</span>
               <Input
                 bind:value={tapDraft}
                 class="font-mono text-sm"
@@ -201,8 +267,8 @@
                 spellcheck={false}
               />
             </label>
-            <label class="field">
-              <span class="field-label">Hold</span>
+            <label class={fieldClass}>
+              <span class={fieldLabelClass}>Hold</span>
               <Input
                 bind:value={holdDraft}
                 class="font-mono text-sm"
@@ -223,13 +289,13 @@
           />
         </section>
       {:else}
-        <section class="inspector-section">
+        <section class={inspectorSectionClass}>
           {#if selectionCount === 1}
-            <label class="field">
-              <span class="field-label">Notes</span>
+            <label class={fieldClass}>
+              <span class={fieldLabelClass}>Notes</span>
               <textarea
                 bind:value={notesDraft}
-                class="notes-input"
+                class="notes-input min-h-[118px] w-full resize-y rounded-[10px] border border-line-2 bg-surface px-[12px] py-[10px] text-[12px] leading-[1.45] text-ink [font:inherit] outline-0 focus:border-ink"
                 rows="5"
                 placeholder="Layout note for this key"
                 onblur={commitNotes}
@@ -237,355 +303,23 @@
             </label>
             <Button variant="ghost" size="sm" onclick={commitNotes}>Save note</Button>
           {:else}
-            <div class="multi-note">
-              <strong>{selectionCount} keys selected</strong>
-              <span>Notes are edited one key at a time.</span>
+            <div class="multi-note grid min-h-[86px] place-items-center gap-[8px] rounded-[10px] border border-line bg-paper-2 p-[18px] text-center text-ink-3">
+              <strong class="text-[13px] text-ink">{selectionCount} keys selected</strong>
+              <span class="m-0 text-[12px] leading-[1.4]">Notes are edited one key at a time.</span>
             </div>
           {/if}
 
-          <div class="source-block">
-            <span class="field-label">Source</span>
-            <pre>{editor.selectedSnippet || "// Select one key to preview generated QMK."}</pre>
+          <div class="source-block grid gap-[6px]">
+            <span class={fieldLabelClass}>Source</span>
+            <pre
+              class={cn(
+                "m-0 min-h-[118px] max-h-[220px] overflow-auto rounded-[10px] bg-ink px-[14px] py-[12px] font-mono text-[11px] leading-[1.55] text-paper",
+                compact && "min-h-[76px] max-h-[108px]",
+              )}
+            >{editor.selectedSnippet || "// Select one key to preview generated QMK."}</pre>
           </div>
         </section>
       {/if}
     </div>
   {/if}
 </div>
-
-<style>
-  .editor-inspector {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .key-hero {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
-    padding: 14px;
-    border: 1px solid color-mix(in oklch, var(--surface-3) 58%, transparent);
-    border-radius: 12px;
-    background: color-mix(in oklch, var(--surface-2) 58%, var(--surface));
-  }
-
-  .big-cap {
-    display: grid;
-    width: 58px;
-    height: 58px;
-    place-items: center;
-    overflow: hidden;
-    border: 1px solid rgba(24, 22, 20, 0.18);
-    border-radius: var(--r-big-cap);
-    background: var(--keycap-base);
-    box-shadow: var(--shadow-cap);
-    font-family: var(--mono);
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 1;
-    text-align: center;
-  }
-
-  .key-hero.multi .big-cap {
-    color: #1c0a04;
-    background: var(--coral);
-  }
-
-  .hero-copy {
-    min-width: 0;
-  }
-
-  .hero-meta,
-  .field-label {
-    display: block;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  h2 {
-    overflow: hidden;
-    margin: 2px 0 0;
-    font-size: 18px;
-    line-height: 1.15;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .source-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 5px;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .source-pill::before {
-    content: "";
-    width: 8px;
-    height: 8px;
-    border-radius: 3px;
-    background: var(--source-color);
-  }
-
-  .hero-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  :global(.inspector-tabs) {
-    display: flex !important;
-    width: 100%;
-  }
-
-  :global(.inspector-tabs > button) {
-    flex: 1;
-    min-width: 0;
-    padding-inline: 8px;
-  }
-
-  .inspector-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding-right: 3px;
-  }
-
-  .inspector-section {
-    display: grid;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .logic-section {
-    margin-top: 15px;
-    padding-top: 14px;
-    border-top: 1px solid var(--line);
-  }
-
-  .keycode-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-  }
-
-  .quick-groups {
-    display: grid;
-    gap: 13px;
-  }
-
-  .quick-group {
-    display: grid;
-    gap: 7px;
-  }
-
-  .keycode-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .keycode-pill {
-    min-height: 28px;
-    padding: 4px 10px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: var(--paper-2);
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1;
-    transition:
-      border-color var(--dur-fast) var(--ease-out-soft),
-      background var(--dur-fast) var(--ease-out-soft),
-      color var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .keycode-pill:hover {
-    border-color: var(--line-2);
-    color: var(--ink);
-  }
-
-  .keycode-pill.active {
-    border-color: var(--coral);
-    background: var(--coral);
-    color: #1c0a04;
-  }
-
-  .inspector-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 14px;
-  }
-
-  .tap-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .field {
-    display: grid;
-    gap: 6px;
-  }
-
-  .notes-input {
-    width: 100%;
-    min-height: 118px;
-    resize: vertical;
-    padding: 10px 12px;
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    outline: 0;
-    background: var(--surface);
-    color: var(--ink);
-    font: inherit;
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .notes-input:focus {
-    border-color: var(--ink);
-  }
-
-  .source-block {
-    display: grid;
-    gap: 6px;
-  }
-
-  pre {
-    overflow: auto;
-    min-height: 118px;
-    max-height: 220px;
-    margin: 0;
-    padding: 12px 14px;
-    border-radius: 10px;
-    background: var(--ink);
-    color: var(--paper);
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.55;
-  }
-
-  .multi-note,
-  .empty-state {
-    display: grid;
-    place-items: center;
-    gap: 8px;
-    min-height: 150px;
-    padding: 18px;
-    color: var(--ink-3);
-    text-align: center;
-  }
-
-  .multi-note {
-    min-height: 86px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--paper-2);
-  }
-
-  .multi-note strong,
-  .empty-state strong {
-    color: var(--ink);
-    font-size: 13px;
-  }
-
-  .multi-note span,
-  .empty-state p {
-    margin: 0;
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  .compact {
-    display: grid;
-    grid-template-areas:
-      "hero tabs"
-      "hero body";
-    grid-template-columns: minmax(238px, 0.34fr) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    align-items: stretch;
-    gap: 14px;
-  }
-
-  .compact .key-hero {
-    grid-area: hero;
-    min-width: 0;
-    align-content: start;
-  }
-
-  .compact :global(.inspector-tabs) {
-    grid-area: tabs;
-  }
-
-  .compact .inspector-scroll {
-    grid-area: body;
-    max-height: 132px;
-    padding-right: 6px;
-  }
-
-  .compact .quick-groups {
-    display: flex;
-    gap: 10px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-
-  .compact .quick-group {
-    min-width: max-content;
-  }
-
-  .compact .logic-section {
-    margin-top: 10px;
-    padding-top: 10px;
-  }
-
-  .compact pre {
-    min-height: 76px;
-    max-height: 108px;
-  }
-
-  .compact .empty-state {
-    grid-column: 1 / -1;
-    min-height: 98px;
-  }
-
-  @media (max-width: 640px) {
-    .key-hero,
-    .compact {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .compact {
-      grid-template-areas:
-        "hero"
-        "tabs"
-        "body";
-    }
-
-    .big-cap {
-      width: 52px;
-      height: 52px;
-    }
-
-    .hero-actions {
-      justify-content: flex-start;
-    }
-
-    .tap-grid,
-    .keycode-row {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>
