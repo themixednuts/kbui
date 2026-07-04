@@ -15,6 +15,7 @@
   import EditorKeyInspector from "$lib/components/editor/EditorKeyInspector.svelte";
   import EditorLayerStack from "$lib/components/editor/EditorLayerStack.svelte";
   import EditorLightingInspector from "$lib/components/editor/EditorLightingInspector.svelte";
+  import FlashOverlay from "$lib/components/flash/FlashOverlay.svelte";
   import KeyInspectorPanel from "$lib/components/keymap/KeyInspectorPanel.svelte";
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
@@ -30,6 +31,7 @@
 
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
+  let flashOverlayOpen = $state(false);
 
   const requestedBoardId = $derived(sampleBoardIdFromParam(page.url.searchParams.get("board")));
   const activeBoardId = $derived(editor.activeBoardId);
@@ -238,6 +240,10 @@
                 {/each}
               </ul>
             </div>
+            <Button variant="coral" size="sm" onclick={() => (flashOverlayOpen = true)}>
+              <span class="material-symbols-outlined" aria-hidden="true">bolt</span>
+              Build firmware
+            </Button>
           </div>
         {/if}
 
@@ -342,6 +348,12 @@
     </KeyInspectorPanel>
   {/if}
 </section>
+
+<FlashOverlay
+  bind:open={flashOverlayOpen}
+  profile={editor.profile}
+  changes={liveSync.rebuildRequiredChanges}
+/>
 
 <style>
   .editor-route {
