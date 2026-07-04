@@ -3,103 +3,35 @@
 
   import type { EditorStore } from "$lib/app/editor-store.svelte";
   import Chip from "$lib/components/ui/Chip.svelte";
+  import { cn } from "$lib/utils.js";
 
   type Props = {
     editor: EditorStore;
   };
 
   let { editor }: Props = $props();
+
+  const metaTextClass = "font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase";
+  const activeStackCardClass =
+    "active-stack-card grid gap-kb-10 rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--surface)_76%,transparent)] px-kb-16 py-kb-13 shadow-card";
 </script>
 
-<section class="active-stack-card" aria-label="Active layer stack">
-  <header>
-    <div>
-      <span class="eyebrow">Active layer stack</span>
-      <strong>{editor.activeLayerRecord?.name ?? "Layer"}</strong>
+<section class={activeStackCardClass} aria-label="Active layer stack">
+  <header class="flex min-w-0 items-baseline justify-between gap-kb-12 max-[680px]:grid">
+    <div class="min-w-0">
+      <span class={cn("eyebrow", metaTextClass)}>Active layer stack</span>
+      <strong class="mt-kb-2 block text-[13px]">{editor.activeLayerRecord?.name ?? "Layer"}</strong>
     </div>
-    <span class="stack-id">{editor.activeStack.map((layer) => layer.name).join(" / ")}</span>
+    <span class={cn("stack-id overflow-hidden text-ellipsis whitespace-nowrap", metaTextClass)}>{editor.activeStack.map((layer) => layer.name).join(" / ")}</span>
   </header>
 
-  <div class="stack-body">
+  <div class="stack-body flex flex-wrap items-center gap-kb-8">
     {#each editor.activeStack as layer (layer.id)}
       <Chip dot={layer.color}>{layer.name}</Chip>
     {/each}
-    <span class="inherit-note">
+    <span class="inherit-note ml-auto inline-flex items-center gap-kb-6 font-mono text-[10px] tracking-[0.04em] text-ink-3 max-[680px]:ml-0 max-[680px]:w-full">
       <GitBranch size={13} aria-hidden="true" />
       Hatched keys inherit from below
     </span>
   </div>
 </section>
-
-<style>
-  .active-stack-card {
-    display: grid;
-    gap: 10px;
-    padding: 13px 16px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: color-mix(in oklch, var(--surface) 76%, transparent);
-    box-shadow: var(--shadow-card);
-  }
-
-  header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  header div {
-    min-width: 0;
-  }
-
-  .eyebrow,
-  .stack-id,
-  .inherit-note {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  strong {
-    display: block;
-    margin-top: 2px;
-    font-size: 13px;
-  }
-
-  .stack-id {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stack-body {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .inherit-note {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
-    letter-spacing: 0.04em;
-    text-transform: none;
-  }
-
-  @media (max-width: 680px) {
-    header {
-      display: grid;
-    }
-
-    .inherit-note {
-      width: 100%;
-      margin-left: 0;
-    }
-  }
-</style>

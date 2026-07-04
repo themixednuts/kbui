@@ -25,10 +25,50 @@
     sampleBoardIdFromParam,
     type SampleBoardId,
   } from "$lib/keyboard/sample-boards";
+  import { cn } from "$lib/utils.js";
 
   const shell = getShellContext();
   const editor = getWorkbenchContext();
   const liveSync = getViaLiveSyncContext();
+
+  const editorRouteClass =
+    "editor-route flex min-h-[calc(100vh-58px)] overflow-hidden bg-[radial-gradient(ellipse_80%_55%_at_72%_0%,color-mix(in_oklch,var(--mustard)_9%,transparent),transparent_62%),var(--paper)] max-[980px]:min-h-[calc(100vh-68px)] [&_.keymap-pane-group]:min-h-0 [&_.keymap-pane-group]:min-w-0 [&_.keymap-pane-group]:flex-1 [&_.keymap-main-pane]:min-h-0 [&_.keymap-main-pane]:min-w-0 [&_.key-inspector-pane]:min-w-[300px] [&_.key-inspector-pane]:bg-[color-mix(in_oklch,var(--surface)_70%,transparent)] [&_.key-inspector]:h-full [&_.key-inspector]:border-l [&_.key-inspector]:border-line [&_.key-inspector]:bg-[color-mix(in_oklch,var(--surface)_88%,var(--paper))] [&_.key-inspector-body]:flex [&_.key-inspector-body]:min-h-0 [&_.key-inspector-body]:p-kb-16 [&_.inspector-chrome]:[border-bottom-color:var(--line)] [&_.inspector-chrome]:bg-[color-mix(in_oklch,var(--surface)_72%,var(--paper))] max-[980px]:[&_.key-inspector]:border-t max-[980px]:[&_.key-inspector]:border-l-0";
+  const editorRouteSplitClass =
+    "grid grid-rows-[minmax(0,1fr)_auto] [&_.keyboard-board-viewport]:min-h-[282px] [&_.keyboard-board-viewport]:px-kb-18 [&_.keyboard-board-viewport]:pt-kb-20 [&_.keyboard-board-viewport]:pb-kb-34 [&_.keyboard-board-viewport]:bg-[linear-gradient(to_right,oklch(0.13_0.01_60_/_0.028)_1px,transparent_1px),linear-gradient(to_bottom,oklch(0.13_0.01_60_/_0.028)_1px,transparent_1px),radial-gradient(ellipse_58%_62%_at_50%_42%,oklch(0.97_0.035_72_/_0.54),transparent_78%)] [&_.keyboard-board-viewport]:[background-size:24px_24px,24px_24px,100%_100%] [&_.split-label]:text-[color-mix(in_oklch,var(--ink-3)_84%,var(--ink))] [&_.split-seam]:[border-left-color:color-mix(in_oklch,var(--ink-3)_38%,transparent)]";
+  const editorMainClass =
+    "editor-main grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-kb-14 px-kb-22 py-kb-20 max-[640px]:!p-kb-12";
+  const editorMainSplitClass =
+    "grid-rows-[auto_minmax(0,1fr)] gap-kb-12 px-kb-22 pt-kb-18 pb-kb-12";
+  const editorToolbarClass =
+    "editor-toolbar flex min-w-0 flex-wrap items-start gap-kb-12 max-[640px]:flex-col max-[640px]:items-stretch";
+  const syncNoticeClass =
+    "sync-notice grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-kb-10 rounded-[8px] border border-line bg-[color-mix(in_oklch,var(--surface)_78%,transparent)] px-kb-12 py-kb-10 text-[12px]";
+  const syncNoticeRebuildClass =
+    "rebuild border-[color-mix(in_oklch,var(--coral)_38%,var(--line-2))] bg-[color-mix(in_oklch,var(--coral)_10%,var(--surface))]";
+  const syncNoticeFailedClass =
+    "failed border-[oklch(0.62_0.2_25_/_0.34)] bg-[oklch(0.95_0.04_25)]";
+  const syncNoticeLocalClass =
+    "local border-[color-mix(in_oklch,var(--mustard)_46%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_13%,var(--surface))]";
+  const syncNoticeIconClass = "material-symbols-outlined mt-px text-[18px]";
+  const syncNoticeTitleClass = "block text-[12px] leading-[1.3]";
+  const syncNoticeListClass =
+    "mt-kb-4 mb-0 flex list-none flex-wrap gap-x-kb-12 gap-y-kb-5 p-0 font-mono text-[10px] text-ink-3";
+  const syncNoticeListItemClass =
+    "min-w-0 max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap";
+  const syncNoticeLocalListClass =
+    "mt-kb-4 mb-0 grid list-none gap-kb-4 p-0 font-mono text-[10px] text-ink-3";
+  const syncNoticeLocalItemClass =
+    "min-w-0 max-w-none overflow-visible text-clip whitespace-normal text-ink-2 text-[11px] leading-[1.35]";
+  const noticeCategoryClass =
+    "notice-category mr-kb-5 font-mono text-[10px] font-bold text-ink uppercase";
+  const boardStageClass =
+    "board-stage flex min-h-[430px] min-w-0 overflow-hidden rounded-[12px] border border-line bg-[color-mix(in_oklch,var(--surface)_54%,transparent)] shadow-card";
+  const boardStageResponsiveClass =
+    "max-[1180px]:min-h-[390px] max-[980px]:min-h-[340px]";
+  const boardStageSplitClass =
+    "min-h-[300px] rounded-none border-transparent bg-transparent shadow-none";
+  const splitInspectorDockClass =
+    "split-inspector-dock min-w-0 border-t border-line bg-[color-mix(in_oklch,var(--surface)_90%,var(--paper))] px-kb-22 pt-kb-10 pb-kb-12 shadow-[0_-18px_44px_-34px_rgba(27,25,23,0.42)] max-[640px]:p-kb-12";
 
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
@@ -166,8 +206,8 @@
 </script>
 
 {#snippet editorMain()}
-  <div class="editor-main">
-    <header class="editor-toolbar" aria-label="Editor controls">
+  <div class={cn(editorMainClass, splitLayout ? editorMainSplitClass : "max-[1180px]:p-kb-16")}>
+    <header class={editorToolbarClass} aria-label="Editor controls">
       <SegmentedNav
         items={lensItems}
         value={editor.lens}
@@ -180,18 +220,18 @@
         items={boardItems}
         value={activeBoardId}
         ariaLabel="Starter boards"
-        class="board-switcher"
+        class="board-switcher opacity-[0.86]"
       />
 
       <EditorLayerStack {editor} />
 
-      <div class="toolbar-spacer"></div>
+      <div class="toolbar-spacer min-w-[10px] flex-1 max-[640px]:hidden"></div>
 
       {#if editor.persistenceError}
         <Chip tone="error" title={editor.persistenceError}>Draft save issue</Chip>
       {/if}
 
-      <Chip dot={liveSync.dot} title={liveSync.title} class="editor-sync-chip">
+      <Chip dot={liveSync.dot} title={liveSync.title} class="editor-sync-chip max-w-[180px]">
         {liveSync.label}
       </Chip>
 
@@ -231,15 +271,15 @@
     </header>
 
     {#if liveSync.failedLanes.length > 0 || liveSync.rebuildRequiredChanges.length > 0 || connectedLocalOnlyChanges.length > 0 || liveSync.invalidChanges.length > 0}
-      <section class="sync-notices" aria-label="Live sync status">
+      <section class="sync-notices grid min-w-0 gap-kb-8" aria-label="Live sync status">
         {#if liveSync.failedLanes.length > 0}
-          <div class="sync-notice failed" data-testid="via-sync-failed">
-            <span class="material-symbols-outlined" aria-hidden="true">error</span>
+          <div class={cn(syncNoticeClass, syncNoticeFailedClass)} data-testid="via-sync-failed">
+            <span class={syncNoticeIconClass} aria-hidden="true">error</span>
             <div>
-              <strong>{liveSync.failedLanes.length} live sync {liveSync.failedLanes.length === 1 ? "write" : "writes"} failed</strong>
-              <ul>
+              <strong class={syncNoticeTitleClass}>{liveSync.failedLanes.length} live sync {liveSync.failedLanes.length === 1 ? "write" : "writes"} failed</strong>
+              <ul class={syncNoticeListClass}>
                 {#each failedPreview as lane (lane.laneKey)}
-                  <li>{lane.label} -> {lane.code}{lane.error ? ` · ${lane.error}` : ""}</li>
+                  <li class={syncNoticeListItemClass}>{lane.label} -> {lane.code}{lane.error ? ` · ${lane.error}` : ""}</li>
                 {/each}
               </ul>
             </div>
@@ -251,13 +291,13 @@
         {/if}
 
         {#if liveSync.rebuildRequiredChanges.length > 0}
-          <div class="sync-notice rebuild" data-testid="via-rebuild-required">
-            <span class="material-symbols-outlined" aria-hidden="true">construction</span>
+          <div class={cn(syncNoticeClass, syncNoticeRebuildClass)} data-testid="via-rebuild-required">
+            <span class={syncNoticeIconClass} aria-hidden="true">construction</span>
             <div>
-              <strong>{liveSync.rebuildRequiredChanges.length} {liveSync.rebuildRequiredChanges.length === 1 ? "change needs" : "changes need"} a firmware rebuild</strong>
-              <ul>
+              <strong class={syncNoticeTitleClass}>{liveSync.rebuildRequiredChanges.length} {liveSync.rebuildRequiredChanges.length === 1 ? "change needs" : "changes need"} a firmware rebuild</strong>
+              <ul class={syncNoticeListClass}>
                 {#each rebuildPreview as change (change.id)}
-                  <li>{change.path}</li>
+                  <li class={syncNoticeListItemClass}>{change.path}</li>
                 {/each}
               </ul>
             </div>
@@ -269,18 +309,18 @@
         {/if}
 
         {#if connectedLocalOnlyChanges.length > 0}
-          <div class="sync-notice local" data-testid="live-sync-local-only" role="status">
-            <span class="material-symbols-outlined" aria-hidden="true">edit_note</span>
+          <div class={cn(syncNoticeClass, syncNoticeLocalClass)} data-testid="live-sync-local-only" role="status">
+            <span class={syncNoticeIconClass} aria-hidden="true">edit_note</span>
             <div>
-              <strong>
+              <strong class={syncNoticeTitleClass}>
                 {connectedLocalOnlyChanges.length}
                 {connectedLocalOnlyChanges.length === 1 ? "change applied" : "changes applied"}
                 locally - not written to device{localOnlyCategorySummary ? `: ${localOnlyCategorySummary}` : ""}
               </strong>
-              <ul>
+              <ul class={syncNoticeLocalListClass}>
                 {#each localOnlyReasonPreview as reason (`${reason.category}:${reason.reason}`)}
-                  <li>
-                    <span class="notice-category">{reason.label}</span>
+                  <li class={syncNoticeLocalItemClass}>
+                    <span class={noticeCategoryClass}>{reason.label}</span>
                     {reason.reason}{reason.count > 1 ? ` (${reason.count})` : ""}
                   </li>
                 {/each}
@@ -290,13 +330,13 @@
         {/if}
 
         {#if liveSync.invalidChanges.length > 0}
-          <div class="sync-notice failed" data-testid="via-invalid-change">
-            <span class="material-symbols-outlined" aria-hidden="true">report</span>
+          <div class={cn(syncNoticeClass, syncNoticeFailedClass)} data-testid="via-invalid-change">
+            <span class={syncNoticeIconClass} aria-hidden="true">report</span>
             <div>
-              <strong>{liveSync.invalidChanges.length} invalid {liveSync.invalidChanges.length === 1 ? "change" : "changes"}</strong>
-              <ul>
+              <strong class={syncNoticeTitleClass}>{liveSync.invalidChanges.length} invalid {liveSync.invalidChanges.length === 1 ? "change" : "changes"}</strong>
+              <ul class={syncNoticeListClass}>
                 {#each invalidPreview as change (change.id)}
-                  <li>{change.path}</li>
+                  <li class={syncNoticeListItemClass}>{change.path}</li>
                 {/each}
               </ul>
             </div>
@@ -306,7 +346,10 @@
     {/if}
 
     {#if editor.lens === "keys"}
-      <section class="board-stage" aria-label="Keyboard editor">
+      <section
+        class={cn(boardStageClass, splitLayout ? boardStageSplitClass : boardStageResponsiveClass)}
+        aria-label="Keyboard editor"
+      >
         <KeyboardBoard
           profile={editor.profile}
           activeLayer={editor.activeLayer}
@@ -327,7 +370,16 @@
         <ActiveStackCard {editor} />
       {/if}
     {:else}
-      <section class="board-stage lighting-stage" aria-label="Keyboard lighting editor">
+      <section
+        class={cn(
+          boardStageClass,
+          "lighting-stage min-h-[460px]",
+          splitLayout
+            ? cn(boardStageSplitClass, "min-h-[312px]")
+            : boardStageResponsiveClass,
+        )}
+        aria-label="Keyboard lighting editor"
+      >
         <KeyboardBoard
           profile={editor.profile}
           activeLayer={editor.activeLayer}
@@ -343,7 +395,7 @@
       </section>
 
       {#if !splitLayout}
-        <div class="lighting-hint">
+        <div class="lighting-hint inline-flex min-w-0 items-center gap-kb-8 rounded-[9px] border border-line bg-[color-mix(in_oklch,var(--surface-2)_72%,var(--surface))] px-kb-12 py-kb-10 text-[12px] text-ink-2">
           <MousePointer2 size={15} aria-hidden="true" />
           <span>Drag across keys to select</span>
         </div>
@@ -352,10 +404,10 @@
   </div>
 {/snippet}
 
-<section class="editor-route" class:split={splitLayout} data-lens={editor.lens}>
+<section class={cn(editorRouteClass, splitLayout && editorRouteSplitClass)} class:split={splitLayout} data-lens={editor.lens}>
   {#if splitLayout}
     {@render editorMain()}
-    <aside class="split-inspector-dock" aria-label={inspectorLabel}>
+    <aside class={splitInspectorDockClass} aria-label={inspectorLabel}>
       {#if editor.lens === "lighting"}
         <EditorLightingInspector {editor} compact />
       {:else}
@@ -382,288 +434,3 @@
   profile={editor.profile}
   changes={liveSync.rebuildRequiredChanges}
 />
-
-<style>
-  .editor-route {
-    display: flex;
-    min-height: calc(100vh - 58px);
-    overflow: hidden;
-    background:
-      radial-gradient(ellipse 80% 55% at 72% 0%, color-mix(in oklch, var(--mustard) 9%, transparent), transparent 62%),
-      var(--paper);
-  }
-
-  .editor-route.split {
-    display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .editor-main {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: 14px;
-    min-width: 0;
-    min-height: 0;
-    padding: 20px 22px;
-  }
-
-  .editor-toolbar {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-
-  .toolbar-spacer {
-    flex: 1;
-    min-width: 10px;
-  }
-
-  :global(.editor-sync-chip) {
-    max-width: 180px;
-  }
-
-  .sync-notices {
-    display: grid;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .sync-notice {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 10px;
-    min-width: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--surface) 78%, transparent);
-    font-size: 12px;
-  }
-
-  .sync-notice.rebuild {
-    border-color: color-mix(in oklch, var(--coral) 38%, var(--line-2));
-    background: color-mix(in oklch, var(--coral) 10%, var(--surface));
-  }
-
-  .sync-notice.failed {
-    border-color: oklch(0.62 0.2 25 / 0.34);
-    background: oklch(0.95 0.04 25);
-  }
-
-  .sync-notice.local {
-    border-color: color-mix(in oklch, var(--mustard) 46%, var(--line-2));
-    background: color-mix(in oklch, var(--mustard) 13%, var(--surface));
-  }
-
-  .sync-notice > .material-symbols-outlined {
-    margin-top: 1px;
-    font-size: 18px;
-  }
-
-  .sync-notice strong {
-    display: block;
-    font-size: 12px;
-    line-height: 1.3;
-  }
-
-  .sync-notice ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px 12px;
-    margin: 4px 0 0;
-    padding: 0;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    list-style: none;
-  }
-
-  .sync-notice li {
-    min-width: 0;
-    max-width: 360px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sync-notice.local ul {
-    display: grid;
-    gap: 4px;
-  }
-
-  .sync-notice.local li {
-    max-width: none;
-    overflow: visible;
-    color: var(--ink-2);
-    font-family: inherit;
-    font-size: 11px;
-    line-height: 1.35;
-    text-overflow: clip;
-    white-space: normal;
-  }
-
-  .notice-category {
-    margin-right: 5px;
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  :global(.board-switcher) {
-    opacity: 0.86;
-  }
-
-  .board-stage {
-    display: flex;
-    min-width: 0;
-    min-height: 430px;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: color-mix(in oklch, var(--surface) 54%, transparent);
-    box-shadow: var(--shadow-card);
-  }
-
-  .lighting-stage {
-    min-height: 460px;
-  }
-
-  .lighting-hint {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    background: color-mix(in oklch, var(--surface-2) 72%, var(--surface));
-    color: var(--ink-2);
-    font-size: 12px;
-  }
-
-  .split-inspector-dock {
-    min-width: 0;
-    padding: 10px 22px 12px;
-    border-top: 1px solid var(--line);
-    background: color-mix(in oklch, var(--surface) 90%, var(--paper));
-    box-shadow: 0 -18px 44px -34px rgba(27, 25, 23, 0.42);
-  }
-
-  .editor-route.split .editor-main {
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 12px;
-    padding: 18px 22px 12px;
-  }
-
-  .editor-route.split .board-stage {
-    min-height: 300px;
-    border-color: transparent;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .editor-route.split .lighting-stage {
-    min-height: 312px;
-  }
-
-  .editor-route.split :global(.keyboard-board-viewport) {
-    min-height: 282px;
-    padding: 20px 18px 34px;
-    background:
-      linear-gradient(to right, oklch(0.13 0.01 60 / 0.028) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.13 0.01 60 / 0.028) 1px, transparent 1px),
-      radial-gradient(ellipse 58% 62% at 50% 42%, oklch(0.97 0.035 72 / 0.54), transparent 78%);
-    background-size:
-      24px 24px,
-      24px 24px,
-      100% 100%;
-  }
-
-  .editor-route.split :global(.split-seam) {
-    border-left-color: color-mix(in oklch, var(--ink-3) 38%, transparent);
-  }
-
-  .editor-route.split :global(.split-label) {
-    color: color-mix(in oklch, var(--ink-3) 84%, var(--ink));
-  }
-
-  :global(.editor-route .keymap-pane-group) {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-  }
-
-  :global(.editor-route .keymap-main-pane) {
-    min-width: 0;
-    min-height: 0;
-  }
-
-  :global(.editor-route .key-inspector-pane) {
-    min-width: 300px;
-    background: color-mix(in oklch, var(--surface) 70%, transparent);
-  }
-
-  :global(.editor-route .key-inspector) {
-    height: 100%;
-    border-left: 1px solid var(--line);
-    background: color-mix(in oklch, var(--surface) 88%, var(--paper));
-  }
-
-  :global(.editor-route .key-inspector-body) {
-    display: flex;
-    min-height: 0;
-    padding: 16px;
-  }
-
-  :global(.editor-route .inspector-chrome) {
-    border-bottom-color: var(--line);
-    background: color-mix(in oklch, var(--surface) 72%, var(--paper));
-  }
-
-  @media (max-width: 1180px) {
-    .editor-main {
-      padding: 16px;
-    }
-
-    .board-stage {
-      min-height: 390px;
-    }
-  }
-
-  @media (max-width: 980px) {
-    .editor-route {
-      min-height: calc(100vh - 68px);
-    }
-
-    :global(.editor-route .key-inspector) {
-      border-top: 1px solid var(--line);
-      border-left: 0;
-    }
-
-    .board-stage {
-      min-height: 340px;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .editor-main,
-    .split-inspector-dock {
-      padding: 12px;
-    }
-
-    .editor-toolbar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .toolbar-spacer {
-      display: none;
-    }
-  }
-</style>

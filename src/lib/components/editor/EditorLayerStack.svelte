@@ -3,115 +3,45 @@
 
   import type { EditorStore } from "$lib/app/editor-store.svelte";
   import Button from "$lib/components/ui/Button.svelte";
+  import { cn } from "$lib/utils.js";
 
   type Props = {
     editor: EditorStore;
   };
 
   let { editor }: Props = $props();
+
+  const layerStackClass =
+    "layer-stack flex min-w-0 items-center gap-kb-8 max-[760px]:flex-col max-[760px]:items-start";
+  const layerButtonsClass = "layer-buttons flex min-w-0 flex-wrap gap-kb-8";
+  const layerButtonClass =
+    "layer-button inline-flex h-[36px] min-w-[74px] items-center justify-center gap-kb-8 rounded-pill !border !border-line-2 !bg-[color-mix(in_oklch,var(--surface)_78%,transparent)] px-kb-15 py-0 font-mono text-[12px] font-strong tracking-[0.02em] !text-ink-2 shadow-card transition-[background,border-color,color,transform] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:-translate-y-px hover:!border-[rgba(24,22,20,0.28)] hover:!text-ink max-[760px]:h-[32px] max-[760px]:min-w-[66px] max-[760px]:px-kb-12";
+  const activeLayerButtonClass =
+    "!border-ink !bg-ink !text-paper hover:!border-ink hover:!text-paper [&_.layer-dot]:shadow-[0_0_0_2px_color-mix(in_oklch,currentColor_16%,transparent)]";
+  const layerDotClass =
+    "layer-dot h-kb-12 w-kb-12 flex-none rounded-[4px] shadow-[inset_0_0_0_1px_rgba(24,22,20,0.12)]";
 </script>
 
-<div class="layer-stack" aria-label="Keyboard layers">
-  <div class="layer-buttons">
+<div class={layerStackClass} aria-label="Keyboard layers">
+  <div class={layerButtonsClass}>
     {#each editor.profile.layers as layer (layer.id)}
       {@const active = layer.id === editor.activeLayer}
       <button
         type="button"
-        class="layer-button"
+        class={cn(layerButtonClass, active && activeLayerButtonClass)}
         class:active
         aria-pressed={active}
         title={`Switch to ${layer.name}`}
         onclick={() => editor.setLayer(layer.id)}
       >
-        <span class="layer-dot" style={`background: ${layer.color}`} aria-hidden="true"></span>
+        <span class={layerDotClass} style={`background: ${layer.color}`} aria-hidden="true"></span>
         <span>{layer.name}</span>
       </button>
     {/each}
   </div>
 
-  <Button variant="ghost" size="sm" class="add-layer" title="Add transparent layer" onclick={() => editor.addLayer()}>
+  <Button variant="ghost" size="sm" class="add-layer flex-none" title="Add transparent layer" onclick={() => editor.addLayer()}>
     <Plus size={14} aria-hidden="true" />
     Layer
   </Button>
 </div>
-
-<style>
-  .layer-stack {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .layer-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .layer-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-width: 74px;
-    height: 36px;
-    padding: 0 15px;
-    border: 1px solid var(--line-2);
-    border-radius: var(--r-pill);
-    background: color-mix(in oklch, var(--surface) 78%, transparent);
-    box-shadow: var(--shadow-card);
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    transition:
-      background var(--dur-fast) var(--ease-out-soft),
-      border-color var(--dur-fast) var(--ease-out-soft),
-      color var(--dur-fast) var(--ease-out-soft),
-      transform var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .layer-button:hover {
-    border-color: rgba(24, 22, 20, 0.28);
-    color: var(--ink);
-    transform: translateY(-1px);
-  }
-
-  .layer-button.active {
-    border-color: var(--ink);
-    background: var(--ink);
-    color: var(--paper);
-  }
-
-  .layer-button.active .layer-dot {
-    box-shadow: 0 0 0 2px color-mix(in oklch, currentColor 16%, transparent);
-  }
-
-  .layer-dot {
-    width: 12px;
-    height: 12px;
-    flex: 0 0 auto;
-    border-radius: 4px;
-    box-shadow: inset 0 0 0 1px rgba(24, 22, 20, 0.12);
-  }
-
-  :global(.add-layer) {
-    flex: 0 0 auto;
-  }
-
-  @media (max-width: 760px) {
-    .layer-stack {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
-    .layer-button {
-      min-width: 66px;
-      height: 32px;
-      padding-inline: 12px;
-    }
-  }
-</style>
