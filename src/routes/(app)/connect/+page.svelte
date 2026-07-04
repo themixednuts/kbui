@@ -11,6 +11,7 @@
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import Chip from "$lib/components/ui/Chip.svelte";
+  import { cn } from "$lib/utils.js";
   import {
     bestCatalogEntryForIdentity,
     type KeyboardCatalogEntry,
@@ -71,6 +72,49 @@
   );
   const webBluetoothSupported = $derived(browser && Boolean(navigator.bluetooth));
   const webSerialSupported = $derived(browser && Boolean(navigator.serial));
+
+  const connectPanelClass =
+    "connect-panel grid gap-kb-12 rounded-[14px] border border-line-2 bg-[color-mix(in_oklch,var(--surface)_90%,var(--paper))] p-kb-14 shadow-float max-[760px]:p-kb-10";
+  const connectPanelHeadClass =
+    "connect-panel-head flex min-w-0 items-center justify-between gap-kb-12 px-kb-2 pt-kb-2 pb-kb-8 max-[760px]:flex-col max-[760px]:items-start";
+  const connectPanelTitleClass = "m-0 mt-kb-3 text-[18px] leading-[1.1]";
+  const connectOptionListClass = "connect-option-list grid gap-kb-8";
+  const connectOptionClass =
+    "connect-option grid min-h-kb-72 min-w-0 grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-kb-12 rounded-[10px] !border p-kb-12 text-left transition-[border-color,background,transform] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] [&:hover:not(:disabled)]:-translate-y-px [&:hover:not(:disabled)]:!border-line-2 [&:hover:not(:disabled)]:!bg-[color-mix(in_oklch,var(--coral)_9%,var(--paper-2))] max-[760px]:min-h-0 max-[760px]:grid-cols-[38px_minmax(0,1fr)]";
+  const connectOptionDefaultClass = "!border-line !bg-paper-2";
+  const connectOptionPrimaryClass =
+    "primary !border-[color-mix(in_oklch,var(--coral)_44%,var(--line-2))] !bg-[color-mix(in_oklch,var(--coral)_13%,var(--paper-2))]";
+  const connectOptionDisconnectClass =
+    "disconnect !border-[oklch(0.62_0.2_25/0.3)] !bg-[oklch(0.96_0.035_25)]";
+  const optionIconClass =
+    "option-icon material-symbols-outlined grid size-[42px] place-items-center rounded-[9px] border border-line-2 bg-paper text-ink !text-[21px] max-[760px]:size-kb-38";
+  const optionCopyClass = "option-copy grid min-w-0 gap-kb-3";
+  const optionTitleClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] font-strong";
+  const optionDescriptionClass =
+    "overflow-hidden text-ellipsis text-[12px] leading-[1.35] text-ink-3";
+  const optionActionClass =
+    "option-action inline-grid min-h-[30px] min-w-[58px] place-items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-pill border border-line-2 bg-surface px-kb-10 py-0 font-mono text-[10px] uppercase max-[760px]:col-start-2 max-[760px]:justify-self-start";
+  const optionActionPrimaryClass = "border-coral bg-coral text-[#1c0a04]";
+  const optionActionDisconnectClass =
+    "border-[oklch(0.62_0.2_25/0.34)] text-[oklch(0.4_0.16_25)]";
+  const connectStatusClass =
+    "connect-status grid w-[min(420px,100%)] min-w-0 grid-cols-[10px_minmax(0,1fr)] items-center gap-kb-10 rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--surface)_74%,transparent)] px-kb-12 py-kb-10";
+  const statusDotClass = "status-dot size-kb-8 overflow-hidden rounded-pill bg-ink-3";
+  const statusDotConnectedClass =
+    "bg-mint shadow-[0_0_0_3px_color-mix(in_oklch,var(--mint)_24%,transparent)]";
+  const statusDotConnectingClass =
+    "bg-mustard shadow-[0_0_0_3px_color-mix(in_oklch,var(--mustard)_24%,transparent)]";
+  const statusDotErrorClass =
+    "bg-removed shadow-[0_0_0_3px_color-mix(in_oklch,var(--removed)_18%,transparent)]";
+  const statusTitleClass =
+    "block overflow-hidden text-ellipsis font-mono text-[11px]";
+  const statusMessageClass =
+    "mt-kb-2 block overflow-hidden text-ellipsis text-[12px] leading-[1.35] text-ink-3";
+  const connectFootClass =
+    "connect-foot grid min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--surface)_74%,transparent)] px-kb-10 py-kb-9 font-mono text-[10px] text-ink-3";
+  const connectFootIconClass = "material-symbols-outlined !text-[16px]";
+  const connectFootCopyClass = "overflow-hidden text-ellipsis";
 
   function currentFilters() {
     return [
@@ -281,140 +325,148 @@
         Pair a VIA board, connect ZMK Studio, or load a VIA definition to start editing.
       </p>
 
-      <div class="connect-status" data-state={shell.device.status}>
-        <span class="status-dot" aria-hidden="true"></span>
+      <div class={connectStatusClass} data-state={shell.device.status}>
+        <span
+          class={cn(
+            statusDotClass,
+            shell.device.status === "connected" && statusDotConnectedClass,
+            shell.device.status === "connecting" && statusDotConnectingClass,
+            shell.device.status === "error" && statusDotErrorClass,
+          )}
+          aria-hidden="true"
+        ></span>
         <div>
-          <strong>{statusLabel}</strong>
-          <span>{message ?? shell.device.message}</span>
+          <strong class={statusTitleClass}>{statusLabel}</strong>
+          <span class={statusMessageClass}>{message ?? shell.device.message}</span>
         </div>
       </div>
     </div>
 
-    <div class="connect-card connect-panel">
-      <div class="connect-panel-head">
+    <div class={cn("connect-card", connectPanelClass)}>
+      <div class={connectPanelHeadClass}>
         <div>
           <span class="eyebrow">Available</span>
-          <h2>Connection options</h2>
+          <h2 class={connectPanelTitleClass}>Connection options</h2>
         </div>
         <Chip>{activeProfileSummary}</Chip>
       </div>
 
-      <div class="connect-option-list">
+      <div class={connectOptionListClass}>
         {#if shell.connected}
           <button
             type="button"
-            class="connect-option disconnect"
+            class={cn(connectOptionClass, connectOptionDisconnectClass)}
             data-testid="disconnect-device"
             disabled={busy}
             onclick={disconnectDevice}
           >
-            <span class="option-icon material-symbols-outlined" aria-hidden="true">link_off</span>
-            <span class="option-copy">
-              <strong>{busyAction === "disconnect" ? "Disconnecting device" : "Disconnect device"}</strong>
-              <small>Keep the current draft and stop live VIA writes</small>
+            <span class={optionIconClass} aria-hidden="true">link_off</span>
+            <span class={optionCopyClass}>
+              <strong class={optionTitleClass}>{busyAction === "disconnect" ? "Disconnecting device" : "Disconnect device"}</strong>
+              <small class={optionDescriptionClass}>Keep the current draft and stop live VIA writes</small>
             </span>
-            <span class="option-action">{busyAction === "disconnect" ? "..." : "Disconnect"}</span>
+            <span class={cn(optionActionClass, optionActionDisconnectClass)}>{busyAction === "disconnect" ? "..." : "Disconnect"}</span>
           </button>
         {/if}
 
         <button
           type="button"
-          class="connect-option primary"
+          class={cn(connectOptionClass, connectOptionPrimaryClass)}
           data-testid="connect-device"
           disabled={busy}
           onclick={connectDevice}
         >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">cable</span>
-          <span class="option-copy">
-            <strong>{busyAction === "real" ? "Opening browser prompt" : "Connect device"}</strong>
-            <small>WebHID VIA keyboard, current keymap import when a definition is found</small>
+          <span class={optionIconClass} aria-hidden="true">cable</span>
+          <span class={optionCopyClass}>
+            <strong class={optionTitleClass}>{busyAction === "real" ? "Opening browser prompt" : "Connect device"}</strong>
+            <small class={optionDescriptionClass}>WebHID VIA keyboard, current keymap import when a definition is found</small>
           </span>
-          <span class="option-action">{busyAction === "real" ? "..." : "Connect"}</span>
+          <span class={cn(optionActionClass, optionActionPrimaryClass)}>{busyAction === "real" ? "..." : "Connect"}</span>
         </button>
 
         <button
           type="button"
-          class="connect-option"
+          class={cn(connectOptionClass, connectOptionDefaultClass)}
           data-testid="connect-zmk-ble"
           disabled={busy}
           onclick={connectZmkBluetooth}
         >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">bluetooth</span>
-          <span class="option-copy">
-            <strong>{busyAction === "zmk-ble" ? "Opening Bluetooth prompt" : "Connect over Bluetooth (ZMK)"}</strong>
-            <small>
+          <span class={optionIconClass} aria-hidden="true">bluetooth</span>
+          <span class={optionCopyClass}>
+            <strong class={optionTitleClass}>{busyAction === "zmk-ble" ? "Opening Bluetooth prompt" : "Connect over Bluetooth (ZMK)"}</strong>
+            <small class={optionDescriptionClass}>
               {webBluetoothSupported
                 ? "Real ZMK Studio BLE transport; hardware-unverified until board-tested"
                 : "Web Bluetooth unavailable in this browser"}
             </small>
           </span>
-          <span class="option-action">{busyAction === "zmk-ble" ? "..." : webBluetoothSupported ? "Connect" : "Unavailable"}</span>
+          <span class={optionActionClass}>{busyAction === "zmk-ble" ? "..." : webBluetoothSupported ? "Connect" : "Unavailable"}</span>
         </button>
 
         <button
           type="button"
-          class="connect-option"
+          class={cn(connectOptionClass, connectOptionDefaultClass)}
           data-testid="connect-zmk-usb"
           disabled={busy}
           onclick={connectZmkSerial}
         >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">usb</span>
-          <span class="option-copy">
-            <strong>{busyAction === "zmk-usb" ? "Opening serial prompt" : "Connect over USB (ZMK)"}</strong>
-            <small>
+          <span class={optionIconClass} aria-hidden="true">usb</span>
+          <span class={optionCopyClass}>
+            <strong class={optionTitleClass}>{busyAction === "zmk-usb" ? "Opening serial prompt" : "Connect over USB (ZMK)"}</strong>
+            <small class={optionDescriptionClass}>
               {webSerialSupported
                 ? "Real ZMK Studio USB serial transport; hardware-unverified until board-tested"
                 : "Web Serial unavailable in this browser"}
             </small>
           </span>
-          <span class="option-action">{busyAction === "zmk-usb" ? "..." : webSerialSupported ? "Connect" : "Unavailable"}</span>
+          <span class={optionActionClass}>{busyAction === "zmk-usb" ? "..." : webSerialSupported ? "Connect" : "Unavailable"}</span>
         </button>
 
         {#if import.meta.env.DEV}
           <button
             type="button"
-            class="connect-option"
+            class={cn(connectOptionClass, connectOptionDefaultClass)}
             data-testid="use-demo-device"
             disabled={busy}
             onclick={useDemoDevice}
           >
-            <span class="option-icon material-symbols-outlined" aria-hidden="true">developer_board</span>
-            <span class="option-copy">
-              <strong>{busyAction === "mock" ? "Starting demo device" : "Use demo device"}</strong>
-              <small>Mock VIA Workbench 65 with protocol, layers, keymap reads, and writes</small>
+            <span class={optionIconClass} aria-hidden="true">developer_board</span>
+            <span class={optionCopyClass}>
+              <strong class={optionTitleClass}>{busyAction === "mock" ? "Starting demo device" : "Use demo device"}</strong>
+              <small class={optionDescriptionClass}>Mock VIA Workbench 65 with protocol, layers, keymap reads, and writes</small>
             </span>
-            <span class="option-action">{busyAction === "mock" ? "..." : "Demo"}</span>
+            <span class={optionActionClass}>{busyAction === "mock" ? "..." : "Demo"}</span>
           </button>
 
           <button
             type="button"
-            class="connect-option"
+            class={cn(connectOptionClass, connectOptionDefaultClass)}
             data-testid="use-demo-zmk-device"
             disabled={busy}
             onclick={useDemoZmkDevice}
           >
-            <span class="option-icon material-symbols-outlined" aria-hidden="true">settings_input_antenna</span>
-            <span class="option-copy">
-              <strong>{busyAction === "zmk-mock" ? "Starting ZMK demo" : "Use demo ZMK device"}</strong>
-              <small>Mock ZMK Studio Workbench 65 with RPC keymap reads, writes, and saves</small>
+            <span class={optionIconClass} aria-hidden="true">settings_input_antenna</span>
+            <span class={optionCopyClass}>
+              <strong class={optionTitleClass}>{busyAction === "zmk-mock" ? "Starting ZMK demo" : "Use demo ZMK device"}</strong>
+              <small class={optionDescriptionClass}>Mock ZMK Studio Workbench 65 with RPC keymap reads, writes, and saves</small>
             </span>
-            <span class="option-action">{busyAction === "zmk-mock" ? "..." : "Demo"}</span>
+            <span class={optionActionClass}>{busyAction === "zmk-mock" ? "..." : "Demo"}</span>
           </button>
         {/if}
 
         <button
           type="button"
-          class="connect-option"
+          class={cn(connectOptionClass, connectOptionDefaultClass)}
           data-testid="load-via-json"
           disabled={busy}
           onclick={chooseViaJson}
         >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">folder_open</span>
-          <span class="option-copy">
-            <strong>{busyAction === "import" ? "Importing JSON" : "Load VIA JSON"}</strong>
-            <small>Import a VIA v3 definition into a local DeviceProfile</small>
+          <span class={optionIconClass} aria-hidden="true">folder_open</span>
+          <span class={optionCopyClass}>
+            <strong class={optionTitleClass}>{busyAction === "import" ? "Importing JSON" : "Load VIA JSON"}</strong>
+            <small class={optionDescriptionClass}>Import a VIA v3 definition into a local DeviceProfile</small>
           </span>
-          <span class="option-action">Import</span>
+          <span class={optionActionClass}>Import</span>
         </button>
         <input
           bind:this={fileInput}
@@ -426,256 +478,27 @@
 
         <button
           type="button"
-          class="connect-option"
+          class={cn(connectOptionClass, connectOptionDefaultClass)}
           data-testid="continue-without-device"
           disabled={busy}
           onclick={continueLocalOnly}
         >
-          <span class="option-icon material-symbols-outlined" aria-hidden="true">edit_note</span>
-          <span class="option-copy">
-            <strong>{busyAction === "local" ? "Preparing profile" : "Continue without a device"}</strong>
-            <small>Local-only editing from the Workbench 65 starter profile</small>
+          <span class={optionIconClass} aria-hidden="true">edit_note</span>
+          <span class={optionCopyClass}>
+            <strong class={optionTitleClass}>{busyAction === "local" ? "Preparing profile" : "Continue without a device"}</strong>
+            <small class={optionDescriptionClass}>Local-only editing from the Workbench 65 starter profile</small>
           </span>
-          <span class="option-action">Local</span>
+          <span class={optionActionClass}>Local</span>
         </button>
 
       </div>
 
       {#if import.meta.env.DEV}
-        <div class="connect-foot">
-          <span class="material-symbols-outlined" aria-hidden="true">memory</span>
-          <span>Mock targets: Workbench 65 VIA / Workbench ZMK 65 ZMK Studio</span>
+        <div class={connectFootClass}>
+          <span class={connectFootIconClass} aria-hidden="true">memory</span>
+          <span class={connectFootCopyClass}>Mock targets: Workbench 65 VIA / Workbench ZMK 65 ZMK Studio</span>
         </div>
       {/if}
     </div>
   </div>
 </section>
-
-<style>
-  .connect-panel {
-    display: grid;
-    gap: 12px;
-    padding: 14px;
-    border: 1px solid var(--line-2);
-    border-radius: 14px;
-    background: color-mix(in oklch, var(--surface) 90%, var(--paper));
-    box-shadow: var(--shadow-float);
-  }
-
-  .connect-panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-width: 0;
-    padding: 2px 2px 8px;
-  }
-
-  .connect-panel-head h2 {
-    margin: 3px 0 0;
-    font-size: 18px;
-    line-height: 1.1;
-  }
-
-  .connect-option-list {
-    display: grid;
-    gap: 8px;
-  }
-
-  .connect-option {
-    display: grid;
-    grid-template-columns: 42px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-    min-height: 72px;
-    padding: 12px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--paper-2);
-    text-align: left;
-    transition:
-      border-color var(--dur-fast) var(--ease-out-soft),
-      background var(--dur-fast) var(--ease-out-soft),
-      transform var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .connect-option:hover:not(:disabled) {
-    border-color: var(--line-2);
-    background: color-mix(in oklch, var(--coral) 9%, var(--paper-2));
-    transform: translateY(-1px);
-  }
-
-  .connect-option.primary {
-    border-color: color-mix(in oklch, var(--coral) 44%, var(--line-2));
-    background: color-mix(in oklch, var(--coral) 13%, var(--paper-2));
-  }
-
-  .connect-option.disconnect {
-    border-color: oklch(0.62 0.2 25 / 0.3);
-    background: oklch(0.96 0.035 25);
-  }
-
-  .option-icon {
-    display: grid;
-    width: 42px;
-    height: 42px;
-    place-items: center;
-    border: 1px solid var(--line-2);
-    border-radius: 9px;
-    background: var(--paper);
-    color: var(--ink);
-    font-size: 21px;
-  }
-
-  .option-copy {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-  }
-
-  .option-copy strong,
-  .option-copy small,
-  .option-action {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .option-copy strong {
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
-  .option-copy small {
-    color: var(--ink-3);
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .option-action {
-    display: inline-grid;
-    min-width: 58px;
-    min-height: 30px;
-    place-items: center;
-    padding: 0 10px;
-    border: 1px solid var(--line-2);
-    border-radius: 999px;
-    background: var(--surface);
-    font-family: var(--mono);
-    font-size: 10px;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .connect-option.primary .option-action {
-    border-color: var(--coral);
-    background: var(--coral);
-    color: #1c0a04;
-  }
-
-  .connect-option.disconnect .option-action {
-    border-color: oklch(0.62 0.2 25 / 0.34);
-    color: oklch(0.4 0.16 25);
-  }
-
-  .connect-status,
-  .connect-foot {
-    display: grid;
-    align-items: center;
-    min-width: 0;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: color-mix(in oklch, var(--surface) 74%, transparent);
-  }
-
-  .connect-status {
-    grid-template-columns: 10px minmax(0, 1fr);
-    gap: 10px;
-    width: min(420px, 100%);
-    padding: 10px 12px;
-  }
-
-  .connect-status strong,
-  .connect-status span,
-  .connect-foot span:last-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .connect-status strong {
-    display: block;
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .connect-status span:not(.status-dot) {
-    display: block;
-    margin-top: 2px;
-    color: var(--ink-3);
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: var(--ink-3);
-  }
-
-  .connect-status[data-state="connected"] .status-dot {
-    background: var(--mint);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--mint) 24%, transparent);
-  }
-
-  .connect-status[data-state="connecting"] .status-dot {
-    background: var(--mustard);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--mustard) 24%, transparent);
-  }
-
-  .connect-status[data-state="error"] .status-dot {
-    background: var(--removed);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--removed) 18%, transparent);
-  }
-
-  .connect-foot {
-    grid-template-columns: 18px minmax(0, 1fr);
-    gap: 8px;
-    padding: 9px 10px;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .connect-foot .material-symbols-outlined {
-    font-size: 16px;
-  }
-
-  @media (max-width: 760px) {
-    .connect-panel {
-      padding: 10px;
-    }
-
-    .connect-panel-head {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
-    .connect-option {
-      grid-template-columns: 38px minmax(0, 1fr);
-      min-height: 0;
-    }
-
-    .option-icon {
-      width: 38px;
-      height: 38px;
-    }
-
-    .option-action {
-      grid-column: 2;
-      justify-self: start;
-    }
-  }
-</style>
