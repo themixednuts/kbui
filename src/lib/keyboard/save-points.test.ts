@@ -5,6 +5,7 @@ import {
   computeSavePointDiff,
   createSavePointFromProfile,
   listOrderedSavePointsForVariant,
+  materializeSavePointProfile,
   resolveProfileAtSavePoint,
 } from "./save-points";
 import { cloneDevice, sampleKeyboard } from "./schema";
@@ -80,6 +81,11 @@ describe("save point helpers", () => {
     const resolved = resolveProfileAtSavePoint([older, newer], newer.id);
     expect(resolved?.layers[0].bindings["k2-4"].code).toBe("KC_H");
     resolved!.layers[0].bindings["k2-4"] = { code: "KC_A" };
+    expect(newer.snapshot.layers[0].bindings["k2-4"].code).toBe("KC_H");
+
+    const materialized = materializeSavePointProfile([older, newer], newer.id);
+    expect(materialized?.layers[0].bindings["k2-4"].code).toBe("KC_H");
+    materialized!.layers[0].bindings["k2-4"] = { code: "KC_B" };
     expect(newer.snapshot.layers[0].bindings["k2-4"].code).toBe("KC_H");
   });
 

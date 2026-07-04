@@ -25,6 +25,7 @@ import {
   latestSavePointForVariant,
   listOrderedSavePointsForVariant,
   localAuthorMeta,
+  materializeSavePointProfile,
   resolveProfileAtSavePoint,
 } from "$lib/keyboard/save-points";
 import {
@@ -86,13 +87,6 @@ export interface HydrateActiveProfileOptions {
   force?: boolean;
 }
 
-export interface FlashSavePointIntent {
-  savePointId: string;
-  requestedAt: string;
-  status: "stubbed";
-  target: "flash-overlay";
-}
-
 const WORKBENCH_CONTEXT = Symbol("kbgui.workbench");
 const MAIN_VARIANT_ID = "main";
 const forkLaneColors = [
@@ -115,7 +109,6 @@ export class WorkbenchStore extends EditorStore {
   forks = $state<WorkspaceFork[]>([]);
   savePoints = $state<SavePoint[]>([]);
   selectedSavePointId = $state<string | null>(null);
-  flashIntent = $state<FlashSavePointIntent | null>(null);
   versioningHydrated = $state(false);
   versioningError = $state<string | null>(null);
 
@@ -317,19 +310,13 @@ export class WorkbenchStore extends EditorStore {
     return { fork, savePoint };
   }
 
-  flashSavePoint(savePointId = this.selectedSavePoint?.id, options: SavePointActionOptions = {}) {
-    if (!savePointId || !this.savePoints.some((savePoint) => savePoint.id === savePointId)) {
-      return undefined;
-    }
+  materializeSavePointProfile(savePointId = this.selectedSavePoint?.id) {
+    if (!savePointId) return undefined;
+    const profile = materializeSavePointProfile(this.savePoints, savePointId);
+    if (!profile) return undefined;
 
     this.selectedSavePointId = savePointId;
-    this.flashIntent = {
-      savePointId,
-      requestedAt: timestampFor(options),
-      status: "stubbed",
-      target: "flash-overlay",
-    };
-    return this.flashIntent;
+    return profile;
   }
 
   private async hydrateVersioning() {

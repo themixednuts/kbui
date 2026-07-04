@@ -65,6 +65,13 @@ export function resolveProfileAtSavePoint(
   savePoints: readonly SavePoint[],
   savePointId: string,
 ): DeviceProfile | undefined {
+  return materializeSavePointProfile(savePoints, savePointId);
+}
+
+export function materializeSavePointProfile(
+  savePoints: readonly SavePoint[],
+  savePointId: string,
+): DeviceProfile | undefined {
   const savePoint = savePoints.find((candidate) => candidate.id === savePointId);
   return savePoint ? cloneDevice(savePoint.snapshot) : undefined;
 }

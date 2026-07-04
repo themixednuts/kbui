@@ -533,7 +533,7 @@
   function commandLogFor(
     artifacts: FirmwareArtifacts,
     activeProfile: DeviceProfile,
-    rebuildChanges: readonly LiveSyncChangeNotice[],
+    profileChanges: readonly LiveSyncChangeNotice[],
     plan: Uf2FlashPlan | null,
     log: readonly string[],
     support: Uf2FlashSupport,
@@ -541,8 +541,8 @@
     browserBuild: FirmwareBuildResult | null,
   ) {
     const changeLines =
-      rebuildChanges.length > 0
-        ? rebuildChanges.map((change) => `  - ${change.path} (${change.reason})`)
+      profileChanges.length > 0
+        ? profileChanges.map((change) => `  - ${change.path} (${change.reason})`)
         : ["  - profile snapshot only"];
     const diagnosticLines =
       artifacts.diagnostics.length > 0
@@ -595,7 +595,7 @@
       `profile: ${profileDisplayName(activeProfile)}`,
       `source-hash: ${artifacts.sourceHash}`,
       "",
-      "rebuild-required changes:",
+      "profile changes included:",
       ...changeLines,
       "",
       "generated files:",

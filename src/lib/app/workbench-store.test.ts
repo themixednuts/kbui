@@ -310,6 +310,26 @@ describe("workbench store save points", () => {
     expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("KC_G");
     expect(workbench.dirty).toBe(0);
   });
+
+  it("materializes a save point profile for flash without recording a stub intent", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_G");
+
+    const savePoint = await workbench.createSavePoint("Flash target", {
+      id: "sp-flash",
+      createdAt: "2026-07-04T12:00:00.000Z",
+    });
+
+    const materialized = workbench.materializeSavePointProfile(savePoint?.id);
+
+    const legacyFlashKey = ["flash", "Intent"].join("");
+
+    expect(Reflect.ownKeys(workbench)).not.toContain(legacyFlashKey);
+    expect(materialized?.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    materialized!.layers[0].bindings["k2-4"] = { code: "KC_A" };
+    expect(savePoint?.snapshot.layers[0].bindings["k2-4"].code).toBe("KC_G");
+  });
 });
 
 describe("shell placement state", () => {

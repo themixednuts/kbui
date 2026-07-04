@@ -9,19 +9,25 @@
     Zap,
   } from "@lucide/svelte";
 
+  import { getShellContext } from "$lib/app/shell-store.svelte";
+  import { planSavePointFlash } from "$lib/app/save-point-flash";
+  import { getViaLiveSyncContext, type LiveSyncChangeNotice } from "$lib/app/via-live-sync.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
+  import FlashOverlay from "$lib/components/flash/FlashOverlay.svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import Chip from "$lib/components/ui/Chip.svelte";
   import SegmentedNav from "$lib/components/ui/SegmentedNav.svelte";
   import type { SegmentItem } from "$lib/components/ui/types";
   import * as Card from "$lib/components/ui/card/index.js";
   import VersionChangesPanel from "$lib/components/versioning/VersionChangesPanel.svelte";
-  import type { ChangeRecord, SavePoint } from "$lib/keyboard/schema";
+  import type { ChangeRecord, DeviceProfile, SavePoint } from "$lib/keyboard/schema";
 
   type VersionTab = "history" | "changes";
   type ChangeGroupId = "keymap" | "lighting" | "settings";
 
+  const shell = getShellContext();
   const workbench = getWorkbenchContext();
+  const liveSync = getViaLiveSyncContext();
 
   let tab = $state<VersionTab>("changes");
   let savePointMessage = $state("");
@@ -29,6 +35,10 @@
   let changesOpen = $state(true);
   let selectedChangesOpen = $state(true);
   let actionError = $state<string | null>(null);
+  let flashStatus = $state<string | null>(null);
+  let flashOverlayOpen = $state(false);
+  let flashProfile = $state<DeviceProfile | null>(null);
+  let flashChanges = $state<LiveSyncChangeNotice[]>([]);
   let saving = $state(false);
   let restoring = $state(false);
   let branching = $state(false);
@@ -100,10 +110,45 @@
     }
   }
 
-  function flashSelectedSavePoint() {
+  async function flashSelectedSavePoint() {
     if (!selectedSavePoint) return;
     actionError = null;
-    workbench.flashSavePoint(selectedSavePoint.id);
+    flashStatus = null;
+
+    try {
+      const profile = workbench.materializeSavePointProfile(selectedSavePoint.id);
+      if (!profile) {
+        actionError = "Could not materialize the selected save point for flashing.";
+        return;
+      }
+
+      const plan = planSavePointFlash({
+        baseProfile: workbench.baseProfile,
+        connection: shell.liveConnection,
+        profile,
+        savePointLabel: selectedSavePoint.message,
+      });
+
+      if (plan.kind === "live-apply") {
+        await workbench.loadProfileAsDraft(plan.profile, { origin: "draft" });
+        liveSync.processChanges(shell.liveConnection);
+        flashStatus = plan.message;
+        return;
+      }
+
+      flashProfile = plan.profile;
+      flashChanges = plan.changes;
+      flashOverlayOpen = true;
+    } catch (error) {
+      actionError = messageFor(error, "Could not flash save point");
+      return;
+    }
+  }
+
+  function closeFlashOverlay() {
+    flashOverlayOpen = false;
+    flashProfile = null;
+    flashChanges = [];
   }
 
   function groupChanges(changes: readonly ChangeRecord[]) {
@@ -194,6 +239,12 @@
   {#if actionError || workbench.versioningError}
     <div class="versions-alert" role="status">
       {actionError ?? workbench.versioningError}
+    </div>
+  {/if}
+
+  {#if flashStatus}
+    <div class="versions-status" role="status">
+      {flashStatus}
     </div>
   {/if}
 
@@ -381,11 +432,6 @@
                 </Button>
               </div>
 
-              {#if workbench.flashIntent?.savePointId === selectedSavePoint.id}
-                <div class="stub-note">
-                  Flash intent recorded for the future overlay. No device write runs in this wave.
-                </div>
-              {/if}
             {:else}
               <div class="side-empty">Select a save point to inspect.</div>
             {/if}
@@ -438,6 +484,15 @@
   {/if}
 </section>
 
+{#if flashProfile}
+  <FlashOverlay
+    bind:open={flashOverlayOpen}
+    profile={flashProfile}
+    changes={flashChanges}
+    onclose={closeFlashOverlay}
+  />
+{/if}
+
 <style>
   .versions-page {
     display: grid;
@@ -467,6 +522,17 @@
     color: oklch(0.42 0.15 25);
     font-family: var(--mono);
     font-size: 12px;
+  }
+
+  .versions-status {
+    padding: 10px 12px;
+    border: 1px solid color-mix(in oklch, var(--teal) 35%, transparent);
+    border-radius: 8px;
+    background: color-mix(in oklch, var(--teal) 12%, var(--surface));
+    color: var(--teal-ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .versions-grid {
@@ -890,16 +956,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
-  }
-
-  .stub-note {
-    padding: 10px 11px;
-    border: 1px solid color-mix(in oklch, var(--teal) 35%, transparent);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--teal) 12%, var(--surface));
-    color: var(--teal-ink);
-    font-size: 12px;
-    line-height: 1.45;
   }
 
   @media (max-width: 1180px) {
