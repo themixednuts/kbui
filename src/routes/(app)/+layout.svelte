@@ -58,6 +58,11 @@
       protocol: protocolLabel(workbench.profile.protocol),
       transport: workbench.profile.firmware.toUpperCase(),
     });
+    shell.setCurrentVariant({
+      id: workbench.activeVariant.id,
+      name: workbench.activeVariant.name,
+      color: workbench.activeVariant.color,
+    });
   });
 
   onDestroy(() => {

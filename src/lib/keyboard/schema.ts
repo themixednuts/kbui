@@ -166,12 +166,32 @@ export interface ChangeRecord {
   staged: boolean;
 }
 
+export interface SavePointAuthorMeta {
+  name: string;
+  handle?: string;
+  avatarUrl?: string;
+  source?: string;
+}
+
+export interface SavePoint {
+  id: string;
+  variantId: string;
+  message: string;
+  createdAt: string;
+  authorMeta: SavePointAuthorMeta;
+  snapshot: DeviceProfile;
+  diffFromParent?: ChangeRecord[];
+  parentSavePointId?: string;
+}
+
 export interface WorkspaceFork {
   id: string;
   name: string;
   baseProfileId: string;
   createdAt: string;
   device: DeviceProfile;
+  parentSavePointId?: string;
+  sourceVariantId?: string;
 }
 
 export interface FeatureDefinition {
@@ -1019,6 +1039,9 @@ type StoredLayer = Omit<Layer, "bindings"> & {
 export type StoredDeviceProfile = Omit<DeviceProfile, "layers"> & {
   layers: StoredLayer[];
 };
+export type StoredSavePoint = Omit<SavePoint, "snapshot"> & {
+  snapshot: StoredDeviceProfile;
+};
 export type StoredWorkspaceFork = Omit<WorkspaceFork, "device"> & {
   device: StoredDeviceProfile;
 };
@@ -1104,6 +1127,38 @@ export function decodeDeviceProfileFromStorageEffect(value: unknown) {
         new Error(error instanceof Error ? error.message : "Stored profile could not be decoded"),
     }),
     normalizeDeviceKeycodesEffect,
+  );
+}
+
+export function encodeSavePointForStorage(savePoint: SavePoint): StoredSavePoint {
+  return Effect.runSync(encodeSavePointForStorageEffect(savePoint));
+}
+
+export function encodeSavePointForStorageEffect(savePoint: SavePoint) {
+  return Effect.map(encodeDeviceProfileForStorageEffect(savePoint.snapshot), (snapshot) => ({
+    ...savePoint,
+    snapshot,
+  }));
+}
+
+export function decodeSavePointFromStorage(value: unknown): SavePoint {
+  return Effect.runSync(decodeSavePointFromStorageEffect(value));
+}
+
+export function decodeSavePointFromStorageEffect(value: unknown) {
+  return Effect.flatMap(
+    Effect.try({
+      try: () => value as SavePoint,
+      catch: (error) =>
+        new Error(
+          error instanceof Error ? error.message : "Stored save point could not be decoded",
+        ),
+    }),
+    (savePoint) =>
+      Effect.map(decodeDeviceProfileFromStorageEffect(savePoint.snapshot), (snapshot) => ({
+        ...savePoint,
+        snapshot,
+      })),
   );
 }
 

@@ -59,6 +59,82 @@ describe("workbench store library placement", () => {
   });
 });
 
+describe("workbench store save points", () => {
+  it("creates a save point and advances the clean base profile", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_G");
+
+    const savePoint = await workbench.createSavePoint("Home row tweak", {
+      id: "sp-1",
+      createdAt: "2026-07-04T12:00:00.000Z",
+    });
+
+    expect(savePoint).toMatchObject({
+      id: "sp-1",
+      variantId: "main",
+      message: "Home row tweak",
+    });
+    expect(savePoint?.diffFromParent).toEqual([
+      expect.objectContaining({ before: "KC_F", after: "KC_G" }),
+    ]);
+    expect(workbench.selectedSavePointId).toBe("sp-1");
+    expect(workbench.baseProfile.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    expect(workbench.dirty).toBe(0);
+  });
+
+  it("restores an older save point as a draft against the current base", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    workbench.selectKey("k2-4");
+
+    workbench.applyKeycode("KC_G");
+    const first = await workbench.createSavePoint("First", {
+      id: "sp-1",
+      createdAt: "2026-07-04T12:00:00.000Z",
+    });
+
+    workbench.applyKeycode("KC_H");
+    await workbench.createSavePoint("Second", {
+      id: "sp-2",
+      createdAt: "2026-07-04T13:00:00.000Z",
+    });
+
+    await workbench.restoreSavePoint(first?.id);
+
+    expect(workbench.baseProfile.layers[0].bindings["k2-4"].code).toBe("KC_H");
+    expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    expect(workbench.dirty).toBe(1);
+  });
+
+  it("branches a new variant from a selected save point snapshot", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_G");
+    const savePoint = await workbench.createSavePoint("Branch base", {
+      id: "sp-1",
+      createdAt: "2026-07-04T12:00:00.000Z",
+    });
+
+    const fork = await workbench.branchFromSavePoint("experiment-thumbcluster", {
+      id: "variant-1",
+      savePointId: savePoint?.id,
+      createdAt: "2026-07-04T14:00:00.000Z",
+    });
+
+    expect(fork).toMatchObject({
+      id: "variant-1",
+      name: "experiment-thumbcluster",
+      parentSavePointId: "sp-1",
+      sourceVariantId: "main",
+    });
+    expect(workbench.activeVariantId).toBe("variant-1");
+    expect(workbench.activeVariant.name).toBe("experiment-thumbcluster");
+    expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    expect(workbench.dirty).toBe(0);
+  });
+});
+
 describe("shell placement state", () => {
   it("tracks combo key picks and clears placement", () => {
     const shell = new ShellStore();

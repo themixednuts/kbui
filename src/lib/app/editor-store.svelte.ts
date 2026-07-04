@@ -16,7 +16,12 @@ import {
   tapDanceBindingCode,
   type LogicBindingOption,
 } from "$lib/keyboard/logic-bindings";
-import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from "$lib/keyboard/local-store";
+import {
+  clearLocalDraft,
+  loadLocalDraft,
+  saveLocalDevice,
+  saveLocalDraft,
+} from "$lib/keyboard/local-store";
 import { defaultSampleKeyboard } from "$lib/keyboard/sample-boards";
 import {
   bindingFor,
@@ -338,6 +343,42 @@ export class EditorStore {
     this.hydrated = !browser || !this.persistEnabled;
 
     if (browser) await this.hydrate();
+  }
+
+  async commitCurrentDraftAsBase() {
+    await this.flushPersistence();
+
+    const committedProfile = cloneDevice(this.profile);
+    this.baseProfile = cloneDevice(committedProfile);
+    this.profile = cloneDevice(committedProfile);
+    this.draftProfileId = committedProfile.id;
+    this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
+      ? this.activeLayer
+      : (this.profile.layers[0]?.id ?? "base");
+    this.selection = sanitizeSelection(this.profile, this.selection);
+
+    if (!this.persistEnabled || !browser) return;
+
+    try {
+      await saveLocalDevice(committedProfile);
+      await clearLocalDraft(committedProfile.id);
+      this.persistenceError = null;
+    } catch (error) {
+      this.persistenceError =
+        error instanceof Error ? error.message : "Could not advance local base";
+    }
+  }
+
+  async loadProfileAsDraft(profile: DeviceProfile) {
+    await this.flushPersistence();
+
+    this.profile = cloneDevice(profile);
+    this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
+      ? this.activeLayer
+      : (this.profile.layers[0]?.id ?? "base");
+    this.selection = sanitizeSelection(this.profile, this.selection);
+    this.persistenceError = null;
+    this.queuePersistence();
   }
 
   setLens(lens: EditorLens) {

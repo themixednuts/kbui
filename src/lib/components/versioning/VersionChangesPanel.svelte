@@ -9,17 +9,18 @@
   type Props = {
     changes: ChangeRecord[];
     total: number;
+    title?: string;
     open?: boolean;
   };
 
-  let { changes, total, open = $bindable(true) }: Props = $props();
+  let { changes, total, title = "Changes", open = $bindable(true) }: Props = $props();
 </script>
 
 <Card.Root class="changes-card">
   <Collapsible.Root bind:open class="changes-panel">
     <Collapsible.Trigger class="changes-panel-trigger">
       <Card.Header class="changes-panel-header w-full border-b-0 pb-0">
-        <Card.Title class="changes-panel-title">Changes</Card.Title>
+        <Card.Title class="changes-panel-title">{title}</Card.Title>
         <Chip class="changes-panel-count">{total}</Chip>
         <ChevronsUpDown size={14} class="changes-panel-chevron" aria-hidden="true" />
         <span class="sr-only">{open ? "Collapse changes list" : "Expand changes list"}</span>

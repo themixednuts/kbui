@@ -4,10 +4,13 @@ import { SQLocal } from "sqlocal";
 
 import {
   decodeDeviceProfileFromStorageEffect,
+  decodeSavePointFromStorageEffect,
   decodeWorkspaceForkFromStorageEffect,
   encodeDeviceProfileForStorageEffect,
+  encodeSavePointForStorageEffect,
   encodeWorkspaceForkForStorageEffect,
   type DeviceProfile,
+  type SavePoint,
   type WorkspaceFork,
 } from "./schema";
 
@@ -32,6 +35,12 @@ function getClient() {
       )`,
       sql`CREATE TABLE IF NOT EXISTS local_forks (
         id TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`,
+      sql`CREATE TABLE IF NOT EXISTS local_save_points (
+        id TEXT PRIMARY KEY,
+        variant_id TEXT NOT NULL,
         data TEXT NOT NULL,
         created_at TEXT NOT NULL
       )`,
@@ -80,12 +89,28 @@ function serializeForkForStorageEffect(fork: WorkspaceFork) {
   );
 }
 
+function serializeSavePointForStorageEffect(savePoint: SavePoint) {
+  return Effect.flatMap(encodeSavePointForStorageEffect(savePoint), (encoded) =>
+    Effect.try({
+      try: () => JSON.stringify(encoded),
+      catch: (error) =>
+        new Error(
+          error instanceof Error ? error.message : "Save point could not be serialized for storage",
+        ),
+    }),
+  );
+}
+
 function decodeProfileRowEffect(raw: string) {
   return Effect.flatMap(parseRowJsonEffect(raw), decodeDeviceProfileFromStorageEffect);
 }
 
 function decodeForkRowEffect(raw: string) {
   return Effect.flatMap(parseRowJsonEffect(raw), decodeWorkspaceForkFromStorageEffect);
+}
+
+function decodeSavePointRowEffect(raw: string) {
+  return Effect.flatMap(parseRowJsonEffect(raw), decodeSavePointFromStorageEffect);
 }
 
 export async function loadLocalDevice(id?: string): Promise<DeviceProfile | undefined> {
@@ -224,8 +249,111 @@ export function clearLocalStateEffect() {
       await tx.sql`DELETE FROM local_profile_drafts`;
       await tx.sql`DELETE FROM local_profiles`;
       await tx.sql`DELETE FROM local_forks`;
+      await tx.sql`DELETE FROM local_save_points`;
       await tx.sql`DELETE FROM sync_log`;
     });
+  });
+}
+
+export async function createLocalSavePoint(savePoint: SavePoint): Promise<void> {
+  return Effect.runPromise(createLocalSavePointEffect(savePoint));
+}
+
+export function createLocalSavePointEffect(savePoint: SavePoint) {
+  if (!savePoint.id) {
+    return Effect.fail(new Error("Save point is missing an id; refusing to write."));
+  }
+  if (!savePoint.variantId) {
+    return Effect.fail(new Error("Save point is missing a variant id; refusing to write."));
+  }
+
+  return Effect.flatMap(serializeSavePointForStorageEffect(savePoint), (data) =>
+    Effect.tryPromise(async () => {
+      const db = getClient();
+      if (!db) return;
+
+      await db.sql`
+        INSERT INTO local_save_points (id, variant_id, data, created_at)
+        VALUES (${savePoint.id}, ${savePoint.variantId}, ${data}, ${savePoint.createdAt})
+        ON CONFLICT(id) DO UPDATE SET
+          variant_id = excluded.variant_id,
+          data = excluded.data,
+          created_at = excluded.created_at
+      `;
+    }),
+  );
+}
+
+export async function listLocalSavePointsByVariant(variantId: string): Promise<SavePoint[]> {
+  return Effect.runPromise(listLocalSavePointsByVariantEffect(variantId));
+}
+
+export function listLocalSavePointsByVariantEffect(variantId: string) {
+  return Effect.flatMap(
+    Effect.tryPromise(async () => {
+      const db = getClient();
+      if (!db) return [] as { id: string; data: string }[];
+
+      return db.sql<{
+        id: string;
+        data: string;
+      }>`SELECT id, data FROM local_save_points WHERE variant_id = ${variantId} ORDER BY created_at DESC`;
+    }),
+    (rows) =>
+      Effect.sync(() => {
+        const savePoints: SavePoint[] = [];
+        for (const row of rows) {
+          const result = Effect.runSyncExit(decodeSavePointRowEffect(row.data));
+          if (result._tag === "Success") {
+            savePoints.push(result.value);
+            continue;
+          }
+
+          if (typeof console !== "undefined") {
+            console.warn(
+              `Skipping save point ${row.id}: stored data is corrupt and could not be decoded.`,
+              result.cause,
+            );
+          }
+        }
+
+        return savePoints;
+      }),
+  );
+}
+
+export async function getLocalSavePoint(id: string): Promise<SavePoint | undefined> {
+  return Effect.runPromise(getLocalSavePointEffect(id));
+}
+
+export function getLocalSavePointEffect(id: string) {
+  return Effect.flatMap(
+    Effect.tryPromise(async () => {
+      const db = getClient();
+      if (!db) return undefined;
+
+      const [row] = await db.sql<{
+        data: string;
+      }>`SELECT data FROM local_save_points WHERE id = ${id} LIMIT 1`;
+      return row?.data;
+    }),
+    (raw) =>
+      raw === undefined
+        ? Effect.succeed<SavePoint | undefined>(undefined)
+        : decodeSavePointRowEffect(raw),
+  );
+}
+
+export async function deleteLocalSavePoint(id: string): Promise<void> {
+  return Effect.runPromise(deleteLocalSavePointEffect(id));
+}
+
+export function deleteLocalSavePointEffect(id: string) {
+  return Effect.tryPromise(async () => {
+    const db = getClient();
+    if (!db) return;
+
+    await db.sql`DELETE FROM local_save_points WHERE id = ${id}`;
   });
 }
 
