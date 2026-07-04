@@ -1,7 +1,11 @@
 import { browser } from "$app/environment";
 import { getContext, setContext } from "svelte";
 
-import { EditorStore, type EditorStoreOptions } from "$lib/app/editor-store.svelte";
+import {
+  EditorStore,
+  type EditorStoreOptions,
+  type ReplaceProfileOptions,
+} from "$lib/app/editor-store.svelte";
 import {
   createCommunityAdoptionVersioning,
   type CreateCommunityAdoptionVersioningInput,
@@ -9,10 +13,12 @@ import {
 import {
   createLocalSavePoint,
   listLocalSavePointsByVariant,
+  loadLocalDevice,
+  loadLocalDraft,
   loadForks,
   saveForks,
 } from "$lib/keyboard/local-store";
-import { sampleBoards, type SampleBoardId } from "$lib/keyboard/sample-boards";
+import { starterBoardProfile, type SampleBoardId } from "$lib/keyboard/sample-boards";
 import {
   changesForSavePoint,
   createSavePointFromProfile,
@@ -23,6 +29,9 @@ import {
 } from "$lib/keyboard/save-points";
 import {
   cloneDevice,
+  withDeviceProfileOrigin,
+  type DeviceProfile,
+  type DeviceProfileOrigin,
   type SavePoint,
   type SavePointAuthorMeta,
   type WorkspaceFork,
@@ -31,6 +40,8 @@ import { newId } from "$lib/util/id";
 
 export interface WorkbenchStoreOptions extends EditorStoreOptions {
   boardId?: SampleBoardId;
+  loadDevice?: typeof loadLocalDevice;
+  loadDraft?: typeof loadLocalDraft;
 }
 
 export interface WorkbenchVariant {
@@ -56,6 +67,24 @@ export interface BranchFromSavePointOptions extends SavePointActionOptions {
 }
 
 export type AdoptCommunityVariantInput = CreateCommunityAdoptionVersioningInput;
+
+export interface WorkbenchHydrationSelection {
+  baseProfile: DeviceProfile;
+  origin: DeviceProfileOrigin;
+  profile: DeviceProfile;
+}
+
+export interface WorkbenchHydrationInput {
+  connectedProfile?: DeviceProfile;
+  draftBaseProfile?: DeviceProfile;
+  draftProfile?: DeviceProfile;
+  starterProfile: DeviceProfile;
+}
+
+export interface HydrateActiveProfileOptions {
+  connectedProfile?: DeviceProfile;
+  force?: boolean;
+}
 
 export interface FlashSavePointIntent {
   savePointId: string;
@@ -132,28 +161,50 @@ export class WorkbenchStore extends EditorStore {
   );
 
   private readonly persistVersioning: boolean;
+  private readonly loadDevice: typeof loadLocalDevice;
+  private readonly loadDraft: typeof loadLocalDraft;
+  private activeProfileHydrationLocked = false;
 
   constructor(options: WorkbenchStoreOptions = {}) {
     const boardId = options.boardId ?? "default";
     super({
       ...options,
-      baseProfile: options.baseProfile ?? sampleBoards[boardId],
+      autoHydrate: false,
+      baseProfile: options.baseProfile ?? starterBoardProfile(boardId),
     });
     this.activeBoardId = boardId;
+    this.activeProfileHydrationLocked = Boolean(options.baseProfile || options.profile);
+    this.loadDevice = options.loadDevice ?? loadLocalDevice;
+    this.loadDraft = options.loadDraft ?? loadLocalDraft;
     this.persistVersioning = options.persist ?? true;
 
     if (browser) {
+      this.hydrated = false;
+      void this.hydrateActiveProfile();
       void this.hydrateVersioning();
     } else {
       this.versioningHydrated = true;
     }
   }
 
-  async switchSampleBoard(boardId: SampleBoardId) {
-    if (boardId === this.activeBoardId) return;
+  override async replaceProfile(
+    baseProfile: DeviceProfile,
+    profile?: DeviceProfile,
+    options: ReplaceProfileOptions = {},
+  ) {
+    this.activeProfileHydrationLocked = true;
+    await super.replaceProfile(baseProfile, profile, options);
+  }
+
+  async selectStarterBoard(boardId: SampleBoardId) {
+    if (boardId === this.activeBoardId && this.profile.origin === "starter") return;
     this.activeBoardId = boardId;
     this.activeVariantId = MAIN_VARIANT_ID;
-    await this.replaceProfile(sampleBoards[boardId]);
+    this.activeProfileHydrationLocked = true;
+    await super.replaceProfile(starterBoardProfile(boardId), undefined, {
+      hydrateDraft: false,
+      origin: "starter",
+    });
   }
 
   async createSavePoint(message = "", options: SavePointActionOptions = {}) {
@@ -198,7 +249,7 @@ export class WorkbenchStore extends EditorStore {
     if (!profile) return undefined;
 
     this.selectedSavePointId = savePointId;
-    await this.loadProfileAsDraft(profile);
+    await this.loadProfileAsDraft(profile, { origin: "draft" });
     return profile;
   }
 
@@ -306,6 +357,81 @@ export class WorkbenchStore extends EditorStore {
       this.versioningHydrated = true;
     }
   }
+
+  async hydrateActiveProfile(
+    options: HydrateActiveProfileOptions = {},
+  ): Promise<WorkbenchHydrationSelection | undefined> {
+    if (!this.persistVersioning && !options.force && !options.connectedProfile) {
+      this.hydrated = true;
+      return undefined;
+    }
+    if (this.activeProfileHydrationLocked && !options.force && !options.connectedProfile) {
+      this.hydrated = true;
+      return undefined;
+    }
+
+    try {
+      const draft = options.connectedProfile ? undefined : await this.loadDraft();
+      const draftBase = draft ? await this.loadDevice(draft.id) : undefined;
+      if (this.activeProfileHydrationLocked && !options.force && !options.connectedProfile) {
+        this.hydrated = true;
+        return undefined;
+      }
+
+      const selection = resolveWorkbenchHydration({
+        connectedProfile: options.connectedProfile,
+        draftBaseProfile: draftBase,
+        draftProfile: draft,
+        starterProfile: starterBoardProfile(this.activeBoardId),
+      });
+
+      await super.replaceProfile(selection.baseProfile, selection.profile, {
+        flushPersistence: false,
+        hydrateDraft: false,
+        origin: selection.origin,
+      });
+      this.persistenceError = null;
+      return selection;
+    } catch (error) {
+      this.persistenceError = error instanceof Error ? error.message : "Could not load local draft";
+      return undefined;
+    } finally {
+      this.hydrated = true;
+    }
+  }
+}
+
+export function resolveWorkbenchHydration(
+  input: WorkbenchHydrationInput,
+): WorkbenchHydrationSelection {
+  if (input.connectedProfile) {
+    const profile = withDeviceProfileOrigin(input.connectedProfile, "device");
+    return {
+      baseProfile: cloneDevice(profile),
+      origin: "device",
+      profile,
+    };
+  }
+
+  if (input.draftProfile) {
+    const profile = withDeviceProfileOrigin(input.draftProfile, "draft");
+    const baseProfile = withDeviceProfileOrigin(
+      input.draftBaseProfile ?? input.draftProfile,
+      "draft",
+    );
+    return {
+      baseProfile,
+      origin: "draft",
+      profile,
+    };
+  }
+
+  const profile = withDeviceProfileOrigin(input.starterProfile, "starter");
+  return {
+    baseProfile: cloneDevice(profile),
+    origin: "starter",
+    profile,
+  };
 }
 
 export function setWorkbenchContext(workbench: WorkbenchStore) {

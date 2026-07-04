@@ -10,6 +10,7 @@ import { ShellStore, type ShellConnectionStatus } from "$lib/app/shell-store.sve
 import { WorkbenchStore } from "$lib/app/workbench-store.svelte";
 import { createMockViaTransport } from "$lib/keyboard/transport-mock";
 import { createMockZmkStudioTransport } from "$lib/keyboard/transport-mock-zmk";
+import type { ConnectionState, KeyboardTransport } from "$lib/keyboard/transport";
 
 class RecordingShellStore extends ShellStore {
   transitions: ShellConnectionStatus[] = [];
@@ -68,6 +69,50 @@ function tinyViaDefinition() {
   };
 }
 
+function unknownRealViaTransport(): KeyboardTransport {
+  return {
+    id: "real-via:unknown-test",
+    label: "Unknown VIA",
+    mode: "real",
+    transport: "webhid",
+    connect: async () => unknownViaConnection(),
+  };
+}
+
+function unknownViaConnection(): ConnectionState {
+  const identity = {
+    key: "keyboard:1209:0002:UNKNOWN-VIA",
+    transport: "webhid" as const,
+    vendorId: 0x1209,
+    productId: 0x0002,
+    productName: "Mystery Pad",
+    serialNumber: "UNKNOWN-VIA",
+  };
+
+  return {
+    status: "connected",
+    transport: "webhid",
+    protocol: "via-v3",
+    deviceKey: identity.key,
+    productName: identity.productName,
+    vendorId: identity.vendorId,
+    productId: identity.productId,
+    serialNumber: identity.serialNumber,
+    detection: {
+      identity,
+      protocolVersion: 12,
+      layerCount: 2,
+      capabilities: ["keymap", "layers"],
+      notes: ["VIA protocol responded, but no keyboard definition was resolved."],
+    },
+    message: "Connected",
+    webBluetoothSupported: false,
+    webHidSupported: true,
+    webSerialSupported: false,
+    webUsbSupported: false,
+  };
+}
+
 describe("connect flow", () => {
   it("connects the mock VIA device, imports identity/keymap, and sets the active profile", async () => {
     const { shell, workbench } = createStores();
@@ -79,10 +124,12 @@ describe("connect flow", () => {
     });
 
     expect(result.source).toBe("device");
+    expect(result.profile.origin).toBe("device");
     expect(result.connection?.status).toBe("connected");
     expect(result.connection?.detection?.identity.productName).toBe("Workbench 65");
     expect(result.connection?.detection?.keymap?.[0]?.[0]?.[0]).toBe(0x0029);
     expect(workbench.profile.name).toBe("Workbench 65");
+    expect(workbench.profile.origin).toBe("device");
     expect(workbench.profile.identity?.serialNumber).toBe("MOCK-WB65-001");
     expect(workbench.profile.layers[0].bindings["k0-0"]?.code).toBe("KC_ESC");
     expect(shell.device).toMatchObject({
@@ -105,8 +152,10 @@ describe("connect flow", () => {
     });
 
     expect(result.source).toBe("import");
+    expect(result.profile.origin).toBe("imported");
     expect(result.profile.name).toBe("Test Pad");
     expect(workbench.profile.name).toBe("Test Pad");
+    expect(workbench.profile.origin).toBe("imported");
     expect(workbench.profile.vendorId).toBe(0x1209);
     expect(workbench.profile.productId).toBe(0x0001);
     expect(workbench.profile.layers[0].bindings["k0-1"]?.code).toBe("KC_B");
@@ -125,6 +174,7 @@ describe("connect flow", () => {
     });
 
     expect(result.source).toBe("device");
+    expect(result.profile.origin).toBe("device");
     expect(result.connection?.status).toBe("connected");
     expect(result.connection?.protocol).toBe("zmk-studio");
     expect(result.connection?.zmkStudio?.keyPositionByKeyId["k2-4"]).toBe(32);
@@ -132,6 +182,12 @@ describe("connect flow", () => {
     expect(result.profile.protocol).toBe("zmk-studio");
     expect(result.profile.name).toBe("Workbench ZMK 65");
     expect(result.profile.layers[0].id).toBe("zmk-layer-100");
+    expect(result.profile.macros).toEqual([]);
+    expect(result.profile.combos).toEqual([]);
+    expect(result.profile.tapDances).toEqual([]);
+    expect(result.profile.keyOverrides).toEqual([]);
+    expect(result.profile.lighting.keys).toEqual({});
+    expect(result.profile.settings.permissiveHold).toBe(false);
     expect(workbench.profile.layers[0].bindings["k2-4"]?.code).toBe("KC_F");
     expect(shell.device).toMatchObject({
       board: "Workbench ZMK 65",
@@ -147,13 +203,33 @@ describe("connect flow", () => {
     const result = await continueWithoutDevice({ shell, workbench });
 
     expect(result.source).toBe("local");
+    expect(result.profile.origin).toBe("starter");
     expect(workbench.profile.id).toBe("local:keeb-workbench-devboard");
+    expect(workbench.profile.origin).toBe("starter");
     expect(workbench.profile.identity).toBeUndefined();
     expect(workbench.profile.detectionNotes).toContain(
-      "Created a local-only profile without a connected keyboard.",
+      "Created a starter local-only profile without a connected keyboard.",
     );
     expect(shell.device.status).toBe("disconnected");
-    expect(shell.device.message).toBe("Editing Workbench 65 without a connected device.");
+    expect(shell.device.message).toBe("Editing Workbench 65 starter without a connected device.");
     expect(shell.transitions).toEqual(["connecting", "disconnected"]);
+  });
+
+  it("does not turn an unidentified real VIA device into the starter board", async () => {
+    const { shell, workbench } = createStores();
+
+    await expect(
+      connectViaAndActivate({
+        shell,
+        transport: unknownRealViaTransport(),
+        workbench,
+      }),
+    ).rejects.toThrow(/Load VIA JSON/);
+
+    expect(workbench.profile.name).toBe("Workbench 65");
+    expect(workbench.profile.origin).toBe("starter");
+    expect(shell.device.status).toBe("error");
+    expect(shell.device.message).toContain("Load VIA JSON");
+    expect(shell.transitions).toEqual(["connecting", "error"]);
   });
 });

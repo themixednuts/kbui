@@ -220,6 +220,7 @@ export function profileFromCatalog(entry: KeyboardCatalogEntry, layerCount = 4):
   return {
     id: `catalog:${entry.id}`,
     name: entry.name,
+    origin: "imported",
     vendor: entry.vendor,
     firmware: "qmk",
     protocol: "via-v3",

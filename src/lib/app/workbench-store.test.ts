@@ -2,9 +2,89 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { diffProfiles } from "$lib/keyboard/changes";
 import { macroBindingCode, tapDanceBindingCode } from "$lib/keyboard/logic-bindings";
+import { splitDemoKeyboard, starterBoardProfile } from "$lib/keyboard/sample-boards";
+import { cloneDevice, profileDisplayName } from "$lib/keyboard/schema";
 
 import { ShellStore } from "./shell-store.svelte";
-import { WorkbenchStore } from "./workbench-store.svelte";
+import { resolveWorkbenchHydration, WorkbenchStore } from "./workbench-store.svelte";
+
+describe("workbench store profile provenance", () => {
+  it("resolves active profile priority as connected device, then draft, then starter", () => {
+    const starter = starterBoardProfile();
+    const draft = cloneDevice(starter);
+    draft.id = "draft:real-work";
+    draft.name = "Saved Local Draft";
+    const draftBase = cloneDevice(draft);
+    const device = cloneDevice(starter);
+    device.id = "keyboard:1209:0001:connected";
+    device.name = "Connected Keyboard";
+
+    expect(
+      resolveWorkbenchHydration({
+        connectedProfile: device,
+        draftBaseProfile: draftBase,
+        draftProfile: draft,
+        starterProfile: starter,
+      }),
+    ).toMatchObject({
+      origin: "device",
+      profile: { id: "keyboard:1209:0001:connected", origin: "device" },
+    });
+
+    expect(
+      resolveWorkbenchHydration({
+        draftBaseProfile: draftBase,
+        draftProfile: draft,
+        starterProfile: starter,
+      }),
+    ).toMatchObject({
+      origin: "draft",
+      baseProfile: { id: "draft:real-work", origin: "draft" },
+      profile: { id: "draft:real-work", origin: "draft" },
+    });
+
+    expect(resolveWorkbenchHydration({ starterProfile: starter })).toMatchObject({
+      origin: "starter",
+      profile: { id: starter.id, origin: "starter" },
+    });
+  });
+
+  it("hydrates a saved local draft before the starter fallback", async () => {
+    const draft = cloneDevice(starterBoardProfile());
+    draft.id = "draft:local-real-board";
+    draft.name = "Saved Real Board";
+    const base = cloneDevice(draft);
+    base.layers[0].bindings["k2-4"] = { code: "KC_A" };
+    draft.layers[0].bindings["k2-4"] = { code: "KC_B" };
+
+    const workbench = new WorkbenchStore({
+      loadDevice: async () => base,
+      loadDraft: async () => draft,
+      persist: false,
+    });
+
+    await workbench.hydrateActiveProfile({ force: true });
+
+    expect(workbench.profile).toMatchObject({
+      id: "draft:local-real-board",
+      name: "Saved Real Board",
+      origin: "draft",
+    });
+    expect(workbench.baseProfile.origin).toBe("draft");
+    expect(workbench.changes).toEqual([expect.objectContaining({ before: "KC_A", after: "KC_B" })]);
+  });
+
+  it("selects starter boards explicitly and labels starter display names", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+
+    await workbench.selectStarterBoard("split");
+
+    expect(workbench.activeBoardId).toBe("split");
+    expect(workbench.profile.id).toBe(splitDemoKeyboard.id);
+    expect(workbench.profile.origin).toBe("starter");
+    expect(profileDisplayName(workbench.profile)).toBe("Corney Split 34 Starter");
+  });
+});
 
 describe("workbench store library placement", () => {
   it("creates honest empty logic drafts", () => {

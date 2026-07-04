@@ -4,6 +4,7 @@ import { keyLightingFromSwatchId } from "./lighting-swatches";
 import { qmkDirectKeycodes, qmkDirectKeycodeValues } from "./qmk-keycodes";
 
 export type FirmwareFamily = "qmk" | "zmk";
+export type DeviceProfileOrigin = "device" | "imported" | "draft" | "starter";
 
 export type Capability =
   | "keymap"
@@ -135,6 +136,7 @@ export interface KeyboardDetection {
 export interface DeviceProfile {
   id: string;
   name: string;
+  origin: DeviceProfileOrigin;
   vendor: string;
   firmware: FirmwareFamily;
   protocol: "via-v3" | "vial" | "zmk-studio";
@@ -879,6 +881,7 @@ export const featureCatalog: FeatureDefinition[] = [
 export const sampleKeyboard: DeviceProfile = {
   id: "keeb-workbench-devboard",
   name: "Workbench 65",
+  origin: "starter",
   vendor: "Local Draft",
   firmware: "qmk",
   protocol: "via-v3",
@@ -1006,6 +1009,24 @@ export function cloneDevice(device: DeviceProfile): DeviceProfile {
   return Effect.runSync(cloneDeviceEffect(device));
 }
 
+export function withDeviceProfileOrigin(
+  device: DeviceProfile,
+  origin: DeviceProfileOrigin,
+): DeviceProfile {
+  return {
+    ...cloneDevice(device),
+    origin,
+  };
+}
+
+export function profileDisplayName(profile: Pick<DeviceProfile, "name" | "origin">): string {
+  return profile.origin === "starter" ? `${profile.name} Starter` : profile.name;
+}
+
+function isDeviceProfileOrigin(value: unknown): value is DeviceProfileOrigin {
+  return value === "device" || value === "imported" || value === "draft" || value === "starter";
+}
+
 export function normalizeDeviceKeycodesEffect(device: DeviceProfile) {
   return Effect.map(cloneDeviceEffect(device), (profile) => {
     profile.layers = profile.layers.map((layer) => ({
@@ -1123,6 +1144,7 @@ export function decodeDeviceProfileFromStorageEffect(value: unknown) {
         const profile = value as DeviceProfile;
         return {
           ...profile,
+          origin: isDeviceProfileOrigin(profile.origin) ? profile.origin : "imported",
           layers: profile.layers.map((layer) => ({
             ...layer,
             bindings: Object.fromEntries(
@@ -1209,6 +1231,7 @@ export function profileFromDetectionEffect(base: DeviceProfile, detection: Keybo
     const identity = sanitizeDeviceIdentity(detection.identity);
 
     profile.id = identity.key;
+    profile.origin = "device";
     profile.identity = identity;
     profile.name = identity.productName ?? profile.name;
     profile.vendor = "Detected keyboard";

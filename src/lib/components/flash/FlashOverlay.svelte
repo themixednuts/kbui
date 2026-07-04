@@ -19,7 +19,7 @@
     FirmwareBuildResult,
     FirmwareObjectBundleManifest,
   } from "$lib/keyboard/firmware-build/types";
-  import type { DeviceProfile } from "$lib/keyboard/schema";
+  import { profileDisplayName, type DeviceProfile } from "$lib/keyboard/schema";
   import { createWebHidViaTransport } from "$lib/keyboard/transport";
   import {
     createUf2DownloadFallback,
@@ -592,7 +592,7 @@
 
     return [
       `$ kbgui firmware-source generate --target ${artifacts.target}`,
-      `profile: ${activeProfile.name}`,
+      `profile: ${profileDisplayName(activeProfile)}`,
       `source-hash: ${artifacts.sourceHash}`,
       "",
       "rebuild-required changes:",
@@ -659,7 +659,7 @@
       <header class="modal-head">
         <span class="material-symbols-outlined modal-bolt" aria-hidden="true">bolt</span>
         <div>
-          <h2 id="flash-overlay-title">Flash to {profile.name}</h2>
+          <h2 id="flash-overlay-title">Flash to {profileDisplayName(profile)}</h2>
           <p>{targetLabel} source export · UF2 guided flash</p>
         </div>
         <button type="button" class="modal-close" aria-label="Close" onclick={close}>

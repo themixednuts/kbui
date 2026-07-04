@@ -97,6 +97,7 @@
       return (await catalogSummaryFor(identity))?.matrix;
     } catch {
       if (
+        workbench.profile.origin !== "starter" &&
         identity.vendorId === workbench.profile.vendorId &&
         identity.productId === workbench.profile.productId
       ) {
@@ -119,7 +120,15 @@
       const entry = await catalogEntryFor(identity);
       if (entry) return profileFromCatalogForConnection(entry, connection);
     } catch {
-      return undefined;
+      // Fall through to a user-loaded profile when the remote catalog is unavailable.
+    }
+
+    if (
+      workbench.profile.origin !== "starter" &&
+      identity.vendorId === workbench.profile.vendorId &&
+      identity.productId === workbench.profile.productId
+    ) {
+      return workbench.profile;
     }
 
     return undefined;

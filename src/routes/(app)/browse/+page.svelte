@@ -17,7 +17,7 @@
     CommunityKeymapSort,
   } from "$lib/community/types";
   import type { SegmentItem } from "$lib/components/ui/types";
-  import { decodeDeviceProfileFromStorage } from "$lib/keyboard/schema";
+  import { decodeDeviceProfileFromStorage, profileDisplayName } from "$lib/keyboard/schema";
   import { newId } from "$lib/util/id";
 
   import type { PageData } from "./$types";
@@ -65,7 +65,7 @@
   let reportDetail = $state("");
   let reportError = $state<string | null>(null);
 
-  const currentBoardName = $derived(workbench.profile.name);
+  const currentBoardName = $derived(profileDisplayName(workbench.profile));
   const signedIn = $derived(shell.account.status === "signed-in");
   const listInput = $derived.by((): CommunityKeymapListInput => {
     const input: CommunityKeymapListInput = {

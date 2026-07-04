@@ -24,14 +24,16 @@ import {
   saveLocalDevice,
   saveLocalDraft,
 } from "$lib/keyboard/local-store";
-import { defaultSampleKeyboard } from "$lib/keyboard/sample-boards";
+import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import {
   bindingFor,
   cloneDevice,
   emptyBindingsForKeys,
   normalizeQmkKeycode,
+  withDeviceProfileOrigin,
   qmkKeycodeLabel,
   type Combo,
+  type DeviceProfileOrigin,
   type DeviceProfile,
   type KeyBinding,
   type KeyLighting,
@@ -86,9 +88,16 @@ export interface EditorLightingSelectionSummary {
 }
 
 export interface EditorStoreOptions {
+  autoHydrate?: boolean;
   baseProfile?: DeviceProfile;
   profile?: DeviceProfile;
   persist?: boolean;
+}
+
+export interface ReplaceProfileOptions {
+  flushPersistence?: boolean;
+  hydrateDraft?: boolean;
+  origin?: DeviceProfileOrigin;
 }
 
 export const EDITOR_QUICK_PICK_GROUPS = [
@@ -221,11 +230,11 @@ const MOD_TAP_PATTERN = /^(LCTL|RCTL|LSFT|RSFT|LALT|RALT|LGUI|RGUI)_T\((.+)\)$/;
 const LAYER_TAP_PATTERN = /^LT\((\d+),\s*(.+)\)$/;
 
 export class EditorStore {
-  baseProfile = $state<DeviceProfile>(cloneDevice(defaultSampleKeyboard));
-  profile = $state<DeviceProfile>(cloneDevice(defaultSampleKeyboard));
-  activeLayer = $state(defaultSampleKeyboard.layers[0]?.id ?? "base");
+  baseProfile = $state<DeviceProfile>(starterBoardProfile());
+  profile = $state<DeviceProfile>(starterBoardProfile());
+  activeLayer = $state(starterBoardProfile().layers[0]?.id ?? "base");
   lens = $state<EditorLens>("keys");
-  selection = $state<Set<string>>(new Set([defaultSelectedKeyId(defaultSampleKeyboard)]));
+  selection = $state<Set<string>>(new Set([defaultSelectedKeyId(starterBoardProfile())]));
   currentSwatch = $state<LightingSwatchId>(defaultLightingSwatchId);
   tintByLayer = $state(false);
   targetOs = $state<EditorTargetOs>("win");
@@ -282,19 +291,21 @@ export class EditorStore {
   readonly lightingSpeed = $derived(this.profile.lighting.speed);
 
   private readonly persistEnabled: boolean;
-  private draftProfileId = defaultSampleKeyboard.id;
+  private draftProfileId = starterBoardProfile().id;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: EditorStoreOptions = {}) {
     this.persistEnabled = options.persist ?? true;
-    this.baseProfile = cloneDevice(options.baseProfile ?? defaultSampleKeyboard);
+    const autoHydrate = options.autoHydrate ?? true;
+    this.baseProfile = cloneDevice(options.baseProfile ?? starterBoardProfile());
     this.profile = cloneDevice(options.profile ?? this.baseProfile);
     this.draftProfileId = this.baseProfile.id;
     this.activeLayer = this.profile.layers[0]?.id ?? "base";
     this.selection = new Set([defaultSelectedKeyId(this.profile)]);
 
     if (browser) {
-      void this.hydrate();
+      if (autoHydrate) void this.hydrate();
+      else this.hydrated = true;
       void this.loadTargetOs();
     } else {
       this.hydrated = true;
@@ -336,17 +347,21 @@ export class EditorStore {
     this.queuePersistence();
   }
 
-  async replaceProfile(baseProfile: DeviceProfile, profile?: DeviceProfile) {
-    await this.flushPersistence();
-    this.baseProfile = cloneDevice(baseProfile);
-    this.profile = cloneDevice(profile ?? this.baseProfile);
+  async replaceProfile(
+    baseProfile: DeviceProfile,
+    profile?: DeviceProfile,
+    options: ReplaceProfileOptions = {},
+  ) {
+    if (options.flushPersistence !== false) await this.flushPersistence();
+    this.baseProfile = profileWithOptionalOrigin(baseProfile, options.origin);
+    this.profile = profileWithOptionalOrigin(profile ?? this.baseProfile, options.origin);
     this.draftProfileId = this.baseProfile.id;
     this.activeLayer = this.profile.layers[0]?.id ?? "base";
     this.selection = new Set([defaultSelectedKeyId(this.profile)]);
     this.persistenceError = null;
-    this.hydrated = !browser || !this.persistEnabled;
+    this.hydrated = !browser || !this.persistEnabled || options.hydrateDraft === false;
 
-    if (browser) await this.hydrate();
+    if (browser && options.hydrateDraft !== false) await this.hydrate();
   }
 
   async commitCurrentDraftAsBase() {
@@ -403,10 +418,10 @@ export class EditorStore {
     return true;
   }
 
-  async loadProfileAsDraft(profile: DeviceProfile) {
+  async loadProfileAsDraft(profile: DeviceProfile, options: { origin?: DeviceProfileOrigin } = {}) {
     await this.flushPersistence();
 
-    this.profile = cloneDevice(profile);
+    this.profile = profileWithOptionalOrigin(profile, options.origin);
     this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
       ? this.activeLayer
       : (this.profile.layers[0]?.id ?? "base");
@@ -859,7 +874,7 @@ export class EditorStore {
     try {
       const draft = await loadLocalDraft(this.draftProfileId);
       if (draft) {
-        this.profile = cloneDevice(draft);
+        this.profile = withDeviceProfileOrigin(draft, "draft");
         this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
           ? this.activeLayer
           : (this.profile.layers[0]?.id ?? "base");
@@ -905,6 +920,13 @@ const TAP_DANCE_BINDING_PATTERN = /^TD\((\d+)\)$/;
 
 function uniqueLogicId(prefix: string): string {
   return `${prefix}-${newId()}`;
+}
+
+function profileWithOptionalOrigin(
+  profile: DeviceProfile,
+  origin: DeviceProfileOrigin | undefined,
+): DeviceProfile {
+  return origin ? withDeviceProfileOrigin(profile, origin) : cloneDevice(profile);
 }
 
 function normalizeKeycodeSequence(sequence: readonly string[]): string[] {

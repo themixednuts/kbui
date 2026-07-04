@@ -2,6 +2,7 @@ import { keyLightingFromSwatchId } from "./lighting-swatches";
 import {
   cloneDevice,
   sampleKeyboard,
+  withDeviceProfileOrigin,
   type DeviceProfile,
   type KeyBinding,
   type KeyboardKey,
@@ -16,6 +17,10 @@ export const sampleBoards: Record<SampleBoardId, DeviceProfile> = {
   default: defaultSampleKeyboard,
   split: splitDemoKeyboard,
 };
+
+export function starterBoardProfile(boardId: SampleBoardId = "default"): DeviceProfile {
+  return withDeviceProfileOrigin(sampleBoards[boardId], "starter");
+}
 
 export function sampleBoardIdFromParam(value: string | null): SampleBoardId {
   return value === "split" ? "split" : "default";
@@ -46,6 +51,7 @@ function createSplitDemoKeyboard(): DeviceProfile {
     ...cloneDevice(sampleKeyboard),
     id: "corney-split-34-demo",
     name: "Corney Split 34",
+    origin: "starter",
     vendor: "Klakson Labs",
     firmware: "zmk",
     protocol: "zmk-studio",

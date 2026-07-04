@@ -146,7 +146,7 @@ describe("ZMK live sync engine", () => {
       await tick();
       expect(harness.runs()).toBeLessThanOrEqual(2);
 
-      await workbench.switchSampleBoard("split");
+      await workbench.selectStarterBoard("split");
       workbench.setLens("lighting");
       await tick();
       await tick();

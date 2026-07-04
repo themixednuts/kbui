@@ -49,6 +49,16 @@
   shell.setSessionUser(initialAuthUser);
   const pathname = $derived(page.url.pathname);
   const routeTitle = $derived(routeTitleFromPath(pathname));
+  const activeBoardName = $derived(workbench.profile.name);
+  const activeBoardTitle = $derived(
+    workbench.profile.origin === "starter"
+      ? "Starter board template"
+      : shell.connected
+        ? "Connected board"
+        : workbench.profile.origin === "draft"
+          ? "Saved local draft"
+          : "Active board profile",
+  );
   const accountAvatar = $derived(shell.account.image ?? null);
   const monkeytypeProfileUrl = $derived(
     shell.monkeytype.username
@@ -509,11 +519,16 @@
     <header class="appbar">
       <h1>{routeTitle}</h1>
 
-      {#if shell.connected}
-        <Chip dot="var(--teal)" title="Connected board">{shell.device.name}</Chip>
-      {:else}
-        <Chip tone="warning" title="No connected board">No board</Chip>
-      {/if}
+      <Chip
+        dot={shell.connected ? "var(--teal)" : undefined}
+        tone={workbench.profile.origin === "starter" ? "warning" : "neutral"}
+        title={activeBoardTitle}
+      >
+        {activeBoardName}
+        {#if workbench.profile.origin === "starter"}
+          <span class="starter-badge">Starter</span>
+        {/if}
+      </Chip>
 
       <Chip dot={liveSync.dot} title={liveSync.title}>{liveSync.label}</Chip>
 
@@ -1036,6 +1051,20 @@
 
   .chip-icon {
     font-size: 14px;
+  }
+
+  .starter-badge {
+    display: inline-grid;
+    min-height: 17px;
+    place-items: center;
+    padding: 0 6px;
+    border: 1px solid color-mix(in oklch, var(--mustard) 46%, var(--line-2));
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--mustard) 18%, var(--surface));
+    color: oklch(0.39 0.11 90);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .placement-banner-host {

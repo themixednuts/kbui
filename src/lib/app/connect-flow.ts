@@ -1,11 +1,12 @@
 import { protocolLabel, type WorkbenchStore } from "$lib/app/workbench-store.svelte";
 import { profileFromCatalog, type KeyboardCatalogEntry } from "$lib/keyboard/catalog";
+import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import {
-  cloneDevice,
   profileFromDetection,
-  sampleKeyboard,
+  withDeviceProfileOrigin,
   type Capability,
   type DeviceProfile,
+  type DeviceProfileOrigin,
   type Layer,
 } from "$lib/keyboard/schema";
 import type {
@@ -198,39 +199,65 @@ export async function profileFromConnectedZmkStudio(
     );
   }
 
-  const profile = cloneDevice(sampleKeyboard);
-  profile.id = connection.deviceKey ?? `keyboard:zmk-studio:${info.serialNumber}`;
-  profile.name = info.deviceName;
-  profile.vendor = info.manufacturer;
-  profile.firmware = "zmk";
-  profile.protocol = "zmk-studio";
-  profile.firmwareVersion = info.firmwareVersion;
-  profile.vendorId = connection.vendorId ?? 0;
-  profile.productId = connection.productId ?? 0;
-  profile.identity = {
-    key: profile.id,
-    transport: connection.transport ?? "webbluetooth",
-    vendorId: connection.vendorId,
-    productId: connection.productId,
-    productName: info.deviceName,
-    serialNumber: info.serialNumber,
-  };
-  profile.matrix = zmkMatrixForLayout(layout);
-  profile.keys = layout.keys.map(({ keyPosition: _keyPosition, ...key }) => key);
-  profile.capabilities = capabilities;
-  profile.layers = zmkLayersFromKeymap(keymap, layout, catalog);
-  profile.macros = [];
-  profile.combos = [];
-  profile.tapDances = [];
-  profile.keyOverrides = [];
-  profile.detectionNotes = detectionNotes;
-  profile.updatedAt = new Date().toISOString();
+  const profileId = connection.deviceKey ?? `keyboard:zmk-studio:${info.serialNumber}`;
 
-  return profile;
+  return {
+    id: profileId,
+    name: info.deviceName,
+    origin: "device",
+    vendor: info.manufacturer,
+    firmware: "zmk",
+    protocol: "zmk-studio",
+    firmwareVersion: info.firmwareVersion,
+    vendorId: connection.vendorId ?? 0,
+    productId: connection.productId ?? 0,
+    identity: {
+      key: profileId,
+      transport: connection.transport ?? "webbluetooth",
+      vendorId: connection.vendorId,
+      productId: connection.productId,
+      productName: info.deviceName,
+      serialNumber: info.serialNumber,
+    },
+    matrix: zmkMatrixForLayout(layout),
+    keys: layout.keys.map(({ keyPosition: _keyPosition, ...key }) => key),
+    capabilities,
+    layers: zmkLayersFromKeymap(keymap, layout, catalog),
+    macros: [],
+    combos: [],
+    tapDances: [],
+    keyOverrides: [],
+    lighting: {
+      mode: "solid",
+      hue: 0,
+      saturation: 0,
+      brightness: 72,
+      speed: 0,
+      keys: {},
+    },
+    settings: {
+      tappingTerm: 200,
+      debounce: 5,
+      permissiveHold: false,
+      retroTapping: false,
+      nkro: true,
+      splitTransport: "none",
+    },
+    detectionNotes,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
-async function activateProfile(workbench: WorkbenchStore, profile: DeviceProfile) {
-  await workbench.replaceProfile(profile, profile);
+async function activateProfile(
+  workbench: WorkbenchStore,
+  profile: DeviceProfile,
+  origin: DeviceProfileOrigin,
+) {
+  const activeProfile = withDeviceProfileOrigin(profile, origin);
+  await workbench.replaceProfile(activeProfile, activeProfile, {
+    hydrateDraft: false,
+    origin,
+  });
   await workbench.commitCurrentDraftAsBase();
 }
 
@@ -242,6 +269,7 @@ export function profileFromViaJson(fileName: string, json: unknown): DeviceProfi
 
   const profile = profileFromCatalog(entry);
   profile.id = `import:${entry.id}`;
+  profile.origin = "imported";
   profile.vendor = entry.vendor;
   profile.detectionNotes = [`Imported ${fileName} as a local VIA v3 definition.`];
   return profile;
@@ -265,7 +293,23 @@ export function profileFromCatalogForConnection(
   entry: KeyboardCatalogEntry,
   connection: ConnectionState,
 ) {
-  return profileFromCatalog(entry, connection.detection?.layerCount ?? 4);
+  return withDeviceProfileOrigin(
+    profileFromCatalog(entry, connection.detection?.layerCount ?? 4),
+    "device",
+  );
+}
+
+function viaIdentificationError(connection: ConnectionState) {
+  const identity = connection.detection?.identity;
+  const productName = identity?.productName ?? connection.productName ?? "this keyboard";
+  const vendorId = identity?.vendorId ?? connection.vendorId;
+  const productId = identity?.productId ?? connection.productId;
+  const usbId =
+    typeof vendorId === "number" && typeof productId === "number"
+      ? ` (${vendorId.toString(16).padStart(4, "0")}:${productId.toString(16).padStart(4, "0")})`
+      : "";
+
+  return `Could not identify ${productName}${usbId}. Load its VIA definition with Load VIA JSON, then connect again.`;
 }
 
 export async function connectViaAndActivate({
@@ -286,14 +330,13 @@ export async function connectViaAndActivate({
     }
 
     const resolvedBase =
-      (await resolveBaseProfile?.(connection)) ??
-      transport.defaultProfile ??
-      baseProfile ??
-      cloneDevice(sampleKeyboard);
+      (await resolveBaseProfile?.(connection)) ?? transport.defaultProfile ?? baseProfile;
+    if (!resolvedBase) throw new Error(viaIdentificationError(connection));
+
     const profile = profileFromConnectedVia(connection, resolvedBase);
     const message = connectedMessage(connection, profile);
 
-    await activateProfile(workbench, profile);
+    await activateProfile(workbench, profile, "device");
     shell.setConnected({
       board: profile.name,
       connection,
@@ -343,7 +386,7 @@ export async function connectZmkStudioAndActivate({
       : "";
     const message = `Connected ${profile.name} over ${transportLabel(connection.transport)} (ZMK Studio${lockSuffix}${dirtySuffix})`;
 
-    await activateProfile(workbench, profile);
+    await activateProfile(workbench, profile, "device");
     shell.setConnected({
       board: profile.name,
       connection,
@@ -377,7 +420,7 @@ export async function importViaJsonAndActivate({
 
   try {
     const profile = profileFromViaJson(fileName, json);
-    await activateProfile(workbench, profile);
+    await activateProfile(workbench, profile, "imported");
     const message = `Imported ${profile.name} for local editing.`;
     shell.setDisconnected(message);
     return {
@@ -393,19 +436,19 @@ export async function importViaJsonAndActivate({
 }
 
 export async function continueWithoutDevice({
-  baseProfile = sampleKeyboard,
+  baseProfile = starterBoardProfile(),
   shell,
   workbench,
 }: LocalOnlyOptions): Promise<ConnectFlowResult> {
   shell.setConnecting("Preparing local profile", "Local");
 
-  const profile = cloneDevice(baseProfile);
+  const profile = withDeviceProfileOrigin(baseProfile, "starter");
   profile.id = profile.id.startsWith("local:") ? profile.id : `local:${profile.id}`;
   profile.identity = undefined;
-  profile.detectionNotes = ["Created a local-only profile without a connected keyboard."];
+  profile.detectionNotes = ["Created a starter local-only profile without a connected keyboard."];
 
-  await activateProfile(workbench, profile);
-  const message = `Editing ${profile.name} without a connected device.`;
+  await activateProfile(workbench, profile, "starter");
+  const message = `Editing ${profile.name} starter without a connected device.`;
   shell.setDisconnected(message);
 
   return {

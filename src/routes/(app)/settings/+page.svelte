@@ -15,7 +15,7 @@
   import type { SegmentItem } from "$lib/components/ui/types";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
-  import type { KeyboardSettings } from "$lib/keyboard/schema";
+  import { profileDisplayName, type KeyboardSettings } from "$lib/keyboard/schema";
   import type {
     CreatePairingTokenResponse,
     ExtensionDeviceDto,
@@ -453,7 +453,7 @@
   <header class="settings-toolbar">
     <div class="settings-title">
       <span>Profile settings</span>
-      <h2>{profile.name}</h2>
+      <h2>{profileDisplayName(profile)}</h2>
     </div>
 
     <div class="settings-toolbar-spacer"></div>

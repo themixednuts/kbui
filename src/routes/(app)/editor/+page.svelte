@@ -33,25 +33,32 @@
   let boardPan = $state({ x: 0, y: 0 });
   let flashOverlayOpen = $state(false);
 
-  const requestedBoardId = $derived(sampleBoardIdFromParam(page.url.searchParams.get("board")));
-  const activeBoardId = $derived(editor.activeBoardId);
+  type StarterBoardPickerId = SampleBoardId | "none";
+
+  const requestedBoardParam = $derived(page.url.searchParams.get("board"));
+  const requestedBoardId = $derived(
+    requestedBoardParam === null ? null : sampleBoardIdFromParam(requestedBoardParam),
+  );
+  const activeBoardId = $derived<StarterBoardPickerId>(
+    editor.profile.origin === "starter" ? editor.activeBoardId : "none",
+  );
   const lensItems: SegmentItem<EditorLens>[] = [
     { value: "keys", label: "Keys", icon: Keyboard, title: "Edit key bindings" },
     { value: "lighting", label: "Lighting", icon: Lightbulb, title: "Lighting lens" },
   ];
   const boardItems = $derived.by(
-    (): SegmentItem<SampleBoardId>[] => [
+    (): SegmentItem<StarterBoardPickerId>[] => [
       {
         value: "default",
-        label: "Workbench",
+        label: "Workbench 65",
         href: boardHref("default"),
-        title: "Temporary demo board selector",
+        title: "Start from the Workbench 65 starter board",
       },
       {
         value: "split",
-        label: "Split demo",
+        label: "Corney Split 34",
         href: boardHref("split"),
-        title: "Temporary split-board demo selector",
+        title: "Start from the Corney Split 34 starter board",
       },
     ],
   );
@@ -88,9 +95,11 @@
   const localOnlyPreview = $derived(liveSync.localOnlyChanges.slice(0, 3));
 
   $effect(() => {
-    if (requestedBoardId === editor.activeBoardId) return;
+    if (requestedBoardId === null) return;
+    if (requestedBoardId === editor.activeBoardId && editor.profile.origin === "starter") return;
 
-    void editor.switchSampleBoard(requestedBoardId);
+    void editor.selectStarterBoard(requestedBoardId);
+    if (shell.connected) void shell.disconnectDevice("Editing a starter board locally.");
     boardZoom = 1;
     boardPan = { x: 0, y: 0 };
   });
@@ -137,8 +146,7 @@
 
   function boardHref(boardId: SampleBoardId) {
     const params = new URLSearchParams(page.url.searchParams);
-    if (boardId === "default") params.delete("board");
-    else params.set("board", boardId);
+    params.set("board", boardId);
 
     const query = params.toString();
     return `${page.url.pathname}${query ? `?${query}` : ""}`;
@@ -155,10 +163,11 @@
         ariaLabel="Editor lens"
       />
 
+      <Chip tone="warning" title="Starter board templates">Starter boards</Chip>
       <SegmentedNav
         items={boardItems}
         value={activeBoardId}
-        ariaLabel="Temporary editor board selector"
+        ariaLabel="Starter boards"
         class="board-switcher"
       />
 
