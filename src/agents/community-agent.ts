@@ -6,10 +6,12 @@ import {
   communityKeymap,
   communityKeymapAdoption,
   communityKeymapLike,
+  communityKeymapReport,
   communityKeymapTag,
   communitySeed,
   communityUser,
 } from "$lib/community/schema";
+import { mutationCountDelta } from "$lib/community/mutations";
 import {
   COMMUNITY_SEED_APPLIED_AT,
   COMMUNITY_SEED_ID,
@@ -22,11 +24,15 @@ import {
   COMMUNITY_PAYLOAD_FORMAT,
   communityListLimit,
   communityListSort,
+  normalizeCommunityAdoptInput,
   normalizeCommunityKeymapId,
   normalizeCommunityListInput,
+  normalizeCommunityMutationUser,
+  normalizeCommunityReportInput,
   type CommunityKeymapCard,
   type CommunityKeymapDetail,
   type CommunityKeymapListInput,
+  type CommunityMutationUser,
 } from "$lib/community/types";
 import type { StoredDeviceProfile } from "$lib/keyboard/schema";
 
@@ -60,6 +66,8 @@ interface CommunityDbRow {
   authorDisplayName: string;
   authorImage: string | null;
 }
+
+type CommunityWriteDb = Pick<DrizzleSqliteDODatabase, "delete" | "insert" | "select" | "update">;
 
 export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
   initialState: CommunityState = {
@@ -125,6 +133,183 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
       profile: parseStoredProfile(row.payloadJson),
       payloadHash: row.payloadHash,
     };
+  }
+
+  async like(rawId: string, rawUser: CommunityMutationUser): Promise<void> {
+    await this.ensureReady();
+    const id = normalizeCommunityKeymapId(rawId);
+    const user = normalizeCommunityMutationUser(rawUser);
+    const now = new Date();
+
+    this.#db.transaction((tx) => {
+      const keymap = this.assertVisibleKeymap(tx, id);
+      this.upsertCommunityUser(tx, user, now);
+
+      const inserted = tx
+        .insert(communityKeymapLike)
+        .values({
+          keymapId: keymap.id,
+          userId: user.id,
+          createdAt: now,
+        })
+        .onConflictDoNothing({
+          target: [communityKeymapLike.keymapId, communityKeymapLike.userId],
+        })
+        .returning({ keymapId: communityKeymapLike.keymapId })
+        .all();
+      const delta = mutationCountDelta(inserted.length > 0, 1);
+      if (delta === 0) return;
+
+      tx.update(communityKeymap)
+        .set({
+          likesCount: sql`${communityKeymap.likesCount} + ${delta}`,
+        })
+        .where(eq(communityKeymap.id, keymap.id))
+        .run();
+    });
+  }
+
+  async unlike(rawId: string, rawUser: CommunityMutationUser): Promise<void> {
+    await this.ensureReady();
+    const id = normalizeCommunityKeymapId(rawId);
+    const user = normalizeCommunityMutationUser(rawUser);
+
+    this.#db.transaction((tx) => {
+      this.assertVisibleKeymap(tx, id);
+      const deleted = tx
+        .delete(communityKeymapLike)
+        .where(and(eq(communityKeymapLike.keymapId, id), eq(communityKeymapLike.userId, user.id)))
+        .returning({ keymapId: communityKeymapLike.keymapId })
+        .all();
+      const delta = mutationCountDelta(deleted.length > 0, -1);
+      if (delta === 0) return;
+
+      tx.update(communityKeymap)
+        .set({
+          likesCount: sql`max(0, ${communityKeymap.likesCount} + ${delta})`,
+        })
+        .where(eq(communityKeymap.id, id))
+        .run();
+    });
+  }
+
+  async adopt(rawInput: unknown, rawUser: CommunityMutationUser): Promise<CommunityKeymapDetail> {
+    await this.ensureReady();
+    const input = normalizeCommunityAdoptInput(rawInput);
+    const user = normalizeCommunityMutationUser(rawUser);
+    const now = new Date();
+
+    this.#db.transaction((tx) => {
+      const keymap = this.assertVisibleKeymap(tx, input.keymapId);
+      this.upsertCommunityUser(tx, user, now);
+
+      const inserted = tx
+        .insert(communityKeymapAdoption)
+        .values({
+          keymapId: keymap.id,
+          userId: user.id,
+          localForkId: input.localForkId,
+          adoptedTitle: keymap.title,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({
+          target: [communityKeymapAdoption.keymapId, communityKeymapAdoption.userId],
+        })
+        .returning({ keymapId: communityKeymapAdoption.keymapId })
+        .all();
+      const delta = mutationCountDelta(inserted.length > 0, 1);
+
+      if (delta === 0) {
+        tx.update(communityKeymapAdoption)
+          .set({
+            localForkId: input.localForkId,
+            adoptedTitle: keymap.title,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(communityKeymapAdoption.keymapId, keymap.id),
+              eq(communityKeymapAdoption.userId, user.id),
+            ),
+          )
+          .run();
+        return;
+      }
+
+      tx.update(communityKeymap)
+        .set({
+          adoptionsCount: sql`${communityKeymap.adoptionsCount} + ${delta}`,
+        })
+        .where(eq(communityKeymap.id, keymap.id))
+        .run();
+    });
+
+    const detail = await this.getKeymap(input.keymapId, user.id);
+    if (!detail) throw new Error("Community keymap is no longer available.");
+    return detail;
+  }
+
+  async report(rawInput: unknown, rawUser: CommunityMutationUser): Promise<void> {
+    await this.ensureReady();
+    const input = normalizeCommunityReportInput(rawInput);
+    const user = normalizeCommunityMutationUser(rawUser);
+    const now = new Date();
+    const detail = input.detail ?? "";
+
+    this.#db.transaction((tx) => {
+      const keymap = this.assertVisibleKeymap(tx, input.keymapId);
+      this.upsertCommunityUser(tx, user, now);
+
+      const inserted = tx
+        .insert(communityKeymapReport)
+        .values({
+          id: reportIdFor(keymap.id, user.id),
+          keymapId: keymap.id,
+          reporterUserId: user.id,
+          reason: input.reason,
+          detail,
+          status: "open",
+          reviewerUserId: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({
+          target: [communityKeymapReport.keymapId, communityKeymapReport.reporterUserId],
+        })
+        .returning({ id: communityKeymapReport.id })
+        .all();
+      const delta = mutationCountDelta(inserted.length > 0, 1);
+
+      if (delta === 0) {
+        tx.update(communityKeymapReport)
+          .set({
+            reason: input.reason,
+            detail,
+            status: "open",
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(communityKeymapReport.keymapId, keymap.id),
+              eq(communityKeymapReport.reporterUserId, user.id),
+            ),
+          )
+          .run();
+      }
+
+      tx.update(communityKeymap)
+        .set(
+          delta === 0
+            ? { moderationState: "review_pending" }
+            : {
+                reportsCount: sql`${communityKeymap.reportsCount} + ${delta}`,
+                moderationState: "review_pending",
+              },
+        )
+        .where(eq(communityKeymap.id, keymap.id))
+        .run();
+    });
   }
 
   private async ensureReady() {
@@ -289,6 +474,51 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
       liked: new Set(likes.map((likeRow) => likeRow.keymapId)),
       adopted: new Set(adoptions.map((adoptionRow) => adoptionRow.keymapId)),
     };
+  }
+
+  private assertVisibleKeymap(db: CommunityWriteDb, id: string): { id: string; title: string } {
+    const [keymap] = db
+      .select({ id: communityKeymap.id, title: communityKeymap.title })
+      .from(communityKeymap)
+      .where(
+        and(
+          eq(communityKeymap.id, id),
+          ne(communityKeymap.visibility, "hidden"),
+          ne(communityKeymap.moderationState, "hidden"),
+        ),
+      )
+      .limit(1)
+      .all();
+
+    if (!keymap) throw new Error("Community keymap is not available.");
+    return keymap;
+  }
+
+  private upsertCommunityUser(db: CommunityWriteDb, user: CommunityMutationUser, now: Date): void {
+    const displayName = displayNameForUser(user);
+    const handle = handleForUser(user);
+
+    db.insert(communityUser)
+      .values({
+        id: user.id,
+        source: "better-auth",
+        displayName,
+        handle,
+        image: user.image ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: communityUser.id,
+        set: {
+          source: "better-auth",
+          displayName,
+          handle,
+          image: user.image ?? null,
+          updatedAt: now,
+        },
+      })
+      .run();
   }
 
   private ensureTables() {
@@ -581,4 +811,33 @@ function parseStringRecord(value: unknown): Record<string, string> {
 function parseStoredProfile(value: unknown): StoredDeviceProfile {
   if (typeof value === "string") return JSON.parse(value) as StoredDeviceProfile;
   return value as StoredDeviceProfile;
+}
+
+function displayNameForUser(user: CommunityMutationUser): string {
+  return user.name?.trim() || user.email?.split("@")[0]?.trim() || "GitHub user";
+}
+
+function handleForUser(user: CommunityMutationUser): string | null {
+  return githubHandleFromEmail(user.email) ?? githubHandleFrom(user.name);
+}
+
+function githubHandleFromEmail(email: string | null | undefined): string | null {
+  const candidate = email?.trim();
+  if (!candidate) return null;
+
+  const noreply = candidate.match(/^(?:\d+\+)?([a-zA-Z0-9-]+)@users\.noreply\.github\.com$/);
+  if (noreply?.[1]) return githubHandleFrom(noreply[1]);
+
+  return githubHandleFrom(candidate.split("@")[0]);
+}
+
+function githubHandleFrom(value: string | null | undefined): string | null {
+  const candidate = value?.trim();
+  if (!candidate) return null;
+  if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(candidate)) return null;
+  return candidate;
+}
+
+function reportIdFor(keymapId: string, userId: string): string {
+  return `report:${keymapId}:${userId}`;
 }

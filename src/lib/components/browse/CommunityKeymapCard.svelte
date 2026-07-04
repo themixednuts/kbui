@@ -82,7 +82,7 @@
         <Layers size={13} aria-hidden="true" />
         {card.layersCount}
       </span>
-      <span title={`${card.likesCount} likes`}>
+      <span class:liked={card.likedByViewer} title={`${card.likesCount} likes`}>
         <Heart size={13} aria-hidden="true" />
         {formatCount(card.likesCount)}
       </span>
@@ -275,6 +275,10 @@
 
   .signal-row .verified {
     color: oklch(0.35 0.12 150);
+  }
+
+  .signal-row .liked {
+    color: var(--coral-ink);
   }
 
   :global(.preview-action) {

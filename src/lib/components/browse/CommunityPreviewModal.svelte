@@ -19,10 +19,35 @@
     detail: CommunityKeymapDetail | null;
     loading?: boolean;
     error?: string | null;
+    signedIn?: boolean;
+    actionError?: string | null;
+    actionNotice?: string | null;
+    likeBusy?: boolean;
+    adoptBusy?: boolean;
+    reportBusy?: boolean;
     onclose: () => void;
+    onadopt?: (detail: CommunityKeymapDetail) => void;
+    onlike?: (detail: CommunityKeymapDetail) => void;
+    onreport?: (detail: CommunityKeymapDetail) => void;
+    onsignin?: () => void;
   }
 
-  let { detail, loading = false, error = null, onclose }: Props = $props();
+  let {
+    detail,
+    loading = false,
+    error = null,
+    signedIn = false,
+    actionError = null,
+    actionNotice = null,
+    likeBusy = false,
+    adoptBusy = false,
+    reportBusy = false,
+    onclose,
+    onadopt,
+    onlike,
+    onreport,
+    onsignin,
+  }: Props = $props();
 
   let boardZoom = $state(0.78);
   let boardPan = $state({ x: 0, y: 0 });
@@ -149,18 +174,41 @@
             </div>
           </dl>
 
-          <div class="action-stack" aria-label="Deferred community actions">
-            <Button variant="coral" disabled title="Adoption lands in Wave 4a-ii">
+          {#if actionError}
+            <p class="action-feedback error" role="status">{actionError}</p>
+          {:else if actionNotice}
+            <p class="action-feedback success" role="status">{actionNotice}</p>
+          {/if}
+
+          <div class="action-stack" aria-label="Community actions">
+            <Button
+              variant="coral"
+              disabled={adoptBusy}
+              title={signedIn ? "Adopt as a local variant" : "Sign in to adopt this keymap"}
+              onclick={() => (signedIn ? onadopt?.(detail) : onsignin?.())}
+            >
               <GitFork size={15} aria-hidden="true" />
-              Adopt in 4a-ii
+              {adoptBusy ? "Adopting" : "Adopt as variant"}
             </Button>
-            <Button variant="ghost" disabled title="Likes land in Wave 4a-ii">
+            <Button
+              variant="ghost"
+              disabled={likeBusy}
+              title={signedIn ? "Toggle like" : "Sign in to like this keymap"}
+              aria-pressed={detail.likedByViewer}
+              class={`like-action ${detail.likedByViewer ? "liked" : ""}`}
+              onclick={() => (signedIn ? onlike?.(detail) : onsignin?.())}
+            >
               <Heart size={15} aria-hidden="true" />
-              Like in 4a-ii
+              {likeBusy ? "Saving" : detail.likedByViewer ? "Liked" : "Like"}
             </Button>
-            <Button variant="ghost" disabled title="Reports land in Wave 4a-ii">
+            <Button
+              variant="ghost"
+              disabled={reportBusy}
+              title={signedIn ? "Report this keymap" : "Sign in to report this keymap"}
+              onclick={() => (signedIn ? onreport?.(detail) : onsignin?.())}
+            >
               <Flag size={15} aria-hidden="true" />
-              Report in 4a-ii
+              {reportBusy ? "Sending" : "Report"}
             </Button>
           </div>
         </aside>
@@ -364,6 +412,32 @@
   .action-stack :global(button) {
     width: 100%;
     justify-content: center;
+  }
+
+  .action-stack :global(.like-action.liked) {
+    border-color: color-mix(in oklch, var(--coral) 56%, var(--line-2));
+    color: #1c0a04;
+    background: color-mix(in oklch, var(--coral) 82%, var(--surface));
+  }
+
+  .action-feedback {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .action-feedback.error {
+    border: 1px solid oklch(0.62 0.2 25 / 0.26);
+    color: oklch(0.42 0.15 25);
+    background: oklch(0.95 0.04 25);
+  }
+
+  .action-feedback.success {
+    border: 1px solid color-mix(in oklch, var(--mint) 46%, var(--line-2));
+    color: oklch(0.35 0.12 150);
+    background: color-mix(in oklch, var(--mint) 15%, var(--surface));
   }
 
   .modal-loading,

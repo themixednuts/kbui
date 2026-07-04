@@ -3,6 +3,10 @@ import { getContext, setContext } from "svelte";
 
 import { EditorStore, type EditorStoreOptions } from "$lib/app/editor-store.svelte";
 import {
+  createCommunityAdoptionVersioning,
+  type CreateCommunityAdoptionVersioningInput,
+} from "$lib/community/adoption";
+import {
   createLocalSavePoint,
   listLocalSavePointsByVariant,
   loadForks,
@@ -50,6 +54,8 @@ export interface BranchFromSavePointOptions extends SavePointActionOptions {
   savePointId?: string;
 }
 
+export type AdoptCommunityVariantInput = CreateCommunityAdoptionVersioningInput;
+
 export interface FlashSavePointIntent {
   savePointId: string;
   requestedAt: string;
@@ -89,9 +95,12 @@ export class WorkbenchStore extends EditorStore {
       id: fork.id,
       name: fork.name,
       color: forkLaneColors[index % forkLaneColors.length],
-      note: fork.parentSavePointId
-        ? `branched from ${fork.sourceVariantId ?? MAIN_VARIANT_ID} @ ${fork.parentSavePointId}`
-        : `branched from ${fork.baseProfileId}`,
+      note:
+        fork.source?.kind === "community"
+          ? `adopted from ${fork.source.title}`
+          : fork.parentSavePointId
+            ? `branched from ${fork.sourceVariantId ?? MAIN_VARIANT_ID} @ ${fork.parentSavePointId}`
+            : `branched from ${fork.baseProfileId}`,
     })),
   ]);
 
@@ -227,6 +236,33 @@ export class WorkbenchStore extends EditorStore {
     }
 
     return fork;
+  }
+
+  async adoptCommunityVariant(input: AdoptCommunityVariantInput) {
+    const { fork, savePoint } = createCommunityAdoptionVersioning(input);
+
+    this.forks = [fork, ...this.forks.filter((candidate) => candidate.id !== fork.id)];
+    this.savePoints = upsertSavePoint(this.savePoints, savePoint);
+    this.activeVariantId = fork.id;
+    this.selectedSavePointId = savePoint.id;
+
+    try {
+      if (this.persistVersioning && browser) {
+        await saveForks(this.forks);
+        await createLocalSavePoint(savePoint);
+      }
+      await this.replaceProfile(fork.device, fork.device);
+      this.baseProfile = cloneDevice(fork.device);
+      this.profile = cloneDevice(fork.device);
+      await this.commitCurrentDraftAsBase();
+      this.versioningError = null;
+    } catch (error) {
+      this.versioningError =
+        error instanceof Error ? error.message : "Could not adopt community keymap";
+      throw error;
+    }
+
+    return { fork, savePoint };
   }
 
   flashSavePoint(savePointId = this.selectedSavePoint?.id, options: SavePointActionOptions = {}) {

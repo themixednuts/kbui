@@ -184,6 +184,16 @@ export interface SavePoint {
   parentSavePointId?: string;
 }
 
+export interface CommunityWorkspaceSource {
+  kind: "community";
+  communityKeymapId: string;
+  title: string;
+  authorUserId: string;
+  authorHandle?: string;
+  adoptedAt: string;
+  payloadHash: string;
+}
+
 export interface WorkspaceFork {
   id: string;
   name: string;
@@ -192,6 +202,7 @@ export interface WorkspaceFork {
   device: DeviceProfile;
   parentSavePointId?: string;
   sourceVariantId?: string;
+  source?: CommunityWorkspaceSource;
 }
 
 export interface FeatureDefinition {

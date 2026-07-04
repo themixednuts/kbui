@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { Clock3, GitFork, Heart, Search } from "@lucide/svelte";
 
+  import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import CommunityKeymapCard from "$lib/components/browse/CommunityKeymapCard.svelte";
   import CommunityPreviewModal from "$lib/components/browse/CommunityPreviewModal.svelte";
@@ -11,15 +13,25 @@
     CommunityKeymapCard as CommunityKeymapCardDto,
     CommunityKeymapDetail,
     CommunityKeymapListInput,
+    CommunityReportReason,
     CommunityKeymapSort,
   } from "$lib/community/types";
   import type { SegmentItem } from "$lib/components/ui/types";
+  import { decodeDeviceProfileFromStorage } from "$lib/keyboard/schema";
 
   import type { PageData } from "./$types";
-  import { getCommunityKeymap, listCommunityKeymaps } from "./community.remote";
+  import {
+    adoptCommunityKeymap,
+    getCommunityKeymap,
+    likeCommunityKeymap,
+    listCommunityKeymaps,
+    reportCommunityKeymap,
+    unlikeCommunityKeymap,
+  } from "./community.remote";
 
   let { data }: { data: PageData } = $props();
 
+  const shell = getShellContext();
   const workbench = getWorkbenchContext();
   const sortItems: SegmentItem<CommunityKeymapSort>[] = [
     { value: "likes", label: "Likes", title: "Sort by likes", icon: Heart },
@@ -42,8 +54,18 @@
   let selectedDetail = $state<CommunityKeymapDetail | null>(null);
   let detailLoading = $state(false);
   let detailError = $state<string | null>(null);
+  let actionError = $state<string | null>(null);
+  let actionNotice = $state<string | null>(null);
+  let likeBusyId = $state<string | null>(null);
+  let adoptBusyId = $state<string | null>(null);
+  let reportBusyId = $state<string | null>(null);
+  let reportTarget = $state<CommunityKeymapDetail | null>(null);
+  let reportReason = $state<CommunityReportReason>("spam");
+  let reportDetail = $state("");
+  let reportError = $state<string | null>(null);
 
   const currentBoardName = $derived(workbench.profile.name);
+  const signedIn = $derived(shell.account.status === "signed-in");
   const listInput = $derived.by((): CommunityKeymapListInput => {
     const input: CommunityKeymapListInput = {
       sort,
@@ -95,6 +117,8 @@
     selectedId = id;
     selectedDetail = null;
     detailError = null;
+    actionError = null;
+    actionNotice = null;
     detailLoading = true;
 
     try {
@@ -117,7 +141,151 @@
     selectedId = null;
     selectedDetail = null;
     detailError = null;
+    actionError = null;
+    actionNotice = null;
     detailLoading = false;
+  }
+
+  async function toggleLike(detail: CommunityKeymapDetail) {
+    if (!signedIn) {
+      promptSignIn();
+      return;
+    }
+    if (likeBusyId) return;
+
+    const wasLiked = detail.likedByViewer;
+    likeBusyId = detail.id;
+    actionError = null;
+    actionNotice = null;
+    applyCardPatch(detail.id, {
+      likedByViewer: !wasLiked,
+      likesCount: wasLiked ? Math.max(0, detail.likesCount - 1) : detail.likesCount + 1,
+    });
+
+    try {
+      if (wasLiked) {
+        await unlikeCommunityKeymap(detail.id);
+      } else {
+        await likeCommunityKeymap(detail.id);
+      }
+      await refreshSelectedDetail(detail.id);
+      await refreshList(listInput, listKey);
+    } catch (error) {
+      applyCardPatch(detail.id, {
+        likedByViewer: wasLiked,
+        likesCount: detail.likesCount,
+      });
+      actionError = messageFor(error, "Could not update like.");
+    } finally {
+      likeBusyId = null;
+    }
+  }
+
+  async function adoptAsVariant(detail: CommunityKeymapDetail) {
+    if (!signedIn) {
+      promptSignIn();
+      return;
+    }
+    if (adoptBusyId) return;
+
+    const localForkId = randomUuid();
+    adoptBusyId = detail.id;
+    actionError = null;
+    actionNotice = null;
+
+    try {
+      const adopted = await adoptCommunityKeymap({ keymapId: detail.id, localForkId });
+      const profile = decodeDeviceProfileFromStorage(adopted.profile);
+      const adoptedAt = new Date().toISOString();
+      await workbench.adoptCommunityVariant({
+        detail: adopted,
+        profile,
+        localForkId,
+        savePointId: `sp-${randomUuid()}`,
+        adoptedAt,
+      });
+      replaceCardFromDetail(adopted);
+      closePreview();
+      await goto("/editor");
+    } catch (error) {
+      actionError = messageFor(error, "Could not adopt this keymap.");
+    } finally {
+      adoptBusyId = null;
+    }
+  }
+
+  function openReport(detail: CommunityKeymapDetail) {
+    if (!signedIn) {
+      promptSignIn();
+      return;
+    }
+
+    reportTarget = detail;
+    reportReason = "spam";
+    reportDetail = "";
+    reportError = null;
+    actionError = null;
+    actionNotice = null;
+  }
+
+  function closeReport() {
+    reportTarget = null;
+    reportError = null;
+    reportDetail = "";
+  }
+
+  async function submitReport() {
+    if (!reportTarget || reportBusyId) return;
+
+    reportBusyId = reportTarget.id;
+    reportError = null;
+    actionError = null;
+    actionNotice = null;
+
+    try {
+      await reportCommunityKeymap({
+        keymapId: reportTarget.id,
+        reason: reportReason,
+        detail: reportDetail.trim() || undefined,
+      });
+      actionNotice = "Report sent for moderation review.";
+      await refreshSelectedDetail(reportTarget.id);
+      await refreshList(listInput, listKey);
+      closeReport();
+    } catch (error) {
+      reportError = messageFor(error, "Could not send report.");
+    } finally {
+      reportBusyId = null;
+    }
+  }
+
+  function promptSignIn() {
+    actionError = "Sign in with GitHub to like, adopt, or report community keymaps.";
+    shell.profileOpen = true;
+  }
+
+  async function refreshSelectedDetail(id: string) {
+    if (selectedId !== id) return;
+    const detail = await getCommunityKeymap(id);
+    if (!detail) {
+      detailError = "This community keymap is no longer available.";
+      selectedDetail = null;
+      return;
+    }
+    selectedDetail = detail;
+    replaceCardFromDetail(detail);
+  }
+
+  function applyCardPatch(id: string, patch: Partial<CommunityKeymapCardDto>) {
+    cards = cards.map((card) => (card.id === id ? { ...card, ...patch } : card));
+    if (selectedDetail?.id === id) {
+      selectedDetail = { ...selectedDetail, ...patch };
+    }
+  }
+
+  function replaceCardFromDetail(detail: CommunityKeymapDetail) {
+    cards = cards.map((card) => (card.id === detail.id ? detail : card));
+    if (selectedDetail?.id === detail.id) selectedDetail = detail;
   }
 
   function setTag(tag: string | undefined) {
@@ -140,6 +308,20 @@
 
   function tagToSyntheticCard(tag: string): Pick<CommunityKeymapCardDto, "tags"> {
     return { tags: [tag] };
+  }
+
+  function messageFor(error: unknown, fallback: string) {
+    if (error instanceof Error) return error.message || fallback;
+    if (error && typeof error === "object" && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message) return message;
+    }
+    return fallback;
+  }
+
+  function randomUuid() {
+    if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+    return Math.random().toString(36).slice(2, 12);
   }
 </script>
 
@@ -243,8 +425,83 @@
     detail={selectedDetail}
     loading={detailLoading}
     error={detailError}
+    {signedIn}
+    {actionError}
+    {actionNotice}
+    likeBusy={likeBusyId === selectedDetail?.id}
+    adoptBusy={adoptBusyId === selectedDetail?.id}
+    reportBusy={reportBusyId === selectedDetail?.id}
     onclose={closePreview}
+    onadopt={adoptAsVariant}
+    onlike={toggleLike}
+    onreport={openReport}
+    onsignin={promptSignIn}
   />
+{/if}
+
+{#if reportTarget}
+  <div class="report-backdrop" role="presentation" onclick={closeReport}>
+    <div
+      class="report-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Report ${reportTarget.title}`}
+      tabindex="-1"
+      onclick={(event) => event.stopPropagation()}
+      onkeydown={(event) => event.stopPropagation()}
+    >
+      <form
+        class="report-form"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void submitReport();
+        }}
+      >
+        <header>
+          <div>
+            <span>Report keymap</span>
+            <h3>{reportTarget.title}</h3>
+          </div>
+          <button type="button" aria-label="Close report dialog" onclick={closeReport}>
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+
+        <label>
+          <span>Reason</span>
+          <select bind:value={reportReason}>
+            <option value="spam">Spam</option>
+            <option value="unsafe">Unsafe</option>
+            <option value="misleading">Misleading</option>
+            <option value="copyright">Copyright</option>
+            <option value="harassment">Harassment</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Detail</span>
+          <textarea
+            bind:value={reportDetail}
+            maxlength="500"
+            rows="4"
+            placeholder="Optional context for moderators"
+          ></textarea>
+        </label>
+
+        {#if reportError}
+          <p class="report-error" role="status">{reportError}</p>
+        {/if}
+
+        <div class="report-actions">
+          <Button variant="ghost" type="button" onclick={closeReport}>Cancel</Button>
+          <Button variant="coral" type="submit" disabled={reportBusyId === reportTarget.id}>
+            {reportBusyId === reportTarget.id ? "Sending" : "Send report"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -426,6 +683,112 @@
 
   .empty-panel .material-symbols-outlined {
     font-size: 28px;
+  }
+
+  .report-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(20, 18, 16, 0.48);
+    backdrop-filter: blur(8px);
+  }
+
+  .report-modal {
+    display: grid;
+    gap: 14px;
+    width: min(420px, calc(100vw - 36px));
+    padding: 16px;
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow-modal);
+  }
+
+  .report-form {
+    display: contents;
+  }
+
+  .report-modal header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .report-modal header span,
+  .report-modal label span {
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .report-modal h3 {
+    margin: 4px 0 0;
+    overflow: hidden;
+    font-size: 16px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .report-modal header button {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink-2);
+    background: var(--paper-2);
+  }
+
+  .report-modal label {
+    display: grid;
+    gap: 6px;
+  }
+
+  .report-modal select,
+  .report-modal textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink);
+    background: var(--paper-2);
+    font-size: 13px;
+  }
+
+  .report-modal select {
+    height: 36px;
+    padding: 0 10px;
+  }
+
+  .report-modal textarea {
+    resize: vertical;
+    min-height: 92px;
+    padding: 10px;
+    line-height: 1.45;
+  }
+
+  .report-error {
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid oklch(0.62 0.2 25 / 0.26);
+    border-radius: 8px;
+    color: oklch(0.42 0.15 25);
+    background: oklch(0.95 0.04 25);
+    font-size: 12px;
+  }
+
+  .report-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   @media (max-width: 940px) {
