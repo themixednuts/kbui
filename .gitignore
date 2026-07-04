@@ -30,3 +30,6 @@ vite.config.ts.timestamp-*
 # Codex working dir / logs
 .codex/
 .codex-*.log
+
+# Regenerable visual-capture screenshots (vp run capture)
+docs/redesign/screenshots/

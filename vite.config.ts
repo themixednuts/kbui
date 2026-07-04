@@ -29,6 +29,11 @@ export default defineConfig({
         command: "playwright test",
         cache: false,
       },
+      capture: {
+        command:
+          "vp run playwright:install && vp build && playwright test --config playwright.visual.config.ts",
+        cache: false,
+      },
       "svelte:check": {
         command: "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         cache: false,
