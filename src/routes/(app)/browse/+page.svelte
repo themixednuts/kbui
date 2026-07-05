@@ -46,7 +46,7 @@
   const browseHeaderClass =
     "browse-header grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] items-end gap-kb-16 max-[940px]:grid-cols-[minmax(0,1fr)]";
   const headlineClass = "headline grid min-w-0 gap-kb-4";
-  const eyebrowClass = "font-mono text-kb-10 tracking-[0.12em] text-ink-3 uppercase";
+  const eyebrowClass = "font-mono text-[10px] tracking-[0.12em] text-ink-3 uppercase";
   const searchBoxClass =
     "search-box grid h-kb-38 min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-[8px] border border-line-2 bg-surface px-kb-12 py-0 shadow-card";
   const filterPanelClass =
@@ -54,11 +54,11 @@
   const filterGroupClass = "flex min-w-0 flex-wrap items-center gap-kb-8";
   const filterRowClass = `${filterGroupClass} max-[640px]:items-start`;
   const filterButtonClass =
-    "min-h-[28px] rounded-pill border border-line bg-paper-2 px-kb-10 py-0 font-mono text-kb-11 text-ink-2 hover:border-line-2 hover:text-ink";
+    "min-h-[28px] rounded-pill !border !border-line !bg-paper-2 px-kb-10 py-0 !font-mono !text-[11px] !text-ink-2 hover:!border-line-2 hover:!text-ink";
   const activeFilterButtonClass =
-    "active border-[color-mix(in_oklch,var(--coral)_55%,var(--line-2))] bg-coral text-[#1c0a04]";
+    "active !border-[color-mix(in_oklch,var(--coral)_55%,var(--line-2))] !bg-coral !text-[#1c0a04]";
   const toggleFilterClass =
-    "toggle-filter inline-flex min-h-kb-30 items-center gap-kb-8 font-mono text-kb-11 text-ink-2";
+    "toggle-filter inline-flex min-h-kb-30 items-center gap-kb-8 font-mono text-[11px] text-ink-2";
   const sortControlClass =
     "sort-control ml-auto inline-flex items-center gap-kb-8 max-[940px]:ml-0 max-[940px]:w-full max-[940px]:justify-between max-[640px]:flex-col max-[640px]:items-start";
   const listErrorClass =
@@ -73,9 +73,9 @@
     "report-modal grid w-[min(420px,calc(100vw-36px))] gap-kb-14 rounded-[10px] border border-line-2 bg-surface p-kb-16 shadow-modal";
   const reportHeaderClass =
     "grid grid-cols-[minmax(0,1fr)_32px] items-start gap-kb-10";
-  const reportLabelTextClass = "font-mono text-kb-10 tracking-[0.1em] text-ink-3 uppercase";
+  const reportLabelTextClass = "font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase";
   const reportCloseButtonClass =
-    "grid size-[32px] place-items-center rounded-[8px] border border-line bg-paper-2 text-ink-2";
+    "grid size-[32px] place-items-center rounded-[8px] !border !border-line !bg-paper-2 !text-ink-2";
   const reportFieldClass = "grid gap-kb-6";
   const reportFieldControlClass =
     "w-full min-w-0 rounded-[8px] border border-line bg-paper-2 text-[13px] text-ink";
@@ -376,7 +376,7 @@
       <div class={searchBoxClass}>
         <span class="search-icon grid place-items-center text-ink-3" aria-hidden="true"><Search size={15} /></span>
         <input
-          class="min-w-0 border-0 bg-transparent text-[13px] text-ink outline-0 placeholder:text-ink-3"
+          class="min-w-0 border-0 bg-transparent !text-[13px] text-ink outline-0 placeholder:text-ink-3"
           type="search"
           placeholder="Search title, author, board, tag"
           bind:value={search}
@@ -544,4 +544,3 @@
     </div>
   </div>
 {/if}
-

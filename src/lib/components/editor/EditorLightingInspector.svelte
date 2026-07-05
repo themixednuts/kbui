@@ -36,13 +36,13 @@
     { value: "rainbow", label: "Rainbow", icon: Blend, title: "Rainbow lighting" },
   ];
 
-  const labelTextClass = "block text-ink-3 font-mono text-kb-10 tracking-[0.1em] uppercase";
+  const labelTextClass = "block text-ink-3 font-mono text-[10px] tracking-[0.1em] uppercase";
   const fieldLabelClass = `field-label ${labelTextClass}`;
   const fieldClass = "field !grid !gap-[8px]";
   const navFillClass =
-    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-[8px]";
+    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:!px-[8px]";
   const inactivePreviewClass =
-    "bg-[var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap";
+    "[background:var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap";
 
   const selection = $derived(editor.lightingSelection);
   const heroLighting = $derived(selection.keyLighting ?? swatchToKeyLighting(editor.currentSwatch));
@@ -86,10 +86,10 @@
     >
       <div
         class={cn(
-          "led-preview grid size-[58px] place-items-center rounded-big-cap border border-[rgba(24,22,20,0.22)] bg-[linear-gradient(180deg,color-mix(in_oklch,var(--hero-color)_42%,#fffdf7),var(--hero-color))] text-[rgba(242,237,227,0.72)] shadow-[inset_0_-4px_7px_color-mix(in_oklch,var(--hero-color)_48%,transparent),var(--shadow-cap)]",
+          "led-preview grid size-[58px] place-items-center rounded-big-cap border border-[rgba(24,22,20,0.22)] [background:linear-gradient(180deg,color-mix(in_oklch,var(--hero-color)_42%,#fffdf7),var(--hero-color))] text-[rgba(242,237,227,0.72)] shadow-[inset_0_-4px_7px_color-mix(in_oklch,var(--hero-color)_48%,transparent),var(--shadow-cap)]",
           compact && "size-[52px]",
           selection.mixed &&
-            "mixed bg-[linear-gradient(135deg,transparent_0_42%,rgba(255,255,255,0.18)_42%_58%,transparent_58%),var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap",
+            "mixed [background:linear-gradient(135deg,transparent_0_42%,rgba(255,255,255,0.18)_42%_58%,transparent_58%),var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap",
           heroOff && cn("off", inactivePreviewClass),
         )}
         style={heroStyle}
@@ -160,7 +160,7 @@
 
   <section
     class={cn(
-      "control-section grid min-w-0",
+      "control-section grid min-w-0 [&>*]:min-w-0",
       compact
         ? "grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.25fr)_minmax(150px,0.8fr)] content-start items-center gap-x-[14px] gap-y-[10px] max-[680px]:grid-cols-[minmax(0,1fr)]"
         : "gap-[13px]",

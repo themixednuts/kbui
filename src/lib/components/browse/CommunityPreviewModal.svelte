@@ -61,9 +61,9 @@
   const modalHeadingClass =
     "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[20px] leading-[1.15] max-[620px]:text-[16px]";
   const modalBylineClass =
-    "m-0 mt-kb-4 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-11 text-ink-3";
+    "m-0 mt-kb-4 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-ink-3";
   const closeButtonClass =
-    "close-button grid size-kb-34 place-items-center rounded-[8px] border border-line bg-paper-2 text-ink-2 hover:border-line-2 hover:text-ink";
+    "close-button grid size-kb-34 place-items-center rounded-[8px] !border !border-line !bg-paper-2 !text-ink-2 hover:!border-line-2 hover:!text-ink";
   const modalContentClass =
     "modal-content grid min-h-0 grid-cols-[minmax(0,1fr)_300px] max-[900px]:grid-cols-[minmax(0,1fr)] max-[900px]:overflow-auto";
   const boardPanelClass =
@@ -75,11 +75,11 @@
   const wrapRowClass = "flex flex-wrap gap-kb-6";
   const noteClass = "note m-0 text-[13px] leading-[1.5] text-ink-2";
   const tagPillClass =
-    "inline-flex min-h-kb-24 items-center rounded-pill border border-line bg-paper-2 px-kb-8 py-0 font-mono text-kb-10 text-ink-2";
+    "inline-flex min-h-kb-24 items-center rounded-pill border border-line bg-paper-2 px-kb-8 py-0 font-mono text-[10px] text-ink-2";
   const signalGridClass = "signal-grid m-0 grid grid-cols-1 gap-kb-8";
   const signalBlockClass =
     "grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-[8px] border border-line bg-paper-2 px-kb-10 py-kb-9";
-  const signalTermClass = "inline-flex items-center gap-kb-7 font-mono text-kb-11 text-ink-2";
+  const signalTermClass = "inline-flex items-center gap-kb-7 font-mono text-[11px] text-ink-2";
   const signalValueClass = "m-0 font-mono text-[13px] font-bold";
   const actionFeedbackClass = "action-feedback m-0 rounded-[8px] px-kb-10 py-kb-8 text-[12px] leading-[1.35]";
   const actionFeedbackErrorClass =
@@ -264,4 +264,3 @@
     {/if}
   </div>
 </div>
-

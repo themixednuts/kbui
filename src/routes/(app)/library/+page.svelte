@@ -48,7 +48,7 @@
   const useCardClass = "use-card min-w-0 overflow-hidden max-[1080px]:max-w-none";
   const libraryCardHeaderClass =
     "library-card-header gap-kb-10 max-[640px]:items-start max-[640px]:flex-wrap";
-  const libraryCardBodyClass = "library-card-body p-kb-10";
+  const libraryCardBodyClass = "library-card-body !p-kb-10";
   const headerSpacerClass = "header-spacer min-w-[10px] flex-1";
   const libraryListClass = "library-list grid gap-kb-8";
   const libraryRowClass =
@@ -58,48 +58,48 @@
   const rowMainClass = "row-main grid min-w-0 gap-kb-6 p-0 text-left";
   const rowTitleClass = "row-title flex min-w-0 items-center gap-kb-8";
   const titleTextClass =
-    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-13 font-strong";
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] font-strong";
   const sequenceClass = "seq !mt-0";
-  const draftNoteClass = "draft-note font-mono text-kb-11 text-ink-3";
+  const draftNoteClass = "draft-note font-mono text-[11px] text-ink-3";
   const previewClass = "seq preview !mt-0 pt-kb-8 pb-kb-2";
   const tapGridClass =
     "tap-grid !mt-0 !gap-kb-8 max-[640px]:!grid-cols-[minmax(0,1fr)]";
   const tapCellClass = "grid min-w-0 gap-kb-4";
-  const tapLabelClass = "font-mono text-kb-9 tracking-[0.08em] text-ink-3 uppercase";
+  const tapLabelClass = "font-mono text-[9px] tracking-[0.08em] text-ink-3 uppercase";
   const usePanelClass = "use-panel grid gap-kb-14";
   const selectedHeadClass =
     "selected-head grid grid-cols-[34px_minmax(0,1fr)] items-center gap-kb-10";
-  const selectedHeadMetaClass = "mt-kb-2 block font-mono text-kb-10 text-ink-3";
+  const selectedHeadMetaClass = "mt-kb-2 block font-mono text-[10px] text-ink-3";
   const logicMarkClass =
-    "logic-mark grid size-kb-34 place-items-center rounded-keycap border border-[color-mix(in_oklch,var(--coral)_45%,transparent)] bg-coral font-mono text-kb-13 font-bold text-[#1c0a04] shadow-cap";
+    "logic-mark grid size-kb-34 place-items-center rounded-keycap border border-[color-mix(in_oklch,var(--coral)_45%,transparent)] bg-coral font-mono text-[13px] font-bold text-[#1c0a04] shadow-cap";
   const comboMarkClass =
     "combo-mark border-[color-mix(in_oklch,var(--mustard)_50%,transparent)] bg-mustard";
   const danceMarkClass =
     "dance-mark border-[color-mix(in_oklch,var(--teal)_50%,transparent)] bg-teal";
   const fieldClass = "field grid min-w-0 gap-kb-6";
   const libraryInputClass =
-    "library-input h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 text-kb-13 text-ink [font:inherit] outline-0 focus:border-ink";
+    "library-input h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 !text-[13px] text-ink [font:inherit] outline-0 focus:border-ink";
   const monoInputClass = cn(libraryInputClass, "mono font-mono");
   const choiceRowClass = "choice-row flex flex-wrap gap-kb-6";
   const choiceButtonClass =
-    "rounded-[7px] border border-line-2 bg-surface px-kb-9 py-kb-4 font-mono text-kb-10 text-ink-2 min-h-kb-28";
+    "rounded-[7px] !border !border-line-2 !bg-surface px-kb-9 py-kb-4 !font-mono !text-[10px] !text-ink-2 min-h-kb-28";
   const comboKeyGridClass =
     "combo-key-grid grid max-h-[210px] grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-kb-5 overflow-auto pr-kb-2";
   const comboKeyButtonClass =
-    "grid min-h-[42px] min-w-0 content-center gap-kb-2 rounded-[7px] border border-line-2 bg-surface p-kb-5 font-mono text-ink-2";
-  const choiceSelectedClass = "selected border-[rgba(15,147,140,0.45)] bg-[#9de2d8] text-[#062826]";
+    "grid min-h-[42px] min-w-0 content-center gap-kb-2 rounded-[7px] !border !border-line-2 !bg-surface p-kb-5 !font-mono !text-ink-2";
+  const choiceSelectedClass = "selected !border-[rgba(15,147,140,0.45)] !bg-[#9de2d8] !text-[#062826]";
   const comboKeyPrimaryClass =
-    "overflow-hidden text-ellipsis whitespace-nowrap text-kb-11 font-bold text-ink";
+    "overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-bold text-ink";
   const comboKeyDetailClass =
-    "overflow-hidden text-ellipsis whitespace-nowrap text-kb-8 text-ink-3";
+    "overflow-hidden text-ellipsis whitespace-nowrap text-[8px] text-ink-3";
   const wideActionClass = "wide-action w-full justify-center";
   const sideActionsClass =
     "side-actions grid grid-cols-[repeat(2,minmax(0,1fr))] gap-kb-8 pt-kb-2 max-[640px]:grid-cols-[minmax(0,1fr)]";
-  const chipIconClass = "material-symbols-outlined chip-icon !text-kb-14";
+  const chipIconClass = "material-symbols-outlined chip-icon !text-[14px]";
   const emptyPanelClass =
-    "empty-panel grid min-h-[180px] place-items-center content-center gap-kb-8 font-mono text-kb-12 text-ink-3";
+    "empty-panel grid min-h-[180px] place-items-center content-center gap-kb-8 font-mono text-[12px] text-ink-3";
   const compactEmptyPanelClass = cn(emptyPanelClass, "compact min-h-[120px]");
-  const emptyPanelIconClass = "material-symbols-outlined !text-kb-24";
+  const emptyPanelIconClass = "material-symbols-outlined !text-[24px]";
 
   const selectedMacro = $derived(
     workbench.profile.macros.find((macro) => macro.id === selectedIds.macros),

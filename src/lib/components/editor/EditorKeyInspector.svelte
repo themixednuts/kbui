@@ -27,14 +27,14 @@
     { value: "notes", label: "Notes", icon: StickyNote, title: "Notes and source" },
   ];
 
-  const labelTextClass = "block text-ink-3 font-mono text-kb-10 tracking-[0.1em] uppercase";
+  const labelTextClass = "block text-ink-3 font-mono text-[10px] tracking-[0.1em] uppercase";
   const fieldLabelClass = `field-label ${labelTextClass}`;
   const h2Class =
     "!mt-[2px] !mb-0 !overflow-hidden !text-[18px] !leading-[1.15] !text-ellipsis !whitespace-nowrap";
   const inspectorSectionClass = "inspector-section grid min-w-0 gap-[12px]";
   const fieldClass = "field grid gap-[6px]";
   const navFillClass =
-    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-[8px]";
+    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:!px-[8px]";
 
   let keycodeDraft = $state("");
   let tapDraft = $state("");
@@ -111,10 +111,10 @@
       )}
     >
       <div
-        class={cn(
-          "big-cap !grid !size-[58px] place-items-center overflow-hidden !rounded-big-cap !border !border-[rgba(24,22,20,0.18)] !bg-[var(--keycap-base)] !shadow-cap font-mono !text-[20px] !font-strong !leading-none text-center max-[640px]:!size-[52px]",
-          selectionCount > 1 && "!bg-coral !text-[#1c0a04]",
-        )}
+          class={cn(
+            "big-cap !grid !size-[58px] place-items-center overflow-hidden !rounded-big-cap !border !border-[rgba(24,22,20,0.18)] ![background:var(--keycap-base)] !shadow-cap font-mono !text-[20px] !font-strong !leading-none text-center max-[640px]:!size-[52px]",
+            selectionCount > 1 && "!bg-coral !text-[#1c0a04]",
+          )}
         aria-hidden="true"
       >
         {#if selectionCount > 1}

@@ -15,7 +15,7 @@
     "layer-stack flex min-w-0 items-center gap-kb-8 max-[760px]:flex-col max-[760px]:items-start";
   const layerButtonsClass = "layer-buttons flex min-w-0 flex-wrap gap-kb-8";
   const layerButtonClass =
-    "layer-button inline-flex h-[36px] min-w-[74px] items-center justify-center gap-kb-8 rounded-pill !border !border-line-2 !bg-[color-mix(in_oklch,var(--surface)_78%,transparent)] px-kb-15 py-0 font-mono text-[12px] font-strong tracking-[0.02em] !text-ink-2 shadow-card transition-[background,border-color,color,transform] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:-translate-y-px hover:!border-[rgba(24,22,20,0.28)] hover:!text-ink max-[760px]:h-[32px] max-[760px]:min-w-[66px] max-[760px]:px-kb-12";
+    "layer-button inline-flex h-[36px] min-w-[74px] items-center justify-center gap-kb-8 rounded-pill !border !border-line-2 !bg-[color-mix(in_oklch,var(--surface)_78%,transparent)] px-kb-15 py-0 ![font-family:var(--mono)] !text-[12px] !font-strong tracking-[0.02em] !text-ink-2 shadow-card transition-[background,border-color,color,transform] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:-translate-y-px hover:!border-[rgba(24,22,20,0.28)] hover:!text-ink max-[760px]:h-[32px] max-[760px]:min-w-[66px] max-[760px]:px-kb-12";
   const activeLayerButtonClass =
     "!border-ink !bg-ink !text-paper hover:!border-ink hover:!text-paper [&_.layer-dot]:shadow-[0_0_0_2px_color-mix(in_oklch,currentColor_16%,transparent)]";
   const layerDotClass =

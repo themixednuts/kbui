@@ -111,7 +111,7 @@
       "--board-key-gap: 5px",
       `width: calc(var(--u) * ${model.bounds.width})`,
       `height: calc(var(--u) * ${model.bounds.height} + ${splitLabelSpace}px)`,
-      `transform: translate(${pan.x}px, ${pan.y}px)`,
+      `transform: translate(${pan.x}px, ${pan.y - (model.split.enabled ? 1 : 0)}px)`,
     ].join("; "),
   );
   const planeStyle = $derived(
@@ -351,10 +351,10 @@
 
       {#if model.split.enabled && model.split.seamX !== null}
         <div
-          class="split-label absolute inline-flex -translate-x-1/2 items-center gap-kb-6 whitespace-nowrap font-mono text-kb-10 leading-none tracking-[0.12em] text-ink-3 uppercase"
+          class="split-label absolute inline-flex -translate-x-1/2 items-center gap-kb-6 whitespace-nowrap font-mono text-[10px] leading-none tracking-[0.12em] text-ink-3 uppercase"
           style={`left: calc(var(--u) * ${model.split.seamX}); top: calc(var(--u) * ${model.bounds.height} + 10px)`}
         >
-          <span class="material-symbols-outlined text-[14px]" aria-hidden="true">cable</span>
+          <span class="material-symbols-outlined !text-[14px]" aria-hidden="true">cable</span>
           <span>{model.split.label}</span>
         </div>
       {/if}
@@ -363,7 +363,7 @@
 
   <button
     type="button"
-    class="zoom-readout absolute right-kb-12 bottom-kb-12 inline-grid h-kb-22 min-w-[42px] place-items-center rounded-[6px] border border-[rgba(24,22,20,0.18)] bg-[rgba(255,252,245,0.78)] px-[7px] py-0 font-mono text-kb-10 leading-none text-ink-2 shadow-card hover:border-[rgba(24,22,20,0.34)] hover:bg-paper hover:text-ink"
+    class="zoom-readout absolute right-kb-12 bottom-kb-12 inline-grid h-kb-22 min-w-[42px] place-items-center rounded-[6px] !border !border-[rgba(24,22,20,0.18)] !bg-[rgba(255,252,245,0.78)] px-[7px] py-0 !font-mono !text-kb-10 !leading-none !text-ink-2 shadow-card hover:!border-[rgba(24,22,20,0.34)] hover:!bg-paper hover:!text-ink"
     title="Reset keyboard zoom"
     onclick={() => (zoom = 1)}
   >

@@ -34,17 +34,17 @@
   const keycapRootClass =
     "board-keycap group/keycap absolute block min-w-0 overflow-visible p-0 text-left text-inherit select-none [transform:rotate(var(--rotation))] origin-top-left";
   const keycapFaceClass =
-    "keycap-face relative grid h-full w-full min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-visible rounded-keycap border border-[rgba(24,22,20,0.18)] bg-[var(--keycap-base)] px-[7px] pt-[5px] pb-[6px] text-ink shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-cap)] transition-[transform,box-shadow,border-color,background] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] group-hover/keycap:-translate-y-px group-active/keycap:translate-y-px group-data-[label-size=xs]/keycap:px-[5px]";
+    "keycap-face relative grid h-full w-full min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-visible rounded-keycap border border-[rgba(24,22,20,0.18)] [background:var(--keycap-base)] px-[7px] pt-[5px] pb-[6px] text-ink shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-cap)] transition-[transform,box-shadow,border-color,background] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] group-hover/keycap:-translate-y-px group-active/keycap:translate-y-px group-data-[label-size=xs]/keycap:px-[5px]";
   const capLegendClass =
-    "cap-legend min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-9 uppercase text-ink-3";
+    "cap-legend min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[length:9px] leading-none uppercase text-ink-3";
   const capSourceClass =
-    "cap-src min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-8 font-bold tracking-[0.04em] text-[var(--source-color)] uppercase group-data-[label-size=xs]/keycap:hidden";
+    "cap-src min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[length:8px] font-bold leading-none tracking-[0.04em] text-[var(--source-color)] uppercase group-data-[label-size=xs]/keycap:hidden";
   const glyphMainClass =
-    "g-main max-w-full overflow-hidden text-[13px] font-ui leading-key [overflow-wrap:anywhere] [word-break:break-word] group-data-[label-size=sm]/keycap:text-[10.5px] group-data-[label-size=sm]/keycap:leading-[1.04] group-data-[label-size=xs]/keycap:text-[8.5px] group-data-[label-size=xs]/keycap:leading-none";
+    "g-main max-w-full overflow-hidden text-[13px] font-mono leading-key [overflow-wrap:anywhere] [word-break:break-word] group-data-[label-size=sm]/keycap:text-[10.5px] group-data-[label-size=sm]/keycap:leading-[1.04] group-data-[label-size=xs]/keycap:text-[8.5px] group-data-[label-size=xs]/keycap:leading-none";
   const glyphSubClass =
-    "g-sub max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-mono text-kb-8 tracking-[0.05em] text-ink-3 uppercase";
+    "g-sub max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[length:8px] leading-none tracking-[0.05em] text-ink-3 uppercase";
   const markerSlotClass =
-    "marker-slot pointer-events-none absolute z-[4] inline-grid h-[15px] min-w-[16px] place-items-center rounded-pill px-[5px] py-0 font-mono text-kb-8 font-[800] leading-none shadow-[0_1px_2px_rgba(24,22,20,0.18)]";
+    "marker-slot pointer-events-none absolute z-[4] inline-grid h-[15px] min-w-[16px] place-items-center rounded-pill px-[5px] py-0 font-mono text-[length:8px] font-[800] leading-none shadow-[0_1px_2px_rgba(24,22,20,0.18)]";
 
   const isLighting = $derived(lens === "lighting");
   const isLedOff = $derived(isLighting && !cap.lightingColor);
@@ -139,14 +139,14 @@
       usePressShadow && "group-active/keycap:shadow-cap-press",
       cap.selected && "border-coral shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-keycap-selected)]",
       cap.marked && "border-teal shadow-keycap-picked",
-      (isFallThrough || isEmpty) && "bg-[var(--keycap-transparent)] text-ink-3",
-      isModifier && "bg-[var(--keycap-modifier)] text-paper",
-      isAccent && "border-[oklch(0.55_0.18_30)] bg-[var(--keycap-accent)] text-[#1c0a04]",
+      (isFallThrough || isEmpty) && "[background:var(--keycap-transparent)] text-ink-3",
+      isModifier && "[background:var(--keycap-modifier)] text-paper",
+      isAccent && "border-[oklch(0.55_0.18_30)] [background:var(--keycap-accent)] text-[#1c0a04]",
       cap.encoder && "rounded-pill",
       isLighting &&
-        "bg-[linear-gradient(180deg,color-mix(in_oklch,var(--key-lighting)_45%,#fffdf7)_0%,var(--key-lighting)_100%)] text-[#221c12] shadow-[inset_0_-4px_8px_color-mix(in_oklch,var(--key-lighting)_55%,transparent),var(--shadow-cap)]",
+        "[background:linear-gradient(180deg,color-mix(in_oklch,var(--key-lighting)_45%,#fffdf7)_0%,var(--key-lighting)_100%)] text-[#221c12] shadow-[inset_0_-4px_8px_color-mix(in_oklch,var(--key-lighting)_55%,transparent),var(--shadow-cap)]",
       isLightingOverride && "border-[rgba(24,22,20,0.28)]",
-      isLedOff && "border-[rgba(0,0,0,0.4)] bg-[var(--led-off)] text-[rgba(242,237,227,0.58)] shadow-cap",
+      isLedOff && "border-[rgba(0,0,0,0.4)] [background:var(--led-off)] text-[rgba(242,237,227,0.58)] shadow-cap",
     )}
   >
     <span class="cap-top flex min-h-[10px] min-w-0 items-start justify-between gap-kb-4">

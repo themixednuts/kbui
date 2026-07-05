@@ -87,7 +87,7 @@
   const connectOptionDisconnectClass =
     "disconnect !border-[oklch(0.62_0.2_25/0.3)] !bg-[oklch(0.96_0.035_25)]";
   const optionIconClass =
-    "option-icon material-symbols-outlined grid size-[42px] place-items-center rounded-[9px] border border-line-2 bg-paper text-ink !text-[21px] max-[760px]:size-kb-38";
+    "option-icon material-symbols-outlined !grid size-[42px] place-items-center rounded-[9px] border border-line-2 bg-paper text-ink !text-[21px] max-[760px]:size-kb-38";
   const optionCopyClass = "option-copy grid min-w-0 gap-kb-3";
   const optionTitleClass =
     "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] font-strong";
