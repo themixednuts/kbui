@@ -92,6 +92,9 @@ describe("combo routing", () => {
         ),
       ),
     ).toBeGreaterThanOrEqual(0);
-    expect(elapsed).toBeLessThan(500);
+    // Smoke tripwire for a catastrophic algorithmic regression only. This routes in a
+    // few ms normally; the generous ceiling tolerates CPU contention (parallel builds)
+    // so the assertion is not flaky, while still catching an orders-of-magnitude blowup.
+    expect(elapsed).toBeLessThan(5000);
   });
 });

@@ -12,6 +12,7 @@
     Switch,
     ToggleGroup,
   } from "$lib/components/ui";
+  import { cn } from "$lib/utils.js";
   import type { SegmentItem } from "$lib/components/ui/types";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
@@ -144,6 +145,149 @@
     label: string;
     detail: string;
   }>;
+
+  const settingsPageClass =
+    "settings-page grid min-h-[calc(100vh-58px)] content-start gap-kb-18 p-kb-22 [background:radial-gradient(ellipse_86%_56%_at_82%_0%,color-mix(in_oklch,var(--coral)_7%,transparent),transparent_66%),var(--paper)] max-[560px]:p-kb-14";
+  const settingsToolbarClass =
+    "settings-toolbar flex min-w-0 items-center gap-kb-12 max-[820px]:flex-wrap";
+  const settingsTitleClass = "settings-title grid min-w-0 gap-kb-4 max-[820px]:w-full";
+  const settingsEyebrowClass =
+    "text-ink-3 font-mono text-[10px] tracking-[0.14em] uppercase";
+  const settingsHeadingClass =
+    "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[24px] leading-[1.05] max-[560px]:text-[20px]";
+  const settingsToolbarSpacerClass =
+    "settings-toolbar-spacer min-w-kb-12 flex-1 max-[820px]:hidden";
+  const settingsMeterClass =
+    "settings-meter grid min-h-kb-34 max-w-[250px] grid-cols-[17px_auto_minmax(0,auto)] items-center gap-kb-6 rounded-keycap border border-[color-mix(in_oklch,var(--coral)_34%,var(--line-2))] px-kb-10 py-0 text-ink [background:color-mix(in_oklch,var(--coral)_9%,var(--surface))] data-[empty=true]:border-line-2 data-[empty=true]:text-ink-3 data-[empty=true]:[background:color-mix(in_oklch,var(--surface)_68%,transparent)] max-[820px]:flex-[1_1_210px] max-[560px]:max-w-none";
+  const settingsMeterIconClass = "material-symbols-outlined !text-[17px]";
+  const settingsMeterCountClass = "font-mono text-[13px]";
+  const settingsMeterCopyClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[11px]";
+  const settingsGridClass =
+    "settings-grid grid grid-cols-[minmax(0,1fr)_minmax(300px,340px)] items-start gap-kb-18 max-[1120px]:grid-cols-1";
+  const deviceColumnClass =
+    "device-column grid min-w-0 grid-cols-2 gap-kb-16 max-[820px]:grid-cols-1";
+  const appColumnClass = "app-column grid min-w-0 gap-kb-16 max-[1120px]:order-[-1]";
+  const settingsCardClass = "settings-card min-w-0";
+  const settingsCardHeaderClass =
+    "settings-card-header min-h-[54px] [&_[data-slot=card-description]]:!whitespace-normal";
+  const cardTitleStackClass = "card-title-stack grid min-w-0 flex-1 gap-kb-4";
+  const settingsCardBodyClass = "settings-card-body grid gap-kb-16";
+  const toggleListClass = "settings-card-body toggle-list grid gap-kb-8";
+  const monkeytypeSettingsClass = "settings-card-body monkeytype-settings grid gap-kb-12";
+  const extensionSettingsClass = "settings-card-body extension-settings grid gap-kb-12";
+  const appPreferencesClass = "settings-card-body app-preferences grid gap-kb-18";
+  const scopeChipClass =
+    "scope-chip inline-flex min-h-kb-24 items-center whitespace-nowrap rounded-[7px] border border-line-2 bg-paper-2 px-kb-8 py-0 font-mono text-[10px] text-ink-2";
+  const appScopeClass = cn(
+    scopeChipClass,
+    "app-scope border-[color-mix(in_oklch,var(--teal)_34%,var(--line-2))] [background:color-mix(in_oklch,var(--teal)_9%,var(--paper))]",
+  );
+  const integrationScopeClass = cn(
+    scopeChipClass,
+    "integration-scope border-[color-mix(in_oklch,var(--coral)_34%,var(--line-2))] [background:color-mix(in_oklch,var(--coral)_9%,var(--paper))] data-[connected=true]:border-[color-mix(in_oklch,var(--mint)_48%,var(--line-2))] data-[connected=true]:text-[oklch(0.36_0.12_155)] data-[connected=true]:[background:color-mix(in_oklch,var(--mint)_13%,var(--paper))]",
+  );
+  const extensionScopeClass = cn(
+    scopeChipClass,
+    "extension-scope border-[color-mix(in_oklch,var(--teal)_38%,var(--line-2))] [background:color-mix(in_oklch,var(--teal)_9%,var(--paper))] data-[connected=true]:border-[color-mix(in_oklch,var(--mint)_48%,var(--line-2))] data-[connected=true]:text-[oklch(0.36_0.12_155)] data-[connected=true]:[background:color-mix(in_oklch,var(--mint)_12%,var(--paper))]",
+  );
+  const transportChipClass = cn(
+    scopeChipClass,
+    "transport-chip border-[color-mix(in_oklch,var(--coral)_40%,var(--line-2))] text-coral-ink [background:color-mix(in_oklch,var(--coral)_10%,var(--paper))]",
+  );
+  const timingNoteClass =
+    "timing-note grid grid-cols-[22px_minmax(0,1fr)] items-start gap-kb-10 rounded-keycap border border-line px-kb-12 py-[11px] [background:color-mix(in_oklch,var(--paper-2)_72%,transparent)]";
+  const timingNoteIconClass = "material-symbols-outlined text-coral-ink !text-[20px]";
+  const bodyCopyClass = "m-0 text-[12px] leading-[1.55] text-ink-2";
+  const toggleRowClass =
+    "toggle-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-14 rounded-keycap border border-transparent bg-paper-2 px-kb-12 py-[11px] hover:border-line-2";
+  const toggleCopyStackClass = "grid min-w-0 gap-kb-4";
+  const toggleTitleClass = "font-mono text-[12px] font-strong";
+  const toggleDetailClass = "text-[12px] leading-[1.4] text-ink-3";
+  const transportGridClass =
+    "settings-transport-grid !grid !w-full !grid-cols-4 !gap-kb-8 max-[820px]:!grid-cols-2 max-[560px]:!grid-cols-1";
+  const transportOptionClass =
+    "settings-transport-option !flex !h-auto !min-h-kb-92 !w-full !flex-col !items-start !justify-start !gap-kb-3 !whitespace-normal !rounded-keycap !border-line-2 !bg-paper !p-kb-12 !text-left data-[state=on]:!border-[color-mix(in_oklch,var(--coral)_58%,var(--line-2))] data-[state=on]:![background:color-mix(in_oklch,var(--coral)_9%,var(--paper))] data-[state=on]:!shadow-[0_0_0_1px_color-mix(in_oklch,var(--coral)_34%,transparent)]";
+  const transportOptionDisabledClass = "disabled !cursor-not-allowed !opacity-[0.52]";
+  const transportOptionTitleClass = "font-mono text-[13px] text-ink";
+  const transportOptionDetailClass = "text-[11px] text-ink-3";
+  const transportOptionReasonClass = "mt-auto font-mono text-[9.5px] leading-[1.25] text-ink-3";
+  const preferenceSectionClass = "preference-section grid min-w-0 gap-kb-10";
+  const monkeytypeScoreboardClass =
+    "monkeytype-scoreboard grid grid-cols-2 gap-kb-8 max-[560px]:grid-cols-1";
+  const monkeytypeScoreClass =
+    "grid min-h-[54px] gap-kb-2 rounded-keycap border border-line bg-paper-2 px-kb-10 py-kb-9";
+  const monkeytypeScoreDisconnectedClass =
+    "text-ink-3 [background:color-mix(in_oklch,var(--paper-2)_60%,transparent)]";
+  const monkeytypeScoreValueClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[16px] leading-none";
+  const monkeytypeScoreLabelClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] text-ink-3";
+  const extensionSyncGridClass =
+    "extension-sync-grid grid grid-cols-4 gap-kb-7 max-[560px]:grid-cols-1";
+  const extensionSyncStatClass =
+    "grid min-h-kb-50 min-w-0 gap-kb-2 rounded-keycap border border-line bg-paper-2 p-kb-8";
+  const extensionSyncValueClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] leading-none";
+  const extensionSyncLabelClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink-3";
+  const extensionPairingCodeClass =
+    "extension-pairing-code grid min-w-0 gap-kb-5 rounded-keycap border border-[color-mix(in_oklch,var(--coral)_36%,var(--line-2))] px-kb-12 py-[11px] [background:color-mix(in_oklch,var(--coral)_10%,var(--paper))]";
+  const extensionPairingMetaClass =
+    "font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase";
+  const extensionPairingValueClass =
+    "[overflow-wrap:anywhere] font-mono text-[18px] tracking-[0.08em] text-ink";
+  const extensionCommandRowClass =
+    "extension-command-row grid grid-cols-2 gap-kb-6 max-[560px]:grid-cols-1";
+  const commandButtonClass = "w-full justify-center px-kb-8";
+  const extensionDeviceListClass = "extension-device-list grid min-w-0 gap-kb-7";
+  const extensionDeviceRowClass =
+    "extension-device-row grid min-h-[46px] min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-kb-8 rounded-keycap border border-line px-kb-9 py-kb-8 [background:color-mix(in_oklch,var(--paper-2)_76%,transparent)] data-[revoked=true]:opacity-[0.62]";
+  const extensionDeviceIconClass = "material-symbols-outlined text-teal !text-[18px]";
+  const extensionDeviceCopyClass = "min-w-0";
+  const extensionDeviceTitleClass =
+    "block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11.5px]";
+  const extensionDeviceMetaClass =
+    "block overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] text-ink-3";
+  const extensionDeviceStateClass = "device-state text-[10.5px] text-ink-3";
+  const extensionDeviceButtonClass =
+    "grid size-kb-28 place-items-center rounded-keycap border border-line bg-paper text-ink-2 hover:border-[color-mix(in_oklch,var(--coral)_44%,var(--line-2))] hover:text-coral-ink hover:[background:color-mix(in_oklch,var(--coral)_10%,var(--paper))] disabled:cursor-wait disabled:opacity-50";
+  const monkeytypeFormClass = "monkeytype-form grid min-w-0 gap-kb-10";
+  const monkeytypeFieldClass = "monkeytype-field grid min-w-0 gap-kb-6";
+  const monkeytypeFieldLabelClass =
+    "font-mono text-[10px] tracking-[0.12em] text-ink-3 uppercase";
+  const monkeytypeInputClass = "input !h-kb-34 !border-line-2 !bg-paper";
+  const monkeytypePresetSelectClass =
+    "input !h-kb-34 !border-line-2 appearance-none ![background:var(--paper)]";
+  const monkeytypeCommandRowClass =
+    "monkeytype-command-row grid grid-cols-3 gap-kb-6 max-[560px]:grid-cols-1";
+  const statusMessageClass = "m-0 rounded-keycap px-kb-10 py-kb-9 text-[12px] leading-[1.4]";
+  const errorMessageClass = cn(
+    statusMessageClass,
+    "border border-[oklch(0.62_0.2_25_/_0.3)] text-[oklch(0.42_0.15_25)] [background:oklch(0.95_0.04_25)]",
+  );
+  const noteMessageClass = cn(
+    statusMessageClass,
+    "border border-[color-mix(in_oklch,var(--mustard)_42%,var(--line-2))] text-ink-2 [background:color-mix(in_oklch,var(--mustard)_15%,var(--surface))]",
+  );
+  const preferenceHeadClass =
+    "preference-head flex min-w-0 items-baseline justify-between gap-kb-10";
+  const preferenceHeadTitleClass =
+    "m-0 font-mono text-[10px] tracking-[0.14em] text-ink-2 uppercase";
+  const preferenceHeadValueClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-ink-3";
+  const settingsOsSegmentClass =
+    "settings-os-segment w-full [&_button]:min-w-0 [&_button]:flex-1 [&_button]:!px-kb-8";
+  const accentGridClass = "accent-grid grid grid-cols-2 gap-kb-8 max-[560px]:grid-cols-1";
+  const accentSwatchClass =
+    "accent-swatch grid min-h-kb-38 grid-cols-[26px_minmax(0,1fr)] items-center gap-kb-8 rounded-keycap !border !border-line-2 ![background:var(--paper)] px-kb-8 py-kb-6 text-left !text-ink-2 transition-[border-color,background,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:!border-[color-mix(in_oklch,var(--accent-color)_66%,var(--line-2))] hover:![background:color-mix(in_oklch,var(--accent-color)_10%,var(--paper))]";
+  const accentSwatchActiveClass =
+    "active !border-[color-mix(in_oklch,var(--accent-color)_66%,var(--line-2))] ![background:color-mix(in_oklch,var(--accent-color)_10%,var(--paper))] shadow-[0_0_0_1px_color-mix(in_oklch,var(--accent-color)_40%,transparent)]";
+  const accentPreviewClass =
+    "h-kb-22 w-kb-26 rounded-[7px] border border-[rgba(27,25,23,0.16)] [background:var(--accent-color)] shadow-[inset_0_-3px_0_rgba(27,25,23,0.14)]";
+  const accentLabelClass =
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] font-strong";
+  const inlineCodeClass = "rounded-[5px] bg-paper-2 px-kb-4 py-px font-mono text-[11px] text-ink";
+  const preferenceErrorClass = cn(errorMessageClass, "preference-error leading-[1.45]");
 
   $effect(() => {
     const safe = normalizeSplitTransport(settings.splitTransport, profile);
@@ -449,19 +593,21 @@
   }
 </script>
 
-<section class="settings-page">
-  <header class="settings-toolbar">
-    <div class="settings-title">
-      <span>Profile settings</span>
-      <h2>{profileDisplayName(profile)}</h2>
+<section class={settingsPageClass}>
+  <header class={settingsToolbarClass}>
+    <div class={settingsTitleClass}>
+      <span class={settingsEyebrowClass}>Profile settings</span>
+      <h2 class={settingsHeadingClass}>{profileDisplayName(profile)}</h2>
     </div>
 
-    <div class="settings-toolbar-spacer"></div>
+    <div class={settingsToolbarSpacerClass}></div>
 
-    <div class="settings-meter" data-empty={settingsChangeCount === 0}>
-      <span class="material-symbols-outlined" aria-hidden="true">manufacturing</span>
-      <strong>{settingsChangeCount}</strong>
-      <small>firmware setting{settingsChangeCount === 1 ? "" : "s"} changed</small>
+    <div class={settingsMeterClass} data-empty={settingsChangeCount === 0}>
+      <span class={settingsMeterIconClass} aria-hidden="true">manufacturing</span>
+      <strong class={settingsMeterCountClass}>{settingsChangeCount}</strong>
+      <small class={settingsMeterCopyClass}
+        >firmware setting{settingsChangeCount === 1 ? "" : "s"} changed</small
+      >
     </div>
 
     <Button variant="coral" href="/versions" disabled={workbench.dirty === 0}>
@@ -470,17 +616,17 @@
     </Button>
   </header>
 
-  <div class="settings-grid">
-    <div class="device-column">
-      <Card.Root class="settings-card timing-card">
-        <Card.Header class="settings-card-header">
-          <div class="card-title-stack">
+  <div class={settingsGridClass}>
+    <div class={deviceColumnClass}>
+      <Card.Root class={cn(settingsCardClass, "timing-card")}>
+        <Card.Header class={settingsCardHeaderClass}>
+          <div class={cardTitleStackClass}>
             <Card.Title>Timing</Card.Title>
             <Card.Description>Device-scoped behavior on the active profile</Card.Description>
           </div>
-          <span class="scope-chip">profile.settings</span>
+          <span class={scopeChipClass}>profile.settings</span>
         </Card.Header>
-        <Card.Content class="settings-card-body">
+        <Card.Content class={settingsCardBodyClass}>
           <SliderField
             label="Tap term"
             min={100}
@@ -504,9 +650,9 @@
             onValueChange={(value) => updateTiming("debounce", value)}
           />
 
-          <div class="timing-note">
-            <span class="material-symbols-outlined" aria-hidden="true">timer</span>
-            <p>
+          <div class={timingNoteClass}>
+            <span class={timingNoteIconClass} aria-hidden="true">timer</span>
+            <p class={bodyCopyClass}>
               Tap term controls how long a hold-tap waits before becoming a hold. Lower values feel
               faster; higher values reduce accidental holds.
             </p>
@@ -514,19 +660,19 @@
         </Card.Content>
       </Card.Root>
 
-      <Card.Root class="settings-card behavior-card">
-        <Card.Header class="settings-card-header">
-          <div class="card-title-stack">
+      <Card.Root class={cn(settingsCardClass, "behavior-card")}>
+        <Card.Header class={settingsCardHeaderClass}>
+          <div class={cardTitleStackClass}>
             <Card.Title>Behavior</Card.Title>
             <Card.Description>Global QMK/ZMK toggles stored with this variant</Card.Description>
           </div>
         </Card.Header>
-        <Card.Content class="settings-card-body toggle-list">
+        <Card.Content class={toggleListClass}>
           {#each behaviorToggles as toggle (toggle.key)}
-            <label class="toggle-row">
-              <span>
-                <strong>{toggle.label}</strong>
-                <small>{toggle.detail}</small>
+            <label class={toggleRowClass}>
+              <span class={toggleCopyStackClass}>
+                <strong class={toggleTitleClass}>{toggle.label}</strong>
+                <small class={toggleDetailClass}>{toggle.detail}</small>
               </span>
               <Switch
                 checked={settings[toggle.key]}
@@ -541,22 +687,22 @@
         </Card.Content>
       </Card.Root>
 
-      <Card.Root class="settings-card transport-card">
-        <Card.Header class="settings-card-header">
-          <div class="card-title-stack">
+      <Card.Root class={cn(settingsCardClass, "transport-card col-span-full")}>
+        <Card.Header class={settingsCardHeaderClass}>
+          <div class={cardTitleStackClass}>
             <Card.Title>Split Transport</Card.Title>
             <Card.Description>{splitTransportCopy}</Card.Description>
           </div>
-          <span class="transport-chip">{activeTransport.name}</span>
+          <span class={transportChipClass}>{activeTransport.name}</span>
         </Card.Header>
-        <Card.Content class="settings-card-body">
+        <Card.Content class={settingsCardBodyClass}>
           <ToggleGroup.Root
             type="single"
             value={normalizedSplitTransport}
             onValueChange={(next) => {
               if (next) updateSplitTransport(next as SplitTransport);
             }}
-            class="settings-transport-grid"
+            class={transportGridClass}
             variant="outline"
           >
             {#each SPLIT_TRANSPORT_OPTIONS as option (option.id)}
@@ -566,12 +712,12 @@
                 value={option.id}
                 disabled={!allowed}
                 title={disabledReason ?? option.detail}
-                class={`settings-transport-option${!allowed ? " disabled" : ""}`}
+                class={cn(transportOptionClass, !allowed && transportOptionDisabledClass)}
               >
-                <strong>{option.name}</strong>
-                <small>{option.detail}</small>
+                <strong class={transportOptionTitleClass}>{option.name}</strong>
+                <small class={transportOptionDetailClass}>{option.detail}</small>
                 {#if disabledReason}
-                  <span>{disabledReason}</span>
+                  <span class={transportOptionReasonClass}>{disabledReason}</span>
                 {/if}
               </ToggleGroup.Item>
             {/each}
@@ -580,42 +726,64 @@
       </Card.Root>
     </div>
 
-    <aside class="app-column" aria-label="Application preferences">
-      <Card.Root class="settings-card monkeytype-card">
-        <Card.Header class="settings-card-header">
-          <div class="card-title-stack">
+    <aside class={appColumnClass} aria-label="Application preferences">
+      <Card.Root class={cn(settingsCardClass, "monkeytype-card")}>
+        <Card.Header class={settingsCardHeaderClass}>
+          <div class={cardTitleStackClass}>
             <Card.Title>Monkeytype</Card.Title>
             <Card.Description>{monkeytypeSummary}</Card.Description>
           </div>
-          <span class="scope-chip integration-scope" data-connected={shell.monkeytype.connected}>
+          <span class={integrationScopeClass} data-connected={shell.monkeytype.connected}>
             {shell.monkeytype.connected ? "connected" : "data source"}
           </span>
         </Card.Header>
-        <Card.Content class="settings-card-body monkeytype-settings">
-          <div class="monkeytype-scoreboard" data-connected={shell.monkeytype.connected}>
-            <div>
-              <strong>{statValue(shell.monkeytype.wpm)}</strong>
-              <span>wpm avg</span>
+        <Card.Content class={monkeytypeSettingsClass}>
+          <div class={monkeytypeScoreboardClass} data-connected={shell.monkeytype.connected}>
+            <div
+              class={cn(
+                monkeytypeScoreClass,
+                !shell.monkeytype.connected && monkeytypeScoreDisconnectedClass,
+              )}
+            >
+              <strong class={monkeytypeScoreValueClass}>{statValue(shell.monkeytype.wpm)}</strong>
+              <span class={monkeytypeScoreLabelClass}>wpm avg</span>
             </div>
-            <div>
-              <strong>{statValue(shell.monkeytype.accuracy, 1)}%</strong>
-              <span>accuracy</span>
+            <div
+              class={cn(
+                monkeytypeScoreClass,
+                !shell.monkeytype.connected && monkeytypeScoreDisconnectedClass,
+              )}
+            >
+              <strong class={monkeytypeScoreValueClass}
+                >{statValue(shell.monkeytype.accuracy, 1)}%</strong
+              >
+              <span class={monkeytypeScoreLabelClass}>accuracy</span>
             </div>
-            <div>
-              <strong>{statValue(shell.monkeytype.pb)}</strong>
-              <span>pb wpm</span>
+            <div
+              class={cn(
+                monkeytypeScoreClass,
+                !shell.monkeytype.connected && monkeytypeScoreDisconnectedClass,
+              )}
+            >
+              <strong class={monkeytypeScoreValueClass}>{statValue(shell.monkeytype.pb)}</strong>
+              <span class={monkeytypeScoreLabelClass}>pb wpm</span>
             </div>
-            <div>
-              <strong>{statValue(shell.monkeytype.tests)}</strong>
-              <span>tests</span>
+            <div
+              class={cn(
+                monkeytypeScoreClass,
+                !shell.monkeytype.connected && monkeytypeScoreDisconnectedClass,
+              )}
+            >
+              <strong class={monkeytypeScoreValueClass}>{statValue(shell.monkeytype.tests)}</strong>
+              <span class={monkeytypeScoreLabelClass}>tests</span>
             </div>
           </div>
 
-          <form class="monkeytype-form" onsubmit={connectMonkeytype}>
-            <label class="monkeytype-field">
-              <span>ApeKey</span>
+          <form class={monkeytypeFormClass} onsubmit={connectMonkeytype}>
+            <label class={monkeytypeFieldClass}>
+              <span class={monkeytypeFieldLabelClass}>ApeKey</span>
               <input
-                class="input"
+                class={monkeytypeInputClass}
                 type="password"
                 bind:value={monkeytypeApeKey}
                 autocomplete="off"
@@ -624,10 +792,10 @@
               />
             </label>
 
-            <label class="monkeytype-field">
-              <span>Username</span>
+            <label class={monkeytypeFieldClass}>
+              <span class={monkeytypeFieldLabelClass}>Username</span>
               <input
-                class="input"
+                class={monkeytypeInputClass}
                 type="text"
                 bind:value={monkeytypeUsername}
                 autocomplete="username"
@@ -636,17 +804,23 @@
               />
             </label>
 
-            <label class="monkeytype-field monkeytype-preset">
-              <span>PB mode</span>
-              <select class="input" bind:value={monkeytypePreset}>
+            <label class={cn(monkeytypeFieldClass, "monkeytype-preset")}>
+              <span class={monkeytypeFieldLabelClass}>PB mode</span>
+              <select class={monkeytypePresetSelectClass} bind:value={monkeytypePreset}>
                 {#each monkeytypePresets as option (option.value)}
                   <option value={option.value}>{option.label}</option>
                 {/each}
               </select>
             </label>
 
-            <div class="monkeytype-command-row">
-              <Button variant="coral" size="sm" type="submit" disabled={!monkeytypeCanSubmit}>
+            <div class={monkeytypeCommandRowClass}>
+              <Button
+                variant="coral"
+                size="sm"
+                type="submit"
+                disabled={!monkeytypeCanSubmit}
+                class={commandButtonClass}
+              >
                 <span class="material-symbols-outlined" aria-hidden="true">link</span>
                 {shell.monkeytype.connected ? "Update" : "Connect"}
               </Button>
@@ -655,6 +829,7 @@
                 size="sm"
                 onclick={refreshMonkeytype}
                 disabled={!shell.monkeytype.connected || monkeytypeBusy}
+                class={commandButtonClass}
               >
                 <span class="material-symbols-outlined" aria-hidden="true">sync</span>
                 Refresh
@@ -664,6 +839,7 @@
                 size="sm"
                 onclick={disconnectMonkeytype}
                 disabled={!shell.monkeytype.connected || monkeytypeBusy}
+                class={commandButtonClass}
               >
                 <span class="material-symbols-outlined" aria-hidden="true">link_off</span>
                 Disconnect
@@ -672,61 +848,66 @@
           </form>
 
           {#if !monkeytypeSignedIn}
-            <p class="monkeytype-error" role="status">Sign in with GitHub first.</p>
+            <p class={cn(errorMessageClass, "monkeytype-error")} role="status">
+              Sign in with GitHub first.
+            </p>
           {:else if monkeytypeError || shell.monkeytype.error}
-            <p class="monkeytype-error" role="status">
+            <p class={cn(errorMessageClass, "monkeytype-error")} role="status">
               {monkeytypeError ?? shell.monkeytype.error}
             </p>
           {:else if shell.monkeytype.connected && shell.monkeytype.stale}
-            <p class="monkeytype-note" role="status">Stale sync</p>
+            <p class={cn(noteMessageClass, "monkeytype-note")} role="status">Stale sync</p>
           {/if}
         </Card.Content>
       </Card.Root>
 
-      <Card.Root class="settings-card extension-card">
-        <Card.Header class="settings-card-header">
-          <div class="card-title-stack">
+      <Card.Root class={cn(settingsCardClass, "extension-card")}>
+        <Card.Header class={settingsCardHeaderClass}>
+          <div class={cardTitleStackClass}>
             <Card.Title>Monkeytype run tagger</Card.Title>
             <Card.Description>{extensionSummary}</Card.Description>
           </div>
-          <span class="scope-chip extension-scope" data-connected={activeExtensionDevices.length > 0}>
+          <span class={extensionScopeClass} data-connected={activeExtensionDevices.length > 0}>
             extension
           </span>
         </Card.Header>
-        <Card.Content class="settings-card-body extension-settings">
-          <div class="extension-sync-grid">
-            <div>
-              <strong>{extensionChoices.keyboards.length}</strong>
-              <span>keyboards</span>
+        <Card.Content class={extensionSettingsClass}>
+          <div class={extensionSyncGridClass}>
+            <div class={extensionSyncStatClass}>
+              <strong class={extensionSyncValueClass}>{extensionChoices.keyboards.length}</strong>
+              <span class={extensionSyncLabelClass}>keyboards</span>
             </div>
-            <div>
-              <strong>{extensionChoices.layouts.length}</strong>
-              <span>layouts</span>
+            <div class={extensionSyncStatClass}>
+              <strong class={extensionSyncValueClass}>{extensionChoices.layouts.length}</strong>
+              <span class={extensionSyncLabelClass}>layouts</span>
             </div>
-            <div>
-              <strong>{activeExtensionDevices.length}</strong>
-              <span>active</span>
+            <div class={extensionSyncStatClass}>
+              <strong class={extensionSyncValueClass}>{activeExtensionDevices.length}</strong>
+              <span class={extensionSyncLabelClass}>active</span>
             </div>
-            <div>
-              <strong>{extensionSyncStatus}</strong>
-              <span>sync</span>
+            <div class={extensionSyncStatClass}>
+              <strong class={extensionSyncValueClass}>{extensionSyncStatus}</strong>
+              <span class={extensionSyncLabelClass}>sync</span>
             </div>
           </div>
 
           {#if extensionPairing}
-            <div class="extension-pairing-code">
-              <span>Pairing code</span>
-              <strong>{extensionPairing.code}</strong>
-              <small>Expires {shortDate(extensionPairing.expiresAt)}</small>
+            <div class={extensionPairingCodeClass}>
+              <span class={extensionPairingMetaClass}>Pairing code</span>
+              <strong class={extensionPairingValueClass}>{extensionPairing.code}</strong>
+              <small class={extensionPairingMetaClass}
+                >Expires {shortDate(extensionPairing.expiresAt)}</small
+              >
             </div>
           {/if}
 
-          <div class="extension-command-row">
+          <div class={extensionCommandRowClass}>
             <Button
               variant="coral"
               size="sm"
               onclick={createExtensionPairingCode}
               disabled={!monkeytypeSignedIn || extensionBusy}
+              class={commandButtonClass}
             >
               <span class="material-symbols-outlined" aria-hidden="true">add_link</span>
               {extensionBusy ? "Working" : "Create code"}
@@ -736,6 +917,7 @@
               size="sm"
               onclick={() => refreshExtensionDevices()}
               disabled={!monkeytypeSignedIn || extensionBusy}
+              class={commandButtonClass}
             >
               <span class="material-symbols-outlined" aria-hidden="true">sync</span>
               Refresh
@@ -743,30 +925,35 @@
           </div>
 
           {#if !monkeytypeSignedIn}
-            <p class="extension-note" role="status">Sign in with GitHub first.</p>
+            <p class={cn(noteMessageClass, "extension-note")} role="status">
+              Sign in with GitHub first.
+            </p>
           {:else if extensionDevices.length === 0}
-            <p class="extension-note" role="status">No paired devices.</p>
+            <p class={cn(noteMessageClass, "extension-note")} role="status">No paired devices.</p>
           {:else}
-            <div class="extension-device-list">
+            <div class={extensionDeviceListClass}>
               {#each extensionDevices as device (device.id)}
-                <div class="extension-device-row" data-revoked={device.revokedAt !== null}>
-                  <span class="material-symbols-outlined" aria-hidden="true">
+                <div class={extensionDeviceRowClass} data-revoked={device.revokedAt !== null}>
+                  <span class={extensionDeviceIconClass} aria-hidden="true">
                     {device.revokedAt ? "phonelink_erase" : "extension"}
                   </span>
-                  <div>
-                    <strong>{device.label ?? "Monkeytype tagger"}</strong>
-                    <small>
+                  <div class={extensionDeviceCopyClass}>
+                    <strong class={extensionDeviceTitleClass}
+                      >{device.label ?? "Monkeytype tagger"}</strong
+                    >
+                    <small class={extensionDeviceMetaClass}>
                       {device.extensionVersion ?? "unknown"} · last {shortDate(device.lastSeenAt)}
                     </small>
                   </div>
                   {#if device.revokedAt}
-                    <span class="device-state">revoked</span>
+                    <span class={extensionDeviceStateClass}>revoked</span>
                   {:else}
                     <button
                       type="button"
                       onclick={() => revokeExtension(device.id)}
                       disabled={extensionRevokingId === device.id}
                       aria-label={`Revoke ${device.label ?? "extension device"}`}
+                      class={extensionDeviceButtonClass}
                     >
                       <span class="material-symbols-outlined" aria-hidden="true">link_off</span>
                     </button>
@@ -777,810 +964,71 @@
           {/if}
 
           {#if extensionError}
-            <p class="extension-error" role="status">{extensionError}</p>
+            <p class={cn(errorMessageClass, "extension-error")} role="status">{extensionError}</p>
           {:else if extensionNotice}
-            <p class="extension-note" role="status">{extensionNotice}</p>
+            <p class={cn(noteMessageClass, "extension-note")} role="status">{extensionNotice}</p>
           {/if}
         </Card.Content>
       </Card.Root>
 
-      <Card.Root class="settings-card app-card">
-        <Card.Header class="settings-card-header">
-          <div class="card-title-stack">
+      <Card.Root class={cn(settingsCardClass, "app-card")}>
+        <Card.Header class={settingsCardHeaderClass}>
+          <div class={cardTitleStackClass}>
             <Card.Title>App Preferences</Card.Title>
             <Card.Description>{appPreferenceSummary}</Card.Description>
           </div>
-          <span class="scope-chip app-scope">local</span>
+          <span class={appScopeClass}>local</span>
         </Card.Header>
-        <Card.Content class="settings-card-body app-preferences">
-          <section class="preference-section">
-            <div class="preference-head">
-              <h3>Target OS</h3>
-              <span>{TargetOS.labels[workbench.targetOs]}</span>
+        <Card.Content class={appPreferencesClass}>
+          <section class={preferenceSectionClass}>
+            <div class={preferenceHeadClass}>
+              <h3 class={preferenceHeadTitleClass}>Target OS</h3>
+              <span class={preferenceHeadValueClass}>{TargetOS.labels[workbench.targetOs]}</span>
             </div>
             <SegmentedNav
               items={osItems}
               value={workbench.targetOs}
               onselect={updateTargetOS}
               ariaLabel="Target operating system"
-              class="settings-os-segment"
+              class={settingsOsSegmentClass}
             />
-            <p>
+            <p class={bodyCopyClass}>
               Keycaps and binding summaries use this OS when translating common shortcuts.
             </p>
           </section>
 
-          <section class="preference-section">
-            <div class="preference-head">
-              <h3>Accent</h3>
-              <span>{Accent.accentById(accentId).label}</span>
+          <section class={preferenceSectionClass}>
+            <div class={preferenceHeadClass}>
+              <h3 class={preferenceHeadTitleClass}>Accent</h3>
+              <span class={preferenceHeadValueClass}>{Accent.accentById(accentId).label}</span>
             </div>
-            <div class="accent-grid" role="radiogroup" aria-label="Accent color">
+            <div class={accentGridClass} role="radiogroup" aria-label="Accent color">
               {#each Accent.accentOptions as accent (accent.id)}
                 <button
                   type="button"
-                  class="accent-swatch"
-                  class:active={accent.id === accentId}
+                  class={cn(accentSwatchClass, accent.id === accentId && accentSwatchActiveClass)}
                   style={`--accent-color: ${accent.value}`}
                   role="radio"
                   aria-checked={accent.id === accentId}
                   title={`${accent.label} accent`}
                   onclick={() => updateAccent(accent.id)}
                 >
-                  <span aria-hidden="true"></span>
-                  <strong>{accent.label}</strong>
+                  <span class={accentPreviewClass} aria-hidden="true"></span>
+                  <strong class={accentLabelClass}>{accent.label}</strong>
                 </button>
               {/each}
             </div>
-            <p>
+            <p class={bodyCopyClass}>
               Accent is an app preference. It is persisted locally and applied by overriding
-              <code>--coral</code> at startup.
+              <code class={inlineCodeClass}>--coral</code> at startup.
             </p>
           </section>
 
           {#if preferenceError}
-            <p class="preference-error" role="status">{preferenceError}</p>
+            <p class={preferenceErrorClass} role="status">{preferenceError}</p>
           {/if}
         </Card.Content>
       </Card.Root>
     </aside>
   </div>
 </section>
-
-<style>
-  .settings-page {
-    display: grid;
-    gap: 18px;
-    align-content: start;
-    min-height: calc(100vh - 58px);
-    padding: 22px;
-    background:
-      radial-gradient(ellipse 86% 56% at 82% 0%, color-mix(in oklch, var(--coral) 7%, transparent), transparent 66%),
-      var(--paper);
-  }
-
-  .settings-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .settings-title {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .settings-title span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
-  .settings-title h2 {
-    overflow: hidden;
-    margin: 0;
-    font-size: 24px;
-    line-height: 1.05;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .settings-toolbar-spacer {
-    flex: 1;
-    min-width: 12px;
-  }
-
-  .settings-meter {
-    display: grid;
-    grid-template-columns: 17px auto minmax(0, auto);
-    align-items: center;
-    gap: 6px;
-    min-height: 34px;
-    max-width: 250px;
-    padding: 0 10px;
-    border: 1px solid color-mix(in oklch, var(--coral) 34%, var(--line-2));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--coral) 9%, var(--surface));
-    color: var(--ink);
-  }
-
-  .settings-meter[data-empty="true"] {
-    border-color: var(--line-2);
-    background: color-mix(in oklch, var(--surface) 68%, transparent);
-    color: var(--ink-3);
-  }
-
-  .settings-meter .material-symbols-outlined {
-    font-size: 17px;
-  }
-
-  .settings-meter strong {
-    font-family: var(--mono);
-    font-size: 13px;
-  }
-
-  .settings-meter small {
-    overflow: hidden;
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .settings-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
-    gap: 18px;
-    align-items: start;
-  }
-
-  .device-column {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    min-width: 0;
-  }
-
-  :global(.transport-card) {
-    grid-column: 1 / -1;
-  }
-
-  .app-column {
-    display: grid;
-    gap: 16px;
-    min-width: 0;
-  }
-
-  :global(.settings-card) {
-    min-width: 0;
-  }
-
-  :global(.settings-card-header) {
-    min-height: 54px;
-  }
-
-  :global(.settings-card-header > .card-title-stack) {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-    flex: 1;
-  }
-
-  :global(.settings-card-header [data-slot="card-description"]) {
-    white-space: normal;
-  }
-
-  :global(.settings-card-body) {
-    display: grid;
-    gap: 16px;
-  }
-
-  .scope-chip,
-  .transport-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-    padding: 0 8px;
-    border: 1px solid var(--line-2);
-    border-radius: 7px;
-    background: var(--paper-2);
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 10px;
-    white-space: nowrap;
-  }
-
-  .app-scope {
-    border-color: color-mix(in oklch, var(--teal) 34%, var(--line-2));
-    background: color-mix(in oklch, var(--teal) 9%, var(--paper));
-  }
-
-  .integration-scope {
-    border-color: color-mix(in oklch, var(--coral) 34%, var(--line-2));
-    background: color-mix(in oklch, var(--coral) 9%, var(--paper));
-  }
-
-  .integration-scope[data-connected="true"] {
-    border-color: color-mix(in oklch, var(--mint) 48%, var(--line-2));
-    background: color-mix(in oklch, var(--mint) 13%, var(--paper));
-    color: oklch(0.36 0.12 155);
-  }
-
-  .extension-scope {
-    border-color: color-mix(in oklch, var(--teal) 38%, var(--line-2));
-    background: color-mix(in oklch, var(--teal) 9%, var(--paper));
-  }
-
-  .extension-scope[data-connected="true"] {
-    border-color: color-mix(in oklch, var(--mint) 48%, var(--line-2));
-    background: color-mix(in oklch, var(--mint) 12%, var(--paper));
-    color: oklch(0.36 0.12 155);
-  }
-
-  .transport-chip {
-    border-color: color-mix(in oklch, var(--coral) 40%, var(--line-2));
-    background: color-mix(in oklch, var(--coral) 10%, var(--paper));
-    color: var(--coral-ink);
-  }
-
-  .timing-note {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
-    padding: 11px 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper-2) 72%, transparent);
-  }
-
-  .timing-note .material-symbols-outlined {
-    color: var(--coral-ink);
-    font-size: 20px;
-  }
-
-  .timing-note p,
-  .preference-section p {
-    margin: 0;
-    color: var(--ink-2);
-    font-size: 12px;
-    line-height: 1.55;
-  }
-
-  :global(.toggle-list) {
-    gap: 8px;
-  }
-
-  .toggle-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 14px;
-    align-items: center;
-    min-width: 0;
-    padding: 11px 12px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  .toggle-row:hover {
-    border-color: var(--line-2);
-  }
-
-  .toggle-row span {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .toggle-row strong {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .toggle-row small {
-    color: var(--ink-3);
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  :global(.settings-transport-grid) {
-    display: grid;
-    width: 100%;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  :global(.settings-transport-option) {
-    display: flex;
-    width: 100%;
-    min-height: 92px;
-    height: auto;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: flex-start;
-    gap: 3px;
-    padding: 12px;
-    border-color: var(--line-2);
-    border-radius: 8px;
-    background: var(--paper);
-    text-align: left;
-    white-space: normal;
-  }
-
-  :global(.settings-transport-option[data-state="on"]) {
-    border-color: color-mix(in oklch, var(--coral) 58%, var(--line-2));
-    background: color-mix(in oklch, var(--coral) 9%, var(--paper));
-    box-shadow: 0 0 0 1px color-mix(in oklch, var(--coral) 34%, transparent);
-  }
-
-  :global(.settings-transport-option.disabled) {
-    opacity: 0.52;
-    cursor: not-allowed;
-  }
-
-  :global(.settings-transport-option strong) {
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 13px;
-  }
-
-  :global(.settings-transport-option small) {
-    color: var(--ink-3);
-    font-size: 11px;
-  }
-
-  :global(.settings-transport-option span) {
-    margin-top: auto;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 9.5px;
-    line-height: 1.25;
-  }
-
-  :global(.app-preferences) {
-    gap: 18px;
-  }
-
-  .preference-section {
-    display: grid;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  :global(.monkeytype-settings) {
-    gap: 12px;
-  }
-
-  :global(.extension-settings) {
-    gap: 12px;
-  }
-
-  .monkeytype-scoreboard {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .extension-sync-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 7px;
-  }
-
-  .extension-sync-grid div {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-    min-height: 50px;
-    padding: 8px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  .extension-sync-grid strong,
-  .extension-sync-grid span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .extension-sync-grid strong {
-    font-family: var(--mono);
-    font-size: 13px;
-    line-height: 1;
-  }
-
-  .extension-sync-grid span {
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .extension-pairing-code {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    padding: 11px 12px;
-    border: 1px solid color-mix(in oklch, var(--coral) 36%, var(--line-2));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--coral) 10%, var(--paper));
-  }
-
-  .extension-pairing-code span,
-  .extension-pairing-code small {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .extension-pairing-code strong {
-    overflow-wrap: anywhere;
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 18px;
-    letter-spacing: 0.08em;
-  }
-
-  .extension-command-row {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .extension-command-row :global(button) {
-    width: 100%;
-    justify-content: center;
-    padding-inline: 8px;
-  }
-
-  .extension-device-list {
-    display: grid;
-    gap: 7px;
-    min-width: 0;
-  }
-
-  .extension-device-row {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: center;
-    min-width: 0;
-    min-height: 46px;
-    padding: 8px 9px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper-2) 76%, transparent);
-  }
-
-  .extension-device-row[data-revoked="true"] {
-    opacity: 0.62;
-  }
-
-  .extension-device-row > .material-symbols-outlined {
-    color: var(--teal);
-    font-size: 18px;
-  }
-
-  .extension-device-row div {
-    min-width: 0;
-  }
-
-  .extension-device-row strong,
-  .extension-device-row small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .extension-device-row strong {
-    font-family: var(--mono);
-    font-size: 11.5px;
-  }
-
-  .extension-device-row small,
-  .device-state {
-    color: var(--ink-3);
-    font-size: 10.5px;
-  }
-
-  .extension-device-row button {
-    display: grid;
-    width: 28px;
-    height: 28px;
-    place-items: center;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    color: var(--ink-2);
-    background: var(--paper);
-  }
-
-  .extension-device-row button:hover {
-    border-color: color-mix(in oklch, var(--coral) 44%, var(--line-2));
-    color: var(--coral-ink);
-    background: color-mix(in oklch, var(--coral) 10%, var(--paper));
-  }
-
-  .extension-device-row button:disabled {
-    opacity: 0.5;
-    cursor: wait;
-  }
-
-  .monkeytype-scoreboard div {
-    display: grid;
-    gap: 2px;
-    min-height: 54px;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--paper-2);
-  }
-
-  .monkeytype-scoreboard[data-connected="false"] div {
-    color: var(--ink-3);
-    background: color-mix(in oklch, var(--paper-2) 60%, transparent);
-  }
-
-  .monkeytype-scoreboard strong,
-  .monkeytype-scoreboard span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .monkeytype-scoreboard strong {
-    font-family: var(--mono);
-    font-size: 16px;
-    line-height: 1;
-  }
-
-  .monkeytype-scoreboard span {
-    color: var(--ink-3);
-    font-size: 10.5px;
-  }
-
-  .monkeytype-form {
-    display: grid;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .monkeytype-field {
-    display: grid;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .monkeytype-field span {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .monkeytype-field .input {
-    height: 34px;
-    border-color: var(--line-2);
-    background: var(--paper);
-  }
-
-  .monkeytype-preset select {
-    appearance: none;
-    background:
-      linear-gradient(45deg, transparent 50%, var(--ink-3) 50%) right 12px center / 6px 6px
-        no-repeat,
-      var(--paper);
-  }
-
-  .monkeytype-command-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .monkeytype-command-row :global(button) {
-    width: 100%;
-    justify-content: center;
-    padding-inline: 8px;
-  }
-
-  .monkeytype-error,
-  .monkeytype-note,
-  .extension-error,
-  .extension-note {
-    margin: 0;
-    padding: 9px 10px;
-    border-radius: 8px;
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  .monkeytype-error,
-  .extension-error {
-    border: 1px solid oklch(0.62 0.2 25 / 0.3);
-    background: oklch(0.95 0.04 25);
-    color: oklch(0.42 0.15 25);
-  }
-
-  .monkeytype-note,
-  .extension-note {
-    border: 1px solid color-mix(in oklch, var(--mustard) 42%, var(--line-2));
-    background: color-mix(in oklch, var(--mustard) 15%, var(--surface));
-    color: var(--ink-2);
-  }
-
-  .preference-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .preference-head h3 {
-    margin: 0;
-    color: var(--ink-2);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
-  .preference-head span {
-    overflow: hidden;
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10.5px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  :global(.settings-os-segment) {
-    width: 100%;
-  }
-
-  :global(.settings-os-segment button) {
-    flex: 1;
-    min-width: 0;
-    padding-inline: 8px;
-  }
-
-  .accent-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .accent-swatch {
-    display: grid;
-    grid-template-columns: 26px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    min-height: 38px;
-    padding: 6px 8px;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    background: var(--paper);
-    color: var(--ink-2);
-    text-align: left;
-    transition:
-      border-color var(--dur-fast) var(--ease-out-soft),
-      background var(--dur-fast) var(--ease-out-soft),
-      box-shadow var(--dur-fast) var(--ease-out-soft);
-  }
-
-  .accent-swatch:hover,
-  .accent-swatch.active {
-    border-color: color-mix(in oklch, var(--accent-color) 66%, var(--line-2));
-    background: color-mix(in oklch, var(--accent-color) 10%, var(--paper));
-  }
-
-  .accent-swatch.active {
-    box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent-color) 40%, transparent);
-  }
-
-  .accent-swatch span {
-    width: 26px;
-    height: 22px;
-    border: 1px solid rgba(27, 25, 23, 0.16);
-    border-radius: 7px;
-    background: var(--accent-color);
-    box-shadow: inset 0 -3px 0 rgba(27, 25, 23, 0.14);
-  }
-
-  .accent-swatch strong {
-    overflow: hidden;
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  code {
-    padding: 1px 4px;
-    border-radius: 5px;
-    background: var(--paper-2);
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .preference-error {
-    margin: 0;
-    padding: 9px 10px;
-    border: 1px solid oklch(0.62 0.2 25 / 0.3);
-    border-radius: 8px;
-    background: oklch(0.95 0.04 25);
-    color: oklch(0.42 0.15 25);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  @media (max-width: 1120px) {
-    .settings-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .app-column {
-      order: -1;
-    }
-  }
-
-  @media (max-width: 820px) {
-    .settings-toolbar {
-      flex-wrap: wrap;
-    }
-
-    .settings-title {
-      width: 100%;
-    }
-
-    .settings-toolbar-spacer {
-      display: none;
-    }
-
-    .settings-meter {
-      flex: 1 1 210px;
-    }
-
-    .device-column {
-      grid-template-columns: 1fr;
-    }
-
-    :global(.settings-transport-grid) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 560px) {
-    .settings-page {
-      padding: 14px;
-    }
-
-    .settings-title h2 {
-      font-size: 20px;
-    }
-
-    .settings-meter {
-      max-width: none;
-    }
-
-    :global(.settings-transport-grid),
-    .accent-grid,
-    .monkeytype-scoreboard,
-    .monkeytype-command-row,
-    .extension-sync-grid,
-    .extension-command-row {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
