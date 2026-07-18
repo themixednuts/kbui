@@ -18,6 +18,14 @@ const viaRepo = "keyboards";
 const viaBranch = "master";
 const viaRepoName = `${viaOwner}/${viaRepo}`;
 const githubApiBase = "https://api.github.com";
+// codeload.github.com serves git archives directly (no api.github.com REST
+// call), so it isn't subject to the unauthenticated core API's 60 req/hr
+// rate limit that made this catalog 403 in production. The "legacy.zip"
+// variant additionally nests every file under a `<owner>-<repo>-<shortsha>/`
+// root directory (same naming as the api.github.com zipball endpoint, which
+// actually redirects to this same codeload URL), so the resolved commit can
+// be read straight off the archive without ever calling the commits API.
+const viaCodeloadArchiveUrl = `https://codeload.github.com/${viaOwner}/${viaRepo}/legacy.zip/refs/heads/${viaBranch}`;
 const cacheTtlMs = 15 * 60 * 1000;
 
 class ViaCatalogFetchError extends Error {
@@ -168,6 +176,55 @@ function fetchViaArchiveEffect(ref: string) {
   );
 }
 
+/**
+ * Fetches the current archive straight from codeload, bypassing the
+ * api.github.com REST surface (and its shared unauthenticated rate limit)
+ * entirely. Used whenever no GitHub token is configured, and as the fallback
+ * when the authenticated revision lookup fails.
+ */
+function fetchViaArchiveFromCodeloadEffect() {
+  return retryTransient(
+    Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(viaCodeloadArchiveUrl, {
+          headers: { "User-Agent": "kbui-via-catalog" },
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new ViaCatalogFetchError(
+            `VIA catalog codeload archive returned ${response.status}: ${body.slice(0, 400)}`,
+            response.status === 408 || response.status === 429 || response.status >= 500,
+          );
+        }
+
+        return new Uint8Array(await response.arrayBuffer());
+      },
+      catch: (error) =>
+        error instanceof ViaCatalogFetchError
+          ? error
+          : new ViaCatalogFetchError(
+              error instanceof Error ? error.message : "VIA catalog codeload archive request failed.",
+              true,
+            ),
+    }),
+  );
+}
+
+/**
+ * Recovers the resolved commit from an unzipped archive's root directory
+ * name (`<owner>-<repo>-<shortsha>/...`) instead of a separate commits API
+ * call. Falls back to the branch name if the archive layout ever changes.
+ */
+function deriveRevisionFromArchive(archive: Record<string, Uint8Array>): string | undefined {
+  for (const path of Object.keys(archive)) {
+    const root = path.split("/", 1)[0];
+    const match = root ? /-([0-9a-f]{7,40})$/i.exec(root) : null;
+    if (match) return match[1];
+  }
+  return undefined;
+}
+
 function createViaCatalogEffect() {
   return Effect.gen(function* () {
     const { unzipSync } = yield* Effect.tryPromise({
@@ -178,8 +235,22 @@ function createViaCatalogEffect() {
           false,
         ),
     });
-    const ref = yield* fetchViaRevisionEffect();
-    const archiveBytes = yield* fetchViaArchiveEffect(ref);
+    // Only spend the commits API's unauthenticated rate-limit budget when a
+    // token is actually configured to raise it. Without one (production has
+    // no VIA_GITHUB_TOKEN/GITHUB_TOKEN secret today), or if the authenticated
+    // lookup fails transiently, fall back to the tokenless codeload archive
+    // and read the resolved commit off its root directory name instead.
+    const pinnedRef = githubToken()
+      ? yield* Effect.matchEffect(fetchViaRevisionEffect(), {
+          onFailure: () => Effect.succeed(undefined),
+          onSuccess: (sha) => Effect.succeed(sha),
+        })
+      : undefined;
+
+    const archiveBytes = pinnedRef
+      ? yield* fetchViaArchiveEffect(pinnedRef)
+      : yield* fetchViaArchiveFromCodeloadEffect();
+
     const archive = yield* Effect.try({
       try: () => unzipSync(archiveBytes),
       catch: (cause) =>
@@ -188,6 +259,7 @@ function createViaCatalogEffect() {
           false,
         ),
     });
+    const ref = pinnedRef ?? deriveRevisionFromArchive(archive) ?? viaBranch;
     const decoder = new TextDecoder();
     const entries: KeyboardCatalogEntry[] = [];
 

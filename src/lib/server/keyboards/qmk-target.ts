@@ -518,7 +518,12 @@ function resolveQmkKeyboardIdentityEffect(input: {
     const records = catalog.items.get(usbIdentityKey(input.vendorId, input.productId)) ?? [];
     if (records.length === 0) return undefined;
 
-    const ref = yield* resolvePinnedQmkRefEffect(qmkGithubHeaders());
+    // The pinned ref is best-effort: an unauthenticated commits-API rate
+    // limit must not discard a resolved USB-identity match. Fall back to the
+    // default branch ref, same as QmkIndexAgent.buildIndex.
+    const ref = yield* resolvePinnedQmkRefEffect(qmkGithubHeaders()).pipe(
+      Effect.catch(() => Effect.succeed(qmkDefaultRef)),
+    );
     return resolveQmkIdentityFromRecords(records, input, ref, catalog.lastUpdated);
   });
 }
@@ -603,7 +608,14 @@ function resolveQmkFirmwareMetadataEffect(
           keyOrder: entry.keys.map((key) => key.id),
           processor,
           repository: qmkRepository,
-          ref: yield* resolvePinnedQmkRefEffect(githubHeaders),
+          // Best-effort: a resolved match (found via the unauthenticated
+          // keyboards.qmk.fm info.json lookups above) must not be discarded
+          // just because the commits-API ref lookup hits the unauthenticated
+          // rate limit. Fall back to the default branch ref, same as
+          // QmkIndexAgent.buildIndex and resolveQmkKeyboardIdentityEffect.
+          ref: yield* resolvePinnedQmkRefEffect(githubHeaders).pipe(
+            Effect.catch(() => Effect.succeed(qmkDefaultRef)),
+          ),
           targetConfirmed: matches.length === 1,
           uf2FamilyId: uf2?.familyId,
           uf2VolumeLabels: uf2?.volumeLabels,
