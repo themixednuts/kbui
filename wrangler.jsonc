@@ -18,7 +18,6 @@
   // is a heavy synchronous parse; raise the ceiling above the 30s default so a
   // cold first request has headroom. The real fix keeps the QMK USB-index build
   // off the detail path (see loadViaKeyboardDetail).
-  "limits": { "cpu_ms": 300000 },
   "flagship": [
     {
       "binding": "FLAGS",
