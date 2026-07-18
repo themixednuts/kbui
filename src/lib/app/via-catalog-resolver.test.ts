@@ -35,4 +35,24 @@ describe("VIA catalog resolver", () => {
       vendorId: 0xa8f8,
     });
   });
+
+  it("invokes getViaKeyboardIndex with zero arguments (regression: Effect must not leak an AbortSignal into the SvelteKit remote call)", async () => {
+    let indexCalls: unknown[][] = [];
+    const resolver = createViaCatalogResolver({
+      getViaKeyboardDetail: async () => {
+        throw new Error("No VIA detail should be requested without a catalog match");
+      },
+      getViaKeyboardIndex: async (...args: unknown[]) => {
+        indexCalls.push(args);
+        return { items: [] };
+      },
+      resolveKeyboardIdentity: async () => undefined,
+      workbench: { profile: {} } as WorkbenchStore,
+    });
+
+    await resolver.matrixHintFor(new BrowserDeviceIdentity());
+
+    expect(indexCalls.length).toBe(1);
+    expect(indexCalls[0].length).toBe(0);
+  });
 });

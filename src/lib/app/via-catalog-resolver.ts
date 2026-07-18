@@ -103,7 +103,7 @@ export function createViaCatalogResolver({
       started = forkApp(
         "via-catalog.index",
         Effect.tryPromise({
-          try: getViaKeyboardIndex,
+          try: () => getViaKeyboardIndex(),
           catch: (cause) => platformError("via-catalog.index", cause),
         }).pipe(
           Effect.ensuring(
