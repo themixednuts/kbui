@@ -1,6 +1,8 @@
 import { browser } from "$app/environment";
-import { Cause, Context, Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { Cause, Context, Effect, Layer, ManagedRuntime } from "effect";
 import type { SQLocal as SQLocalClient } from "sqlocal";
+
+import { LocalStoreUnavailable, openOpfsDatabaseEffect } from "./local-store-open";
 
 import {
   decodeWorkbenchVersionGraphEffect,
@@ -28,10 +30,7 @@ interface LocalStoreService {
 
 class LocalStore extends Context.Service<LocalStore, LocalStoreService>()("@kbui/LocalStore") {}
 
-export class LocalStoreUnavailable extends Schema.TaggedErrorClass<LocalStoreUnavailable>()(
-  "LocalStoreUnavailable",
-  { message: Schema.String },
-) {}
+export { LocalStoreUnavailable } from "./local-store-open";
 
 const databasePath = "kbui.sqlite3";
 const legacyMigrationKey = "kbui.sqlocal.opfs-migration.v1";
@@ -147,30 +146,30 @@ function openClientEffect(): Effect.Effect<
   import("effect").Scope.Scope
 > {
   return Effect.acquireRelease(
-    Effect.tryPromise({
-      try: async () => {
-        if (!browser) {
-          throw new LocalStoreUnavailable({
+    Effect.gen(function* () {
+      if (!browser) {
+        return yield* Effect.fail(
+          new LocalStoreUnavailable({
+            reason: "not-browser",
             message: "Local profile storage is only available in the browser.",
-          });
-        }
-        const { SQLocal } = await import("sqlocal");
-        // A file path selects SQLocal's worker-backed OPFS VFS. That keeps
-        // SQLite I/O off the UI thread and persists a real database file.
-        const db = new SQLocal({ databasePath, onInit: schemaStatements });
-        const info = await db.getDatabaseInfo();
-        if (info.storageType !== "opfs") {
-          await db.destroy();
-          throw new LocalStoreUnavailable({
-            message:
-              "Local profile storage requires OPFS. Check the cross-origin isolation response headers.",
-          });
-        }
-        await migrateLegacyLocalStorageDatabase(db, SQLocal);
-        return db;
-      },
-      catch: (cause) =>
-        cause instanceof LocalStoreUnavailable ? cause : platformError("local-store.open", cause),
+          }),
+        );
+      }
+      const { SQLocal } = yield* Effect.tryPromise({
+        try: () => import("sqlocal"),
+        catch: (cause) => platformError("local-store.open", cause),
+      });
+      // A file path selects SQLocal's worker-backed OPFS VFS. That keeps
+      // SQLite I/O off the UI thread and persists a real database file.
+      const db = yield* openOpfsDatabaseEffect({
+        createDatabase: async () => new SQLocal({ databasePath, onInit: schemaStatements }),
+        isCrossOriginIsolated: () => globalThis.crossOriginIsolated === true,
+      });
+      yield* Effect.tryPromise({
+        try: () => migrateLegacyLocalStorageDatabase(db, SQLocal),
+        catch: (cause) => platformError("local-store.open", cause),
+      }).pipe(Effect.onError(() => Effect.tryPromise(() => db.destroy()).pipe(Effect.ignore)));
+      return db;
     }),
     (db) =>
       Effect.tryPromise({
