@@ -1,6 +1,8 @@
 <script lang="ts">
   import {
     AlertTriangle,
+    ChevronLeft,
+    ChevronRight,
     Flag,
     GitFork,
     Heart,
@@ -10,7 +12,7 @@
   } from "@lucide/svelte";
 
   import KeyboardBoard from "$lib/components/board/KeyboardBoard.svelte";
-  import { Button, Chip } from "$lib/components/ui";
+  import { Button } from "$lib/components/ui";
   import type { CommunityKeymapDetail } from "$lib/community/types";
   import { decodeDeviceProfileFromStorage } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
@@ -52,24 +54,31 @@
   const modalBackdropClass =
     "modal-backdrop fixed inset-0 z-30 grid place-items-center bg-[rgba(20,18,16,0.5)] p-kb-22 backdrop-blur-[10px] max-[620px]:p-kb-10";
   const previewModalClass =
-    "preview-modal grid max-h-[min(780px,calc(100vh-44px))] min-h-[min(680px,calc(100vh-44px))] w-[min(1120px,calc(100vw-44px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line-2 bg-surface shadow-modal max-[900px]:min-h-0 max-[620px]:max-h-[calc(100vh-20px)] max-[620px]:w-[calc(100vw-20px)]";
+    "preview-modal grid max-h-[min(780px,calc(100vh-44px))] min-h-[min(680px,calc(100vh-44px))] w-[min(1120px,calc(100vw-44px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-line-2 bg-surface shadow-modal max-[900px]:min-h-0 max-[620px]:max-h-[calc(100vh-20px)] max-[620px]:w-[calc(100vw-20px)]";
   const modalHeaderClass =
     "modal-header grid min-w-0 grid-cols-[minmax(0,1fr)_34px] items-center gap-kb-14 border-b border-line px-kb-18 py-kb-16 max-[620px]:p-kb-12";
   const modalTitleClass = "modal-title grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-kb-12";
   const authorAvatarClass =
-    "author-avatar grid size-kb-40 place-items-center rounded-[8px] border border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] bg-coral font-mono text-[12px] font-bold text-[#1c0a04]";
+    "author-avatar grid size-kb-40 place-items-center rounded-lg border border-coral bg-coral font-mono text-kb-12 font-bold text-coral-ink";
   const modalHeadingClass =
     "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[20px] leading-[1.15] max-[620px]:text-[16px]";
   const modalBylineClass =
-    "m-0 mt-kb-4 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-ink-3";
+    "m-0 mt-kb-4 flex min-w-0 items-center gap-kb-4 overflow-hidden whitespace-nowrap font-mono text-[11px] text-ink-3";
+  const modalOfficialMarkClass = "inline-grid shrink-0 place-items-center text-ink-3";
   const closeButtonClass =
-    "close-button grid size-kb-34 place-items-center rounded-[8px] !border !border-line !bg-paper-2 !text-ink-2 hover:!border-line-2 hover:!text-ink";
+    "close-button size-kb-34 border-line bg-surface text-ink-2 hover:border-line-2 hover:bg-surface-2 hover:text-ink";
   const modalContentClass =
     "modal-content grid min-h-0 grid-cols-[minmax(0,1fr)_300px] max-[900px]:grid-cols-[minmax(0,1fr)] max-[900px]:overflow-auto";
   const boardPanelClass =
-    "board-panel flex min-h-0 min-w-0 border-r border-line max-[900px]:min-h-[380px] max-[900px]:border-r-0 max-[900px]:border-b";
+    "board-panel relative flex min-h-0 min-w-0 border-r border-line max-[900px]:min-h-[380px] max-[900px]:border-r-0 max-[900px]:border-b";
   const previewBoardClass =
     "community-preview-board [&_.keyboard-board-viewport]:min-h-0 [&_.keyboard-board-viewport]:p-kb-24";
+  const layerSwitcherClass =
+    "preview-layer-switcher absolute top-kb-12 left-1/2 z-20 inline-grid -translate-x-1/2 grid-cols-[30px_minmax(112px,auto)_30px] items-center overflow-hidden rounded-pill border border-line-2 bg-[color-mix(in_oklch,var(--card-surface)_90%,transparent)] shadow-card backdrop-blur-[8px]";
+  const layerCycleButtonClass =
+    "layer-cycle-button size-kb-30 rounded-none border-0 bg-transparent p-0 text-ink-2 shadow-none transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-30";
+  const activeLayerClass =
+    "active-preview-layer inline-flex h-kb-30 min-w-0 items-center justify-center gap-kb-7 border-x border-line px-kb-10 font-mono text-[10px] text-ink";
   const detailPanelClass =
     "detail-panel flex min-h-0 min-w-0 flex-col gap-kb-14 overflow-auto p-kb-16 max-[900px]:overflow-visible";
   const wrapRowClass = "flex flex-wrap gap-kb-6";
@@ -81,9 +90,9 @@
     "grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-[8px] border border-line bg-paper-2 px-kb-10 py-kb-9";
   const signalTermClass = "inline-flex items-center gap-kb-7 font-mono text-[11px] text-ink-2";
   const signalValueClass = "m-0 font-mono text-[13px] font-bold";
-  const actionFeedbackClass = "action-feedback m-0 rounded-[8px] px-kb-10 py-kb-8 text-[12px] leading-[1.35]";
+  const actionFeedbackClass = "action-feedback m-0 rounded-lg px-kb-10 py-kb-8 text-kb-12 leading-[1.35]";
   const actionFeedbackErrorClass =
-    "error border border-[oklch(0.62_0.2_25_/_0.26)] bg-[oklch(0.95_0.04_25)] text-[oklch(0.42_0.15_25)]";
+    "error border border-[var(--danger-border)] bg-danger-surface text-danger-ink";
   const actionFeedbackSuccessClass =
     "success border border-[color-mix(in_oklch,var(--mint)_46%,var(--line-2))] bg-[color-mix(in_oklch,var(--mint)_15%,var(--surface))] text-[oklch(0.35_0.12_150)]";
   const actionStackClass = "action-stack mt-auto grid gap-kb-8 pt-kb-8";
@@ -95,18 +104,29 @@
 
   let boardZoom = $state(0.78);
   let boardPan = $state({ x: 0, y: 0 });
+  let previewLayerIndex = $state(0);
+  let previewProfileId = $state<string | null>(null);
 
   const profile = $derived(detail ? decodeDeviceProfileFromStorage(detail.profile) : null);
   const authorLabel = $derived(
     detail?.author.handle ? `@${detail.author.handle}` : (detail?.author.displayName ?? ""),
   );
   const isOfficial = $derived(detail?.source === "official");
+  const previewLayers = $derived(profile?.layers ?? []);
+  const previewLayer = $derived(previewLayers[previewLayerIndex] ?? previewLayers[0] ?? null);
 
   $effect(() => {
-    if (!detail?.id) return;
-    boardZoom = 0.78;
-    boardPan = { x: 0, y: 0 };
+    const nextProfileId = profile?.id ?? null;
+    if (nextProfileId === previewProfileId) return;
+    previewProfileId = nextProfileId;
+    previewLayerIndex = 0;
   });
+
+  function cyclePreviewLayer(direction: -1 | 1) {
+    if (previewLayers.length < 2) return;
+    previewLayerIndex =
+      (previewLayerIndex + direction + previewLayers.length) % previewLayers.length;
+  }
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key !== "Escape") return;
@@ -144,12 +164,17 @@
           <div>
             <h2 class={modalHeadingClass}>{detail.title}</h2>
             <p class={modalBylineClass}>
-              {authorLabel} · {detail.boardName} ·
+              <span class="text-ink-2">{authorLabel}</span>
               {#if isOfficial}
-                Official curated layout
-              {:else}
-                updated {formatDate(detail.updatedAt)}
+                <span
+                  class={modalOfficialMarkClass}
+                  aria-label="Official first-party layout"
+                  title="Official first-party layout"
+                >
+                  <ShieldCheck size={12} aria-hidden="true" />
+                </span>
               {/if}
+              <span class="overflow-hidden text-ellipsis">· {detail.boardName} · updated {formatDate(detail.updatedAt)}</span>
             </p>
           </div>
         {:else}
@@ -160,13 +185,20 @@
         {/if}
       </div>
 
-      <button type="button" class={closeButtonClass} aria-label="Close preview" onclick={onclose}>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        class={closeButtonClass}
+        aria-label="Close preview"
+        onclick={onclose}
+      >
         <X size={18} aria-hidden="true" />
-      </button>
+      </Button>
     </header>
 
     {#if error}
-      <div class={cn("modal-error", modalStateClass, "text-[oklch(0.42_0.15_25)]")} role="status">
+      <div class={cn("modal-error", modalStateClass, "text-danger-ink")} role="status">
         <AlertTriangle size={16} aria-hidden="true" />
         {error}
       </div>
@@ -178,8 +210,51 @@
     {:else}
       <div class={modalContentClass}>
         <div class={boardPanelClass}>
+          {#if previewLayer}
+            <div
+              class={layerSwitcherClass}
+              role="group"
+              aria-label="Preview layer"
+              data-active-layer={previewLayer.id}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                class={layerCycleButtonClass}
+                aria-label="Previous layer"
+                title="Previous layer"
+                disabled={previewLayers.length < 2}
+                onclick={() => cyclePreviewLayer(-1)}
+              >
+                <ChevronLeft size={15} aria-hidden="true" />
+              </Button>
+              <span class={activeLayerClass} aria-live="polite">
+                <i
+                  class="size-kb-8 flex-none rounded-[3px]"
+                  style={`background: ${previewLayer.color}`}
+                  aria-hidden="true"
+                ></i>
+                <strong class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-inherit">{previewLayer.name}</strong>
+                <span class="flex-none text-ink-3">{previewLayerIndex + 1}/{previewLayers.length}</span>
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                class={layerCycleButtonClass}
+                aria-label="Next layer"
+                title="Next layer"
+                disabled={previewLayers.length < 2}
+                onclick={() => cyclePreviewLayer(1)}
+              >
+                <ChevronRight size={15} aria-hidden="true" />
+              </Button>
+            </div>
+          {/if}
           <KeyboardBoard
             {profile}
+            activeLayer={previewLayer?.id}
             lens="keys"
             bind:zoom={boardZoom}
             bind:pan={boardPan}
@@ -188,15 +263,6 @@
         </div>
 
         <aside class={detailPanelClass}>
-          <div class={cn("badge-row", wrapRowClass)}>
-            {#if isOfficial}
-              <Chip tone="warning" title="First-party curated keymap">
-                <ShieldCheck size={13} aria-hidden="true" />
-                Official
-              </Chip>
-            {/if}
-          </div>
-
           <p class={noteClass}>{detail.note}</p>
 
           <div class={cn("tag-row", wrapRowClass)}>

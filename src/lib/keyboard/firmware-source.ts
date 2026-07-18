@@ -1,4 +1,3 @@
-import { qmkDirectKeycodes } from "./qmk-keycodes";
 import {
   incompleteLogicBindingReason,
   isCompleteCombo,
@@ -17,6 +16,7 @@ import {
   type Macro,
   type TapDance,
 } from "./schema";
+import { zmkBindingExpression } from "./zmk-keycodes";
 
 export type FirmwareDiagnosticSeverity = "info" | "warning" | "error";
 export type FirmwareArtifactRole =
@@ -24,9 +24,13 @@ export type FirmwareArtifactRole =
   | "qmk-keymap-c"
   | "qmk-config-h"
   | "qmk-rules-mk"
+  | "qmk-userspace-manifest"
+  | "github-workflow"
+  | "kbui-manifest"
   | "zmk-keymap"
   | "zmk-conf"
-  | "zmk-build-yaml";
+  | "zmk-build-yaml"
+  | "zmk-west-manifest";
 
 export interface FirmwareDiagnostic {
   code: string;
@@ -34,6 +38,24 @@ export interface FirmwareDiagnostic {
   message: string;
   path?: string;
   severity: FirmwareDiagnosticSeverity;
+}
+
+export function firmwareDiagnosticKey(item: FirmwareDiagnostic) {
+  return [item.code, item.severity, item.file ?? "", item.path ?? "", item.message].join("\0");
+}
+
+export function firmwareDiagnosticDisplayKey(item: FirmwareDiagnostic) {
+  return [item.code, item.severity, item.path ?? item.file ?? ""].join("\0");
+}
+
+export function compactFirmwareDiagnostics(diagnostics: readonly FirmwareDiagnostic[]) {
+  const seen = new Set<string>();
+  return diagnostics.filter((item) => {
+    const key = firmwareDiagnosticDisplayKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export interface FirmwareGeneratedFile {
@@ -85,6 +107,7 @@ interface QmkMetadata {
   keyboard?: string;
   keymap: string;
   layout?: string;
+  targetConfirmed?: boolean;
 }
 
 interface ZmkMetadata {
@@ -92,6 +115,8 @@ interface ZmkMetadata {
   keyOrder?: string[];
   keymapName: string;
   shield?: string;
+  shields: string[];
+  targetConfirmed?: boolean;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -99,94 +124,15 @@ type Indexed<T> = { index: number; item: T };
 
 const qmkMacroPattern = /^QK_MACRO_(\d+)$/i;
 const qmkTapDancePattern = /^TD\((\d+)\)$/i;
-const qmkLayerTapPattern = /^LT\((\d+),(.+)\)$/i;
-const qmkLayerPattern = /^(MO|TO|TG)\((\d+)\)$/i;
-const qmkModifiedPattern = /^(C|S|A|G|LCTL|LSFT|LALT|LGUI|RCTL|RSFT|RALT|RGUI)\((.+)\)$/i;
-const qmkModTapPattern = /^(LCTL|LSFT|LALT|LGUI|RCTL|RSFT|RALT|RGUI)_T\((.+)\)$/i;
+const qmkModifiedSourceMin = 0x0100;
+const qmkModifiedSourceMax = 0x1fff;
+const qmkModTapSourceMin = 0x2000;
+const qmkModTapSourceMax = 0x3fff;
 const requiredQmkKeyboardPath = "<REQUIRED: qmk keyboard path>";
 const requiredQmkLayoutMacroJson = "<REQUIRED: qmk layout macro>";
-const requiredQmkLayoutMacroIdentifier = "KBGUI_REQUIRED_QMK_LAYOUT_MACRO";
+const requiredQmkLayoutMacroIdentifier = "KBUI_REQUIRED_QMK_LAYOUT_MACRO";
 const requiredZmkBoard = "<REQUIRED: zmk board>";
 const requiredZmkShield = "<REQUIRED: zmk shield>";
-
-const zmkKeyNames: Record<string, string> = {
-  KC_NO: "NO",
-  KC_TRNS: "TRANS",
-  KC_ESC: "ESC",
-  KC_TAB: "TAB",
-  KC_CAPS: "CAPS",
-  KC_ENT: "ENTER",
-  KC_SPC: "SPACE",
-  KC_BSPC: "BSPC",
-  KC_DEL: "DEL",
-  KC_INS: "INS",
-  KC_HOME: "HOME",
-  KC_END: "END",
-  KC_PGUP: "PG_UP",
-  KC_PGDN: "PG_DN",
-  KC_LEFT: "LEFT",
-  KC_DOWN: "DOWN",
-  KC_UP: "UP",
-  KC_RGHT: "RIGHT",
-  KC_MINS: "MINUS",
-  KC_EQL: "EQUAL",
-  KC_LBRC: "LBKT",
-  KC_RBRC: "RBKT",
-  KC_BSLS: "BSLH",
-  KC_SCLN: "SEMI",
-  KC_QUOT: "SQT",
-  KC_GRV: "GRAVE",
-  KC_COMM: "COMMA",
-  KC_DOT: "DOT",
-  KC_SLSH: "SLASH",
-  KC_LCTL: "LCTRL",
-  KC_LSFT: "LSHFT",
-  KC_LALT: "LALT",
-  KC_LGUI: "LGUI",
-  KC_RCTL: "RCTRL",
-  KC_RSFT: "RSHFT",
-  KC_RALT: "RALT",
-  KC_RGUI: "RGUI",
-  KC_MUTE: "C_MUTE",
-  KC_VOLU: "C_VOL_UP",
-  KC_VOLD: "C_VOL_DN",
-  KC_MPLY: "C_PP",
-  KC_MPRV: "C_PREV",
-  KC_MNXT: "C_NEXT",
-  KC_PSCR: "PSCRN",
-  KC_PAUS: "PAUSE_BREAK",
-};
-
-for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") zmkKeyNames[`KC_${letter}`] = letter;
-for (let index = 1; index <= 9; index += 1) zmkKeyNames[`KC_${index}`] = `N${index}`;
-zmkKeyNames.KC_0 = "N0";
-for (let index = 1; index <= 24; index += 1) zmkKeyNames[`KC_F${index}`] = `F${index}`;
-
-const zmkModifierNames: Record<string, string> = {
-  A: "LA",
-  C: "LC",
-  G: "LG",
-  LALT: "LA",
-  LCTL: "LC",
-  LGUI: "LG",
-  LSFT: "LS",
-  RALT: "RA",
-  RCTL: "RC",
-  RGUI: "RG",
-  RSFT: "RS",
-  S: "LS",
-};
-
-const zmkModTapNames: Record<string, string> = {
-  LALT: "LALT",
-  LCTL: "LCTRL",
-  LGUI: "LGUI",
-  LSFT: "LSHFT",
-  RALT: "RALT",
-  RCTL: "RCTRL",
-  RGUI: "RGUI",
-  RSFT: "RSHFT",
-};
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -257,7 +203,9 @@ function qmkMetadata(profile: DeviceProfile): QmkMetadata {
       "qmkKeyboardPath",
       "keyboard_path",
     ]),
-    keymap: slugFor(profile.name || profile.id, "kbgui_keymap").replace(/-/g, "_"),
+    keymap:
+      firstString(records, ["keymap", "keymapName", "qmkKeymap"]) ??
+      slugFor(profile.name || profile.id, "kbui_keymap").replace(/-/g, "_"),
     layout: firstString(records, [
       "layout",
       "layoutMacro",
@@ -271,21 +219,28 @@ function qmkMetadata(profile: DeviceProfile): QmkMetadata {
       "physicalKeyOrder",
       "qmkKeyOrder",
     ]),
+    targetConfirmed: profile.firmwareMetadata?.qmk?.targetConfirmed,
   };
 }
 
 function zmkMetadata(profile: DeviceProfile): ZmkMetadata {
   const records = metadataRecords(profile, "zmk");
+  const shield = firstString(records, ["shield", "zmkShield"]);
+  const shields = firstStringArray(records, ["shields", "zmkShields"]);
   return {
     board: firstString(records, ["board", "zmkBoard"]),
-    keymapName: slugFor(profile.name || profile.id, "kbgui").replace(/-/g, "_"),
-    shield: firstString(records, ["shield", "zmkShield"]),
+    keymapName:
+      firstString(records, ["keymap", "keymapName", "zmkKeymap"]) ??
+      slugFor(profile.name || profile.id, "kbui").replace(/-/g, "_"),
+    shield: shields?.[0] ?? shield,
+    shields: shields ?? (shield ? [shield] : []),
     keyOrder: firstStringArray(records, [
       "keyOrder",
       "physicalKeyOrder",
       "zmkKeyOrder",
       "keyPositionOrder",
     ]),
+    targetConfirmed: profile.firmwareMetadata?.zmk?.targetConfirmed,
   };
 }
 
@@ -326,7 +281,7 @@ function keyPositionOrder(
       diagnostics.push(
         diagnostic(
           `${target}.key_order.unknown_keys`,
-          "warning",
+          "error",
           `Configured key order includes unknown key ids: ${unknown.join(", ")}.`,
         ),
       );
@@ -335,8 +290,8 @@ function keyPositionOrder(
       diagnostics.push(
         diagnostic(
           `${target}.key_order.incomplete`,
-          "warning",
-          `Configured key order omitted ${missing.length} physical keys; row/column fallback appended them.`,
+          "error",
+          `Configured key order omitted ${missing.length} physical keys; firmware generation is blocked until the physical order is complete.`,
         ),
       );
     }
@@ -353,10 +308,10 @@ function keyPositionOrder(
   diagnostics.push(
     diagnostic(
       `${target}.metadata.key_order_missing`,
-      "warning",
+      "error",
       target === "qmk"
-        ? "QMK layout macro key order is missing; row/column order is emitted as an inspectable fallback."
-        : "ZMK physical position order is missing; row/column order is emitted as an inspectable fallback.",
+        ? "QMK layout macro key order is missing; firmware generation is blocked until it is resolved."
+        : "ZMK physical position order is missing; firmware generation is blocked until it is resolved.",
     ),
   );
   return { diagnostics, keyOrder: sortKeysByMatrix(profile.keys).map((key) => key.id) };
@@ -375,17 +330,62 @@ function specialQmkCode(code: string) {
   return undefined;
 }
 
+function qmkSourceModifierNames(mask: number) {
+  const side = mask & 0x10 ? "R" : "L";
+  return [
+    [0x01, `${side}CTL`],
+    [0x02, `${side}SFT`],
+    [0x04, `${side}ALT`],
+    [0x08, `${side}GUI`],
+  ]
+    .filter(([bit]) => mask & Number(bit))
+    .map(([, name]) => String(name));
+}
+
+function qmkSourceModifierMask(mask: number) {
+  const side = mask & 0x10 ? "R" : "L";
+  const modifiers = [
+    [0x01, `MOD_${side}CTL`],
+    [0x02, `MOD_${side}SFT`],
+    [0x04, `MOD_${side}ALT`],
+    [0x08, `MOD_${side}GUI`],
+  ]
+    .filter(([bit]) => mask & Number(bit))
+    .map(([, name]) => String(name));
+
+  return modifiers.length > 0 ? modifiers.join(" | ") : "MOD_NONE";
+}
+
+function portableQmkSourceCode(value: number) {
+  if (value >= qmkModifiedSourceMin && value <= qmkModifiedSourceMax) {
+    const modifiers = qmkSourceModifierNames((value >> 8) & 0x1f);
+    let code = qmkKeycodeName(value & 0xff);
+    for (let index = modifiers.length - 1; index >= 0; index -= 1) {
+      code = `${modifiers[index]}(${code})`;
+    }
+    return code;
+  }
+
+  if (value >= qmkModTapSourceMin && value <= qmkModTapSourceMax) {
+    const modifierMask = qmkSourceModifierMask((value >> 8) & 0x1f);
+    return `MT(${modifierMask}, ${qmkKeycodeName(value & 0xff)})`;
+  }
+
+  return qmkKeycodeName(value);
+}
+
 function qmkCodeForBinding(
   binding: KeyBinding,
   diagnostics: FirmwareDiagnostic[],
   context: string,
-  fallback = "KC_NO",
+  _fallback = "KC_NO",
+  style: "source" | "canonical" = "source",
 ) {
   if (binding.tap || binding.hold || binding.macroId || binding.notes) {
     diagnostics.push(
       diagnostic(
         "qmk.binding.metadata",
-        binding.notes && !binding.tap && !binding.hold && !binding.macroId ? "info" : "warning",
+        binding.notes && !binding.tap && !binding.hold && !binding.macroId ? "info" : "error",
         `Binding metadata on ${context} is not represented by a plain keymap cell.`,
         { path: context },
       ),
@@ -400,19 +400,15 @@ function qmkCodeForBinding(
     diagnostics.push(
       diagnostic(
         "qmk.keycode.unsupported",
-        "warning",
-        `Unsupported QMK keycode ${binding.code} at ${context}; ${fallback} was emitted.`,
+        "error",
+        `Unsupported QMK keycode ${binding.code} at ${context}; firmware generation is blocked.`,
         { path: context },
       ),
     );
-    return `${fallback} /* UNSUPPORTED: ${binding.code} */`;
+    return `KBUI_UNSUPPORTED_KEYCODE /* ${binding.code} */`;
   }
 
-  return qmkKeycodeName(value);
-}
-
-function clearCodeForLayerIndex(layerIndex: number): string {
-  return layerIndex === 0 ? "KC_NO" : "KC_TRNS";
+  return style === "source" ? portableQmkSourceCode(value) : qmkKeycodeName(value);
 }
 
 function qmkCodeForProfileBinding(
@@ -420,23 +416,23 @@ function qmkCodeForProfileBinding(
   binding: KeyBinding,
   diagnostics: FirmwareDiagnostic[],
   context: string,
-  layerIndex: number,
+  _layerIndex: number,
+  style: "source" | "canonical" = "source",
 ) {
   const incomplete = incompleteLogicBindingReason(profile, binding.code);
   if (incomplete) {
-    const clearCode = clearCodeForLayerIndex(layerIndex);
     diagnostics.push(
       diagnostic(
         "qmk.logic.incomplete_binding",
-        "warning",
-        `${incomplete} ${clearCode} was emitted for this keymap cell.`,
+        "error",
+        `${incomplete} Firmware generation is blocked for this keymap cell.`,
         { path: context },
       ),
     );
-    return clearCode;
+    return `KBUI_INCOMPLETE_BINDING /* ${binding.code} */`;
   }
 
-  return qmkCodeForBinding(binding, diagnostics, context);
+  return qmkCodeForBinding(binding, diagnostics, context, "KC_NO", style);
 }
 
 function qmkCodeForJson(
@@ -446,10 +442,14 @@ function qmkCodeForJson(
   context: string,
   layerIndex: number,
 ) {
-  return qmkCodeForProfileBinding(profile, binding, diagnostics, context, layerIndex).replace(
-    /\s*\/\*.*\*\/\s*$/g,
-    "",
-  );
+  return qmkCodeForProfileBinding(
+    profile,
+    binding,
+    diagnostics,
+    context,
+    layerIndex,
+    "canonical",
+  ).replace(/\s*\/\*.*\*\/\s*$/g, "");
 }
 
 export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeymapJson {
@@ -461,6 +461,17 @@ export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeyma
     "qmk",
   );
   diagnostics.push(...orderDiagnostics);
+
+  if (metadata.targetConfirmed === false) {
+    diagnostics.push(
+      diagnostic(
+        "qmk.metadata.target_unconfirmed",
+        "error",
+        "Several QMK controller targets share this device identity. Confirm the physical controller before compiling.",
+        { file: "qmk/keymap.json", path: "metadata.qmk.targetConfirmed" },
+      ),
+    );
+  }
 
   if (!metadata.keyboard) {
     diagnostics.push(
@@ -525,6 +536,17 @@ export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceB
   );
   diagnostics.push(...orderDiagnostics);
 
+  if (metadata.targetConfirmed === false) {
+    diagnostics.push(
+      diagnostic(
+        "qmk.metadata.target_unconfirmed",
+        "error",
+        "Several QMK controller targets share this device identity. Confirm the physical controller before compiling.",
+        { file: "COMMANDS.txt", path: "metadata.qmk.targetConfirmed" },
+      ),
+    );
+  }
+
   if (!metadata.keyboard) {
     diagnostics.push(
       diagnostic(
@@ -540,7 +562,7 @@ export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceB
       diagnostic(
         "qmk.metadata.layout_missing",
         "error",
-        "QMK layout macro name is missing; replace KBGUI_REQUIRED_QMK_LAYOUT_MACRO with the target board layout macro before compiling.",
+        "QMK layout macro name is missing; replace KBUI_REQUIRED_QMK_LAYOUT_MACRO with the target board layout macro before compiling.",
         { file: `${sourceRoot}/keymap.c`, path: "metadata.qmk.layout" },
       ),
     );
@@ -596,11 +618,11 @@ function generateQmkKeymapC(
   const lines = [
     "#include QMK_KEYBOARD_H",
     "",
-    "// Generated by kbgui source export.",
+    "// Generated by kbui source export.",
     "// Review diagnostics before compiling; required board metadata is left as explicit REQUIRED markers.",
     ...(layoutMacro === requiredQmkLayoutMacroIdentifier
       ? [
-          "// REQUIRED: replace KBGUI_REQUIRED_QMK_LAYOUT_MACRO with the target board's real QMK layout macro.",
+          "// REQUIRED: replace KBUI_REQUIRED_QMK_LAYOUT_MACRO with the target board's real QMK layout macro.",
         ]
       : []),
     "",
@@ -641,7 +663,7 @@ function qmkMacroSource(macros: readonly Indexed<Macro>[], diagnostics: Firmware
     diagnostic(
       "qmk.macros.sequence_semantics",
       "warning",
-      "Macro sequence export uses tap_code16 calls; kbgui does not yet model press/release timing.",
+      "Macro sequence export uses tap_code16 calls; kbui does not yet model press/release timing.",
       { file: "keymap.c" },
     ),
   );
@@ -757,8 +779,8 @@ function qmkTapDanceSource(
   diagnostics.push(
     diagnostic(
       "qmk.tap_dance.hold_unsupported",
-      "warning",
-      "Tap dance hold behavior needs custom finished/reset handlers; double-tap skeleton was emitted.",
+      "error",
+      "Tap dance hold behavior needs custom finished/reset handlers; firmware generation is blocked.",
       { file: "keymap.c" },
     ),
   );
@@ -876,7 +898,7 @@ function generateQmkConfigH(profile: DeviceProfile, diagnostics: FirmwareDiagnos
   const lines = [
     "#pragma once",
     "",
-    "// Generated by kbgui source export.",
+    "// Generated by kbui source export.",
     `#define TAPPING_TERM ${Math.max(1, Math.round(profile.settings.tappingTerm))}`,
     `#define DEBOUNCE ${Math.max(0, Math.round(profile.settings.debounce))}`,
   ];
@@ -898,9 +920,7 @@ function generateQmkConfigH(profile: DeviceProfile, diagnostics: FirmwareDiagnos
     );
   }
   if (Object.keys(profile.lighting.keys).length > 0 || profile.capabilities.includes("lighting")) {
-    lines.push(
-      "// TODO: map kbgui lighting profile to this board's RGBLIGHT or RGB_MATRIX config.",
-    );
+    lines.push("// TODO: map kbui lighting profile to this board's RGBLIGHT or RGB_MATRIX config.");
     diagnostics.push(
       diagnostic(
         "qmk.lighting.unsupported",
@@ -915,7 +935,7 @@ function generateQmkConfigH(profile: DeviceProfile, diagnostics: FirmwareDiagnos
 }
 
 function generateQmkRulesMk(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[]) {
-  const rules = ["# Generated by kbgui source export."];
+  const rules = ["# Generated by kbui source export."];
   if (profile.protocol === "via-v3") rules.push("VIA_ENABLE = yes");
   if (completeCombos(profile.combos).length > 0) rules.push("COMBO_ENABLE = yes");
   if (completeTapDances(profile.tapDances).length > 0) rules.push("TAP_DANCE_ENABLE = yes");
@@ -948,6 +968,17 @@ export function generateZmkSource(profile: DeviceProfile): FirmwareSourceBundle 
   );
   diagnostics.push(...orderDiagnostics);
 
+  if (metadata.targetConfirmed === false) {
+    diagnostics.push(
+      diagnostic(
+        "zmk.metadata.target_unconfirmed",
+        "error",
+        "Several ZMK controller or shield targets match. Confirm the physical hardware before compiling.",
+        { file: "zmk/build.yaml", path: "metadata.zmk.targetConfirmed" },
+      ),
+    );
+  }
+
   if (!metadata.board) {
     diagnostics.push(
       diagnostic(
@@ -958,13 +989,13 @@ export function generateZmkSource(profile: DeviceProfile): FirmwareSourceBundle 
       ),
     );
   }
-  if (!metadata.shield) {
+  if (metadata.shields.length === 0) {
     diagnostics.push(
       diagnostic(
         "zmk.metadata.shield_missing",
         "error",
-        "ZMK shield identity is missing; set metadata.zmk.shield before compiling.",
-        { file: "zmk/build.yaml", path: "metadata.zmk.shield" },
+        "ZMK shield targets are missing; set the firmware target before compiling.",
+        { file: "zmk/build.yaml", path: "metadata.zmk.shields" },
       ),
     );
   }
@@ -1035,10 +1066,11 @@ function generateZmkKeymap(
   });
 
   const sections = [
-    "/* Generated by kbgui source export. Review diagnostics before compiling. */",
+    "/* Generated by kbui source export. Review diagnostics before compiling. */",
     "#include <behaviors.dtsi>",
     "#include <dt-bindings/zmk/keys.h>",
     "#include <dt-bindings/zmk/bt.h>",
+    "#include <dt-bindings/zmk/outputs.h>",
     "",
     "/ {",
     ...zmkMacroSection(completeMacros(profile.macros), diagnostics),
@@ -1062,7 +1094,7 @@ function zmkMacroSection(macros: readonly Macro[], diagnostics: FirmwareDiagnost
     diagnostic(
       "zmk.macros.sequence_semantics",
       "warning",
-      "ZMK macro export treats macro sequence entries as ordered taps; kbgui does not model timing yet.",
+      "ZMK macro export treats macro sequence entries as ordered taps; kbui does not model timing yet.",
       { file: ".keymap" },
     ),
   );
@@ -1077,7 +1109,7 @@ function zmkMacroSection(macros: readonly Macro[], diagnostics: FirmwareDiagnost
       return [
         `    ${node}: ${node} {`,
         '      compatible = "zmk,behavior-macro";',
-        '      label = "KBgui macro";',
+        '      label = "kbui macro";',
         "      #binding-cells = <0>;",
         `      bindings = ${bindings.map((binding) => `<${binding}>`).join(", ")};`,
         "    };",
@@ -1094,8 +1126,8 @@ function zmkTapDanceSection(tapDances: readonly TapDance[], diagnostics: Firmwar
   diagnostics.push(
     diagnostic(
       "zmk.tap_dance.hold_unsupported",
-      "warning",
-      "Tap dance hold fields need a ZMK hold-tap or custom behavior; tap/double-tap skeleton was emitted.",
+      "error",
+      "Tap dance hold fields need a ZMK hold-tap or custom behavior; firmware generation is blocked.",
       { file: ".keymap" },
     ),
   );
@@ -1113,7 +1145,7 @@ function zmkTapDanceSection(tapDances: readonly TapDance[], diagnostics: Firmwar
       return [
         `    ${node}: ${node} {`,
         '      compatible = "zmk,behavior-tap-dance";',
-        '      label = "KBgui tap dance";',
+        '      label = "kbui tap dance";',
         "      #binding-cells = <0>;",
         "      tapping-term-ms = <200>;",
         `      bindings = <${tap}>, <${doubleTap}>; /* UNSUPPORTED: hold ${dance.hold} */`,
@@ -1185,27 +1217,26 @@ function zmkBehaviorForBinding(
   binding: KeyBinding,
   diagnostics: FirmwareDiagnostic[],
   context: string,
-  layerIndex: number,
+  _layerIndex: number,
 ) {
   const incomplete = incompleteLogicBindingReason(profile, binding.code);
   if (incomplete) {
-    const text = layerIndex === 0 ? "&none" : "&trans";
     diagnostics.push(
       diagnostic(
         "zmk.logic.incomplete_binding",
-        "warning",
-        `${incomplete} ${text} was emitted for this keymap cell.`,
+        "error",
+        `${incomplete} Firmware generation is blocked for this keymap cell.`,
         { path: context },
       ),
     );
-    return `${text} /* INCOMPLETE: ${binding.code} */`;
+    return `&kbui_incomplete_binding /* ${binding.code} */`;
   }
 
   if (binding.tap || binding.hold || binding.macroId || binding.notes) {
     diagnostics.push(
       diagnostic(
         "zmk.binding.metadata",
-        binding.notes && !binding.tap && !binding.hold && !binding.macroId ? "info" : "warning",
+        binding.notes && !binding.tap && !binding.hold && !binding.macroId ? "info" : "error",
         `Binding metadata on ${context} needs a ZMK behavior node or manual review.`,
         { path: context },
       ),
@@ -1219,73 +1250,18 @@ function zmkBehaviorForCode(
   diagnostics: FirmwareDiagnostic[],
   context: string,
 ): { text: string; unsupported: boolean } {
-  const code = normalizeQmkKeycode(rawCode).replace(/\s+/g, "").toUpperCase();
-  if (code === "KC_NO" || code === "XXXXXXX") return { text: "&none", unsupported: false };
-  if (code === "KC_TRNS" || code === "KC_TRANSPARENT" || code === "_______") {
-    return { text: "&trans", unsupported: false };
-  }
-
-  const layerTap = qmkLayerTapPattern.exec(code);
-  if (layerTap) {
-    const tap = zmkKeyForQmkCode(layerTap[2]);
-    if (tap) return { text: `&lt ${layerTap[1]} ${tap}`, unsupported: false };
-  }
-
-  const layer = qmkLayerPattern.exec(code);
-  if (layer) {
-    const behavior =
-      layer[1].toUpperCase() === "MO" ? "&mo" : layer[1].toUpperCase() === "TO" ? "&to" : "&tog";
-    return { text: `${behavior} ${layer[2]}`, unsupported: false };
-  }
-
-  const modTap = qmkModTapPattern.exec(code);
-  if (modTap) {
-    const modifier = zmkModTapNames[modTap[1].toUpperCase()];
-    const tap = zmkKeyForQmkCode(modTap[2]);
-    if (modifier && tap) return { text: `&mt ${modifier} ${tap}`, unsupported: false };
-  }
-
-  const modified = qmkModifiedPattern.exec(code);
-  if (modified) {
-    const modifier = zmkModifierNames[modified[1].toUpperCase()];
-    const tap = zmkKeyForQmkCode(modified[2]);
-    if (modifier && tap) return { text: `&kp ${modifier}(${tap})`, unsupported: false };
-  }
-
-  const key = zmkKeyForQmkCode(code);
-  if (key) return { text: `&kp ${key}`, unsupported: false };
+  const binding = zmkBindingExpression(rawCode);
+  if (binding) return { text: binding, unsupported: false };
 
   diagnostics.push(
     diagnostic(
       "zmk.keycode.unsupported",
-      "warning",
-      `Unsupported ZMK keycode ${rawCode} at ${context}; &none was emitted.`,
+      "error",
+      `Unsupported ZMK keycode ${rawCode} at ${context}; firmware generation is blocked.`,
       { path: context },
     ),
   );
-  return { text: `&none /* UNSUPPORTED: ${rawCode} */`, unsupported: true };
-}
-
-function zmkKeyForQmkCode(rawCode: string) {
-  const special = specialQmkCode(rawCode);
-  if (special) return undefined;
-
-  const normalized = normalizeQmkKeycode(rawCode).replace(/\s+/g, "").toUpperCase();
-  const mapped = zmkKeyNames[normalized];
-  if (mapped) return mapped;
-
-  const value = qmkKeycodeValue(normalized);
-  if (value === undefined) return undefined;
-
-  const direct = qmkDirectKeycodes[value];
-  if (
-    !direct?.group ||
-    !["basic", "internal", "media", "modifiers", "system"].includes(direct.group)
-  ) {
-    return undefined;
-  }
-
-  return zmkKeyNames[qmkKeycodeName(value)];
+  return { text: `&kbui_unsupported_keycode /* ${rawCode} */`, unsupported: true };
 }
 
 function wrapBindings(bindings: readonly string[], perLine = 8) {
@@ -1298,7 +1274,7 @@ function wrapBindings(bindings: readonly string[], perLine = 8) {
 
 function generateZmkConf(profile: DeviceProfile, diagnostics: FirmwareDiagnostic[]) {
   const lines = [
-    "# Generated by kbgui source export.",
+    "# Generated by kbui source export.",
     `CONFIG_ZMK_KEYBOARD_NAME="${escapeDtsString(profile.name)}"`,
   ];
   if (profile.protocol === "zmk-studio") lines.push("CONFIG_ZMK_STUDIO=y");
@@ -1332,17 +1308,21 @@ function generateZmkConf(profile: DeviceProfile, diagnostics: FirmwareDiagnostic
 }
 
 function generateZmkBuildYaml(metadata: ZmkMetadata) {
+  const shields = metadata.shields.length > 0 ? metadata.shields : [requiredZmkShield];
   return [
-    "# Generated by kbgui source export.",
+    "# Generated by kbui source export.",
     ...(metadata.board
       ? []
       : ["# REQUIRED: set metadata.zmk.board to a real ZMK board target before building."]),
-    ...(metadata.shield
+    ...(metadata.shields.length > 0
       ? []
-      : ["# REQUIRED: set metadata.zmk.shield to a real ZMK shield before building."]),
+      : ["# REQUIRED: set metadata.zmk.shields to real ZMK shield targets before building."]),
     "include:",
-    `  - board: ${zmkBuildYamlValue(metadata.board ?? requiredZmkBoard)}`,
-    `    shield: ${zmkBuildYamlValue(metadata.shield ?? requiredZmkShield)}`,
+    ...shields.flatMap((shield) => [
+      `  - board: ${zmkBuildYamlValue(metadata.board ?? requiredZmkBoard)}`,
+      `    shield: ${zmkBuildYamlValue(shield)}`,
+      `    artifact-name: ${zmkBuildYamlValue(shield)}`,
+    ]),
     "",
   ].join("\n");
 }
@@ -1451,9 +1431,7 @@ function uniqueDiagnostics(diagnostics: readonly FirmwareDiagnostic[]) {
   const seen = new Set<string>();
   const unique: FirmwareDiagnostic[] = [];
   for (const item of diagnostics) {
-    const key = [item.code, item.severity, item.file ?? "", item.path ?? "", item.message].join(
-      "\0",
-    );
+    const key = firmwareDiagnosticKey(item);
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(item);

@@ -1,6 +1,7 @@
 import { Agent, type AgentContext } from "agents";
 import { and, desc, eq, inArray, like, ne, or, sql, type SQL } from "drizzle-orm";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import { Effect } from "effect";
 
 import {
   communityKeymap,
@@ -36,6 +37,8 @@ import {
   type CommunityMutationUser,
 } from "$lib/community/types";
 import type { StoredDeviceProfile } from "$lib/keyboard/schema";
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 interface CommunityState {
   seedVersion: string;
@@ -77,7 +80,6 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
 
   readonly #agentCtx: AgentContext;
   readonly #db: DrizzleSqliteDODatabase;
-  #seedPromise: Promise<void> | undefined;
 
   constructor(ctx: AgentContext, env: Cloudflare.Env) {
     super(ctx, env);
@@ -85,314 +87,380 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
     this.#db = drizzle(this.#agentCtx.storage, { logger: true });
   }
 
-  onStart() {
-    console.log("[CommunityAgent] onStart - ensuring tables + seed catalog");
-    this.ensureTables();
-    this.#seedPromise = this.ensureSeed();
+  onStart(): Promise<void> {
+    return runWorkerEffect("community.start", this.ensureReadyEffect());
   }
 
-  async listKeymaps(
+  listKeymaps(
     rawInput: CommunityKeymapListInput = {},
     viewerId?: string,
   ): Promise<CommunityKeymapCard[]> {
-    await this.ensureReady();
-    const input = normalizeCommunityListInput(rawInput);
-    const rows = await this.selectCards(input);
-    const viewerState = await this.viewerState(
-      rows.map((row) => row.id),
-      viewerId,
+    return runWorkerEffect(
+      "community.list-keymaps",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const input = yield* Effect.try({
+          try: () => normalizeCommunityListInput(rawInput),
+          catch: (cause) => platformError("community.normalize-list-input", cause),
+        });
+        const rows = yield* this.selectCardsEffect(input);
+        const viewerState = yield* this.viewerStateEffect(
+          rows.map((row) => row.id),
+          viewerId,
+        );
+        return rows.map((row) => rowToCard(row, viewerState));
+      }),
     );
-
-    return rows.map((row) => rowToCard(row, viewerState));
   }
 
-  async getKeymap(rawId: string, viewerId?: string): Promise<CommunityKeymapDetail | null> {
-    await this.ensureReady();
-    const id = normalizeCommunityKeymapId(rawId);
-
-    const rows = await this.#db
-      .select(detailSelection)
-      .from(communityKeymap)
-      .innerJoin(communityUser, eq(communityKeymap.authorUserId, communityUser.id))
-      .where(
-        and(
-          eq(communityKeymap.id, id),
-          ne(communityKeymap.visibility, "hidden"),
-          ne(communityKeymap.moderationState, "hidden"),
-        ),
-      )
-      .limit(1);
-
-    const row = rows[0];
-    if (!row) return null;
-
-    const viewerState = await this.viewerState([row.id], viewerId);
-    return {
-      ...rowToCard(row, viewerState),
-      payloadFormat: COMMUNITY_PAYLOAD_FORMAT,
-      profile: parseStoredProfile(row.payloadJson),
-      payloadHash: row.payloadHash,
-    };
+  getKeymap(rawId: string, viewerId?: string): Promise<CommunityKeymapDetail | null> {
+    return runWorkerEffect(
+      "community.get-keymap",
+      Effect.andThen(this.ensureReadyEffect(), this.getKeymapEffect(rawId, viewerId)),
+    );
   }
 
-  async like(rawId: string, rawUser: CommunityMutationUser): Promise<void> {
-    await this.ensureReady();
-    const id = normalizeCommunityKeymapId(rawId);
-    const user = normalizeCommunityMutationUser(rawUser);
-    const now = new Date();
+  like(rawId: string, rawUser: CommunityMutationUser): Promise<void> {
+    return runWorkerEffect(
+      "community.like",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const id = yield* Effect.try({
+          try: () => normalizeCommunityKeymapId(rawId),
+          catch: (cause) => platformError("community.normalize-keymap-id", cause),
+        });
+        const user = yield* Effect.try({
+          try: () => normalizeCommunityMutationUser(rawUser),
+          catch: (cause) => platformError("community.normalize-user", cause),
+        });
+        const now = new Date();
+        yield* Effect.try({
+          try: () =>
+            this.#db.transaction((tx) => {
+              const keymap = this.assertVisibleKeymap(tx, id);
+              this.upsertCommunityUser(tx, user, now);
 
-    this.#db.transaction((tx) => {
-      const keymap = this.assertVisibleKeymap(tx, id);
-      this.upsertCommunityUser(tx, user, now);
+              const inserted = tx
+                .insert(communityKeymapLike)
+                .values({
+                  keymapId: keymap.id,
+                  userId: user.id,
+                  createdAt: now,
+                })
+                .onConflictDoNothing({
+                  target: [communityKeymapLike.keymapId, communityKeymapLike.userId],
+                })
+                .returning({ keymapId: communityKeymapLike.keymapId })
+                .all();
+              const delta = mutationCountDelta(inserted.length > 0, 1);
+              if (delta === 0) return;
 
-      const inserted = tx
-        .insert(communityKeymapLike)
-        .values({
-          keymapId: keymap.id,
-          userId: user.id,
-          createdAt: now,
-        })
-        .onConflictDoNothing({
-          target: [communityKeymapLike.keymapId, communityKeymapLike.userId],
-        })
-        .returning({ keymapId: communityKeymapLike.keymapId })
-        .all();
-      const delta = mutationCountDelta(inserted.length > 0, 1);
-      if (delta === 0) return;
-
-      tx.update(communityKeymap)
-        .set({
-          likesCount: sql`${communityKeymap.likesCount} + ${delta}`,
-        })
-        .where(eq(communityKeymap.id, keymap.id))
-        .run();
-    });
+              tx.update(communityKeymap)
+                .set({
+                  likesCount: sql`${communityKeymap.likesCount} + ${delta}`,
+                })
+                .where(eq(communityKeymap.id, keymap.id))
+                .run();
+            }),
+          catch: (cause) => platformError("community.like-transaction", cause),
+        });
+      }),
+    );
   }
 
-  async unlike(rawId: string, rawUser: CommunityMutationUser): Promise<void> {
-    await this.ensureReady();
-    const id = normalizeCommunityKeymapId(rawId);
-    const user = normalizeCommunityMutationUser(rawUser);
+  unlike(rawId: string, rawUser: CommunityMutationUser): Promise<void> {
+    return runWorkerEffect(
+      "community.unlike",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const id = yield* Effect.try({
+          try: () => normalizeCommunityKeymapId(rawId),
+          catch: (cause) => platformError("community.normalize-keymap-id", cause),
+        });
+        const user = yield* Effect.try({
+          try: () => normalizeCommunityMutationUser(rawUser),
+          catch: (cause) => platformError("community.normalize-user", cause),
+        });
+        yield* Effect.try({
+          try: () =>
+            this.#db.transaction((tx) => {
+              this.assertVisibleKeymap(tx, id);
+              const deleted = tx
+                .delete(communityKeymapLike)
+                .where(
+                  and(
+                    eq(communityKeymapLike.keymapId, id),
+                    eq(communityKeymapLike.userId, user.id),
+                  ),
+                )
+                .returning({ keymapId: communityKeymapLike.keymapId })
+                .all();
+              const delta = mutationCountDelta(deleted.length > 0, -1);
+              if (delta === 0) return;
 
-    this.#db.transaction((tx) => {
-      this.assertVisibleKeymap(tx, id);
-      const deleted = tx
-        .delete(communityKeymapLike)
-        .where(and(eq(communityKeymapLike.keymapId, id), eq(communityKeymapLike.userId, user.id)))
-        .returning({ keymapId: communityKeymapLike.keymapId })
-        .all();
-      const delta = mutationCountDelta(deleted.length > 0, -1);
-      if (delta === 0) return;
-
-      tx.update(communityKeymap)
-        .set({
-          likesCount: sql`max(0, ${communityKeymap.likesCount} + ${delta})`,
-        })
-        .where(eq(communityKeymap.id, id))
-        .run();
-    });
+              tx.update(communityKeymap)
+                .set({
+                  likesCount: sql`max(0, ${communityKeymap.likesCount} + ${delta})`,
+                })
+                .where(eq(communityKeymap.id, id))
+                .run();
+            }),
+          catch: (cause) => platformError("community.unlike-transaction", cause),
+        });
+      }),
+    );
   }
 
-  async adopt(rawInput: unknown, rawUser: CommunityMutationUser): Promise<CommunityKeymapDetail> {
-    await this.ensureReady();
-    const input = normalizeCommunityAdoptInput(rawInput);
-    const user = normalizeCommunityMutationUser(rawUser);
-    const now = new Date();
+  adopt(rawInput: unknown, rawUser: CommunityMutationUser): Promise<CommunityKeymapDetail> {
+    return runWorkerEffect(
+      "community.adopt",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const input = yield* Effect.try({
+          try: () => normalizeCommunityAdoptInput(rawInput),
+          catch: (cause) => platformError("community.normalize-adopt-input", cause),
+        });
+        const user = yield* Effect.try({
+          try: () => normalizeCommunityMutationUser(rawUser),
+          catch: (cause) => platformError("community.normalize-user", cause),
+        });
+        const now = new Date();
+        yield* Effect.try({
+          try: () =>
+            this.#db.transaction((tx) => {
+              const keymap = this.assertVisibleKeymap(tx, input.keymapId);
+              this.upsertCommunityUser(tx, user, now);
 
-    this.#db.transaction((tx) => {
-      const keymap = this.assertVisibleKeymap(tx, input.keymapId);
-      this.upsertCommunityUser(tx, user, now);
+              const inserted = tx
+                .insert(communityKeymapAdoption)
+                .values({
+                  keymapId: keymap.id,
+                  userId: user.id,
+                  localForkId: input.localForkId,
+                  adoptedTitle: keymap.title,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                .onConflictDoNothing({
+                  target: [communityKeymapAdoption.keymapId, communityKeymapAdoption.userId],
+                })
+                .returning({ keymapId: communityKeymapAdoption.keymapId })
+                .all();
+              const delta = mutationCountDelta(inserted.length > 0, 1);
 
-      const inserted = tx
-        .insert(communityKeymapAdoption)
-        .values({
-          keymapId: keymap.id,
-          userId: user.id,
-          localForkId: input.localForkId,
-          adoptedTitle: keymap.title,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing({
-          target: [communityKeymapAdoption.keymapId, communityKeymapAdoption.userId],
-        })
-        .returning({ keymapId: communityKeymapAdoption.keymapId })
-        .all();
-      const delta = mutationCountDelta(inserted.length > 0, 1);
+              if (delta === 0) {
+                tx.update(communityKeymapAdoption)
+                  .set({
+                    localForkId: input.localForkId,
+                    adoptedTitle: keymap.title,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(communityKeymapAdoption.keymapId, keymap.id),
+                      eq(communityKeymapAdoption.userId, user.id),
+                    ),
+                  )
+                  .run();
+                return;
+              }
 
-      if (delta === 0) {
-        tx.update(communityKeymapAdoption)
-          .set({
-            localForkId: input.localForkId,
-            adoptedTitle: keymap.title,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(communityKeymapAdoption.keymapId, keymap.id),
-              eq(communityKeymapAdoption.userId, user.id),
-            ),
-          )
-          .run();
-        return;
+              tx.update(communityKeymap)
+                .set({
+                  adoptionsCount: sql`${communityKeymap.adoptionsCount} + ${delta}`,
+                })
+                .where(eq(communityKeymap.id, keymap.id))
+                .run();
+            }),
+          catch: (cause) => platformError("community.adopt-transaction", cause),
+        });
+        const detail = yield* this.getKeymapEffect(input.keymapId, user.id);
+        if (!detail) {
+          return yield* Effect.fail(
+            platformError("community.adopt", "Community keymap is no longer available."),
+          );
+        }
+        return detail;
+      }),
+    );
+  }
+
+  report(rawInput: unknown, rawUser: CommunityMutationUser): Promise<void> {
+    return runWorkerEffect(
+      "community.report",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const input = yield* Effect.try({
+          try: () => normalizeCommunityReportInput(rawInput),
+          catch: (cause) => platformError("community.normalize-report-input", cause),
+        });
+        const user = yield* Effect.try({
+          try: () => normalizeCommunityMutationUser(rawUser),
+          catch: (cause) => platformError("community.normalize-user", cause),
+        });
+        const now = new Date();
+        const detail = input.detail ?? "";
+        yield* Effect.try({
+          try: () =>
+            this.#db.transaction((tx) => {
+              const keymap = this.assertVisibleKeymap(tx, input.keymapId);
+              this.upsertCommunityUser(tx, user, now);
+
+              const inserted = tx
+                .insert(communityKeymapReport)
+                .values({
+                  id: reportIdFor(keymap.id, user.id),
+                  keymapId: keymap.id,
+                  reporterUserId: user.id,
+                  reason: input.reason,
+                  detail,
+                  status: "open",
+                  reviewerUserId: null,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                .onConflictDoNothing({
+                  target: [communityKeymapReport.keymapId, communityKeymapReport.reporterUserId],
+                })
+                .returning({ id: communityKeymapReport.id })
+                .all();
+              const delta = mutationCountDelta(inserted.length > 0, 1);
+
+              if (delta === 0) {
+                tx.update(communityKeymapReport)
+                  .set({
+                    reason: input.reason,
+                    detail,
+                    status: "open",
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(communityKeymapReport.keymapId, keymap.id),
+                      eq(communityKeymapReport.reporterUserId, user.id),
+                    ),
+                  )
+                  .run();
+              }
+
+              tx.update(communityKeymap)
+                .set(
+                  delta === 0
+                    ? { moderationState: "review_pending" }
+                    : {
+                        reportsCount: sql`${communityKeymap.reportsCount} + ${delta}`,
+                        moderationState: "review_pending",
+                      },
+                )
+                .where(eq(communityKeymap.id, keymap.id))
+                .run();
+            }),
+          catch: (cause) => platformError("community.report-transaction", cause),
+        });
+      }),
+    );
+  }
+
+  private ensureReadyEffect() {
+    return Effect.gen({ self: this }, function* () {
+      yield* Effect.sync(() => this.ensureTables());
+      if (this.state.seedVersion !== COMMUNITY_SEED_VERSION) {
+        yield* this.ensureSeedEffect();
       }
-
-      tx.update(communityKeymap)
-        .set({
-          adoptionsCount: sql`${communityKeymap.adoptionsCount} + ${delta}`,
-        })
-        .where(eq(communityKeymap.id, keymap.id))
-        .run();
-    });
-
-    const detail = await this.getKeymap(input.keymapId, user.id);
-    if (!detail) throw new Error("Community keymap is no longer available.");
-    return detail;
+    }).pipe(Effect.withSpan("CommunityAgent.ensureReady"));
   }
 
-  async report(rawInput: unknown, rawUser: CommunityMutationUser): Promise<void> {
-    await this.ensureReady();
-    const input = normalizeCommunityReportInput(rawInput);
-    const user = normalizeCommunityMutationUser(rawUser);
-    const now = new Date();
-    const detail = input.detail ?? "";
+  private ensureSeedEffect() {
+    return Effect.gen({ self: this }, function* () {
+      const resetSeedMetrics = yield* this.shouldResetSeedMetricsEffect();
 
-    this.#db.transaction((tx) => {
-      const keymap = this.assertVisibleKeymap(tx, input.keymapId);
-      this.upsertCommunityUser(tx, user, now);
-
-      const inserted = tx
-        .insert(communityKeymapReport)
-        .values({
-          id: reportIdFor(keymap.id, user.id),
-          keymapId: keymap.id,
-          reporterUserId: user.id,
-          reason: input.reason,
-          detail,
-          status: "open",
-          reviewerUserId: null,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing({
-          target: [communityKeymapReport.keymapId, communityKeymapReport.reporterUserId],
-        })
-        .returning({ id: communityKeymapReport.id })
-        .all();
-      const delta = mutationCountDelta(inserted.length > 0, 1);
-
-      if (delta === 0) {
-        tx.update(communityKeymapReport)
-          .set({
-            reason: input.reason,
-            detail,
-            status: "open",
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(communityKeymapReport.keymapId, keymap.id),
-              eq(communityKeymapReport.reporterUserId, user.id),
-            ),
-          )
-          .run();
-      }
-
-      tx.update(communityKeymap)
-        .set(
-          delta === 0
-            ? { moderationState: "review_pending" }
-            : {
-                reportsCount: sql`${communityKeymap.reportsCount} + ${delta}`,
-                moderationState: "review_pending",
+      for (const author of communitySeedAuthors) {
+        yield* this.databaseEffect("seed-author", () =>
+          this.#db
+            .insert(communityUser)
+            .values({
+              id: author.id,
+              source: "seed",
+              displayName: author.displayName,
+              handle: author.handle ?? null,
+              image: author.image ?? null,
+              createdAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
+              updatedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
+            })
+            .onConflictDoUpdate({
+              target: communityUser.id,
+              set: {
+                source: "seed",
+                displayName: author.displayName,
+                handle: author.handle ?? null,
+                image: author.image ?? null,
+                updatedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
               },
-        )
-        .where(eq(communityKeymap.id, keymap.id))
-        .run();
-    });
-  }
+            }),
+        );
+      }
 
-  private async ensureReady() {
-    this.ensureTables();
-    this.#seedPromise ??= this.ensureSeed();
-    await this.#seedPromise;
-  }
+      for (const seed of communitySeedKeymaps) {
+        const values = keymapValues(seed);
+        yield* this.databaseEffect("seed-keymap", () =>
+          this.#db
+            .insert(communityKeymap)
+            .values(values)
+            .onConflictDoUpdate({
+              target: communityKeymap.id,
+              set: keymapUpdateValues(seed, { resetMetrics: resetSeedMetrics }),
+            }),
+        );
 
-  private async ensureSeed() {
-    const resetSeedMetrics = await this.shouldResetSeedMetrics();
+        yield* this.databaseEffect("seed-tags", () =>
+          this.#db
+            .insert(communityKeymapTag)
+            .values(seed.tags.map((tag) => ({ keymapId: seed.id, tag })))
+            .onConflictDoNothing(),
+        );
+      }
 
-    for (const author of communitySeedAuthors) {
-      await this.#db
-        .insert(communityUser)
-        .values({
-          id: author.id,
-          source: "seed",
-          displayName: author.displayName,
-          handle: author.handle ?? null,
-          image: author.image ?? null,
-          createdAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
-          updatedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
-        })
-        .onConflictDoUpdate({
-          target: communityUser.id,
-          set: {
-            source: "seed",
-            displayName: author.displayName,
-            handle: author.handle ?? null,
-            image: author.image ?? null,
-            updatedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
-          },
+      yield* this.databaseEffect("seed-version", () =>
+        this.#db
+          .insert(communitySeed)
+          .values({
+            id: COMMUNITY_SEED_ID,
+            version: COMMUNITY_SEED_VERSION,
+            appliedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
+          })
+          .onConflictDoUpdate({
+            target: communitySeed.id,
+            set: {
+              version: COMMUNITY_SEED_VERSION,
+              appliedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
+            },
+          }),
+      );
+
+      yield* Effect.sync(() => {
+        this.setState({
+          seedVersion: COMMUNITY_SEED_VERSION,
+          seededAt: COMMUNITY_SEED_APPLIED_AT,
         });
-    }
-
-    for (const seed of communitySeedKeymaps) {
-      const values = keymapValues(seed);
-      await this.#db
-        .insert(communityKeymap)
-        .values(values)
-        .onConflictDoUpdate({
-          target: communityKeymap.id,
-          set: keymapUpdateValues(seed, { resetMetrics: resetSeedMetrics }),
-        });
-
-      await this.#db
-        .insert(communityKeymapTag)
-        .values(seed.tags.map((tag) => ({ keymapId: seed.id, tag })))
-        .onConflictDoNothing();
-    }
-
-    await this.#db
-      .insert(communitySeed)
-      .values({
-        id: COMMUNITY_SEED_ID,
-        version: COMMUNITY_SEED_VERSION,
-        appliedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
-      })
-      .onConflictDoUpdate({
-        target: communitySeed.id,
-        set: {
-          version: COMMUNITY_SEED_VERSION,
-          appliedAt: dateFromIso(COMMUNITY_SEED_APPLIED_AT),
-        },
       });
-
-    this.setState({
-      seedVersion: COMMUNITY_SEED_VERSION,
-      seededAt: COMMUNITY_SEED_APPLIED_AT,
-    });
-    console.log(`[CommunityAgent] seeded ${communitySeedKeymaps.length} community keymap(s)`);
+      yield* Effect.logInfo(`Seeded ${communitySeedKeymaps.length} community keymap(s)`);
+    }).pipe(Effect.withSpan("CommunityAgent.ensureSeed"));
   }
 
-  private async shouldResetSeedMetrics(): Promise<boolean> {
-    const rows = await this.#db
-      .select({ version: communitySeed.version })
-      .from(communitySeed)
-      .where(eq(communitySeed.id, COMMUNITY_SEED_ID))
-      .limit(1);
-    return rows[0]?.version !== COMMUNITY_SEED_VERSION;
+  private shouldResetSeedMetricsEffect() {
+    return Effect.map(
+      this.databaseEffect("read-seed-version", () =>
+        this.#db
+          .select({ version: communitySeed.version })
+          .from(communitySeed)
+          .where(eq(communitySeed.id, COMMUNITY_SEED_ID))
+          .limit(1),
+      ),
+      (rows) => rows[0]?.version !== COMMUNITY_SEED_VERSION,
+    );
   }
 
-  private async selectCards(input: CommunityKeymapListInput): Promise<CommunityDbRow[]> {
+  private selectCardsEffect(input: CommunityKeymapListInput) {
     const conditions: SQL[] = [
       ne(communityKeymap.visibility, "hidden"),
       ne(communityKeymap.moderationState, "hidden"),
@@ -455,36 +523,85 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
               desc(communityKeymap.updatedAt),
             );
 
-    return ordered.limit(communityListLimit(input));
+    return this.databaseEffect("select-cards", () => ordered.limit(communityListLimit(input)));
   }
 
-  private async viewerState(ids: string[], viewerId?: string) {
+  private viewerStateEffect(ids: string[], viewerId?: string) {
     if (!viewerId || ids.length === 0) {
-      return { liked: new Set<string>(), adopted: new Set<string>() };
+      return Effect.succeed({ liked: new Set<string>(), adopted: new Set<string>() });
     }
 
-    const [likes, adoptions] = await Promise.all([
-      this.#db
-        .select({ keymapId: communityKeymapLike.keymapId })
-        .from(communityKeymapLike)
-        .where(
-          and(eq(communityKeymapLike.userId, viewerId), inArray(communityKeymapLike.keymapId, ids)),
+    return Effect.all(
+      [
+        this.databaseEffect("viewer-likes", () =>
+          this.#db
+            .select({ keymapId: communityKeymapLike.keymapId })
+            .from(communityKeymapLike)
+            .where(
+              and(
+                eq(communityKeymapLike.userId, viewerId),
+                inArray(communityKeymapLike.keymapId, ids),
+              ),
+            ),
         ),
-      this.#db
-        .select({ keymapId: communityKeymapAdoption.keymapId })
-        .from(communityKeymapAdoption)
-        .where(
-          and(
-            eq(communityKeymapAdoption.userId, viewerId),
-            inArray(communityKeymapAdoption.keymapId, ids),
-          ),
+        this.databaseEffect("viewer-adoptions", () =>
+          this.#db
+            .select({ keymapId: communityKeymapAdoption.keymapId })
+            .from(communityKeymapAdoption)
+            .where(
+              and(
+                eq(communityKeymapAdoption.userId, viewerId),
+                inArray(communityKeymapAdoption.keymapId, ids),
+              ),
+            ),
         ),
-    ]);
+      ],
+      { concurrency: 2 },
+    ).pipe(
+      Effect.map(([likes, adoptions]) => ({
+        liked: new Set(likes.map((likeRow) => likeRow.keymapId)),
+        adopted: new Set(adoptions.map((adoptionRow) => adoptionRow.keymapId)),
+      })),
+    );
+  }
 
-    return {
-      liked: new Set(likes.map((likeRow) => likeRow.keymapId)),
-      adopted: new Set(adoptions.map((adoptionRow) => adoptionRow.keymapId)),
-    };
+  private getKeymapEffect(rawId: string, viewerId?: string) {
+    return Effect.gen({ self: this }, function* () {
+      const id = yield* Effect.try({
+        try: () => normalizeCommunityKeymapId(rawId),
+        catch: (cause) => platformError("community.normalize-keymap-id", cause),
+      });
+      const rows = yield* this.databaseEffect("get-keymap", () =>
+        this.#db
+          .select(detailSelection)
+          .from(communityKeymap)
+          .innerJoin(communityUser, eq(communityKeymap.authorUserId, communityUser.id))
+          .where(
+            and(
+              eq(communityKeymap.id, id),
+              ne(communityKeymap.visibility, "hidden"),
+              ne(communityKeymap.moderationState, "hidden"),
+            ),
+          )
+          .limit(1),
+      );
+      const row = rows[0];
+      if (!row) return null;
+      const viewerState = yield* this.viewerStateEffect([row.id], viewerId);
+      return {
+        ...rowToCard(row, viewerState),
+        payloadFormat: COMMUNITY_PAYLOAD_FORMAT,
+        profile: parseStoredProfile(row.payloadJson),
+        payloadHash: row.payloadHash,
+      } satisfies CommunityKeymapDetail;
+    });
+  }
+
+  private databaseEffect<A>(operation: string, task: () => PromiseLike<A>) {
+    return Effect.tryPromise({
+      try: () => task(),
+      catch: (cause) => platformError(`community.database.${operation}`, cause),
+    });
   }
 
   private assertVisibleKeymap(db: CommunityWriteDb, id: string): { id: string; title: string } {

@@ -49,10 +49,10 @@ function createSplitDemoKeyboard(): DeviceProfile {
 
   return {
     ...cloneDevice(sampleKeyboard),
-    id: "corney-split-34-demo",
-    name: "Corney Split 34",
+    id: "local-split-keyboard-profile",
+    name: "Local split keyboard",
     origin: "starter",
-    vendor: "Klakson Labs",
+    vendor: "Local profile",
     firmware: "zmk",
     protocol: "zmk-studio",
     firmwareVersion: "ZMK Studio demo",

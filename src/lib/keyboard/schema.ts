@@ -1,10 +1,11 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { keyLightingFromSwatchId } from "./lighting-swatches";
 import { qmkDirectKeycodes, qmkDirectKeycodeValues } from "./qmk-keycodes";
 
 export type FirmwareFamily = "qmk" | "zmk";
 export type DeviceProfileOrigin = "device" | "imported" | "draft" | "starter";
+export type FirmwareEditIntent = "live" | "source";
 
 export type Capability =
   | "keymap"
@@ -115,6 +116,45 @@ export interface KeyboardSettings {
   splitTransport: "none" | "serial" | "i2c" | "ble";
 }
 
+export interface QmkFirmwareMetadata {
+  /** Other indistinguishable build targets (for example controller variants sharing USB IDs). */
+  alternatives?: Array<{ keyboard: string; layout: string }>;
+  keyboard?: string;
+  keymap?: string;
+  keyOrder?: string[];
+  layout?: string;
+  /** Upstream QMK-compatible firmware repository used by Actions builds. */
+  repository?: string;
+  /** Git ref in `repository` used by Actions builds. */
+  ref?: string;
+  /** False until a user confirms one of several controller-equivalent targets. */
+  targetConfirmed?: boolean;
+  bootloader?: string;
+  processor?: string;
+  uf2FamilyId?: number;
+  uf2VolumeLabels?: string[];
+}
+
+export interface ZmkFirmwareMetadata {
+  alternatives?: Array<{ board: string; shields: string[] }>;
+  board?: string;
+  keymap?: string;
+  keyOrder?: string[];
+  shield?: string;
+  shields?: string[];
+  repository?: string;
+  ref?: string;
+  /** False until a user confirms one of several controller/shield targets. */
+  targetConfirmed?: boolean;
+  uf2FamilyId?: number;
+  uf2VolumeLabels?: string[];
+}
+
+export interface FirmwareMetadata {
+  qmk?: QmkFirmwareMetadata;
+  zmk?: ZmkFirmwareMetadata;
+}
+
 export interface DeviceIdentity {
   key: string;
   transport: "webusb" | "webhid" | "webbluetooth" | "webserial";
@@ -141,6 +181,8 @@ export interface DeviceProfile {
   firmware: FirmwareFamily;
   protocol: "via-v3" | "vial" | "zmk-studio";
   firmwareVersion: string;
+  /** Whether edits should target the connected runtime or generated firmware source. */
+  firmwareEditIntent?: FirmwareEditIntent;
   vendorId: number;
   productId: number;
   matrix: { rows: number; cols: number };
@@ -153,6 +195,7 @@ export interface DeviceProfile {
   keyOverrides: KeyOverride[];
   lighting: LightingProfile;
   settings: KeyboardSettings;
+  firmwareMetadata?: FirmwareMetadata;
   identity?: DeviceIdentity;
   detectionNotes?: string[];
   updatedAt: string;
@@ -166,6 +209,34 @@ export interface ChangeRecord {
   before: string;
   after: string;
   staged: boolean;
+}
+
+export const ChangeRecordSchema = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.Literals([
+    "binding",
+    "macro",
+    "combo",
+    "tapDance",
+    "setting",
+    "lighting",
+    "metadata",
+  ]),
+  scope: Schema.String,
+  path: Schema.String,
+  before: Schema.String,
+  after: Schema.String,
+  staged: Schema.Boolean,
+});
+
+const ChangeRecordJsonSchema = Schema.fromJsonString(ChangeRecordSchema);
+
+export function encodeChangeRecordJsonEffect(change: ChangeRecord) {
+  return Schema.encodeEffect(ChangeRecordJsonSchema)(change);
+}
+
+export function decodeChangeRecordJsonEffect(value: unknown) {
+  return Schema.decodeUnknownEffect(ChangeRecordJsonSchema)(value);
 }
 
 export interface SavePointAuthorMeta {
@@ -879,13 +950,13 @@ export const featureCatalog: FeatureDefinition[] = [
 ];
 
 export const sampleKeyboard: DeviceProfile = {
-  id: "keeb-workbench-devboard",
-  name: "Workbench 65",
+  id: "local-keyboard-profile",
+  name: "Local keyboard",
   origin: "starter",
-  vendor: "Local Draft",
+  vendor: "Local profile",
   firmware: "qmk",
   protocol: "via-v3",
-  firmwareVersion: "QMK 0.25 / VIA protocol 3",
+  firmwareVersion: "QMK/VIA local profile",
   vendorId: 0xfeed,
   productId: 0x6060,
   matrix: { rows: 5, cols: 15 },
@@ -1020,7 +1091,7 @@ export function withDeviceProfileOrigin(
 }
 
 export function profileDisplayName(profile: Pick<DeviceProfile, "name" | "origin">): string {
-  return profile.origin === "starter" ? `${profile.name} Starter` : profile.name;
+  return profile.name;
 }
 
 function isDeviceProfileOrigin(value: unknown): value is DeviceProfileOrigin {

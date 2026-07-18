@@ -1,5 +1,8 @@
 import { browser } from "$app/environment";
+import { Effect } from "effect";
 
+import { forkApp, runApp } from "$lib/app/runtime";
+import { platformError } from "$lib/effect/errors";
 import {
   getConnectionState,
   type ConnectionState,
@@ -115,7 +118,7 @@ function createGattByteTransport(input: {
     },
     async cancel() {
       cleanup();
-      await input.characteristic.stopNotifications?.().catch(() => undefined);
+      await input.characteristic.stopNotifications?.();
     },
   });
 
@@ -136,15 +139,23 @@ function createGattByteTransport(input: {
 
   abortController.signal.addEventListener("abort", () => {
     cleanup();
-    void input.characteristic.stopNotifications?.().catch(() => undefined);
-    input.device.gatt?.disconnect();
+    forkApp(
+      "zmk-studio.ble.abort",
+      Effect.tryPromise({
+        try: async () => {
+          await input.characteristic.stopNotifications?.();
+          input.device.gatt?.disconnect();
+        },
+        catch: (cause) => platformError("zmk-studio.ble.abort", cause),
+      }),
+    );
   });
 
   return {
     abortController,
     close: async () => {
       cleanup();
-      await input.characteristic.stopNotifications?.().catch(() => undefined);
+      await input.characteristic.stopNotifications?.();
       input.device.gatt?.disconnect();
     },
     label: input.label,
@@ -153,42 +164,59 @@ function createGattByteTransport(input: {
   };
 }
 
-async function connectBleDevice(environment: TransportEnvironment): Promise<ConnectionState> {
+function connectBleDeviceEffect(environment: TransportEnvironment) {
   const bluetooth = bluetoothController(environment);
   if (!environment.isBrowser) {
-    return {
+    return Effect.succeed({
       ...getConnectionState(environment),
       message: "Browser required",
       protocol: "zmk-studio",
       status: "unsupported",
       transport: "webbluetooth",
-    };
+    } satisfies ConnectionState);
   }
   if (!bluetooth) {
-    return {
+    return Effect.succeed({
       ...getConnectionState(environment),
       message: "Web Bluetooth unavailable",
       protocol: "zmk-studio",
       status: "unsupported",
       transport: "webbluetooth",
-    };
+    } satisfies ConnectionState);
   }
 
   let connection: RealZmkStudioConnection | undefined;
-
-  try {
-    const device = await bluetooth.requestDevice({
-      filters: [{ services: [zmkStudioBleServiceUuid] }],
-      optionalServices: [zmkStudioBleServiceUuid],
+  const connect = Effect.gen(function* () {
+    const device = yield* Effect.tryPromise({
+      try: () =>
+        bluetooth.requestDevice({
+          filters: [{ services: [zmkStudioBleServiceUuid] }],
+          optionalServices: [zmkStudioBleServiceUuid],
+        }),
+      catch: (cause) => platformError("zmk-studio.ble.select", cause),
     });
 
     const gatt = device.gatt;
-    if (!gatt) throw new Error("Selected BLE device does not expose a GATT server.");
-    const server = gatt.connected ? gatt : await gatt.connect();
-    const service = await server.getPrimaryService(zmkStudioBleServiceUuid);
-    const characteristic = await service.getCharacteristic(zmkStudioBleRpcCharacteristicUuid);
+    if (!gatt) {
+      return yield* Effect.fail(
+        platformError("zmk-studio.ble.gatt", "Selected BLE device has no GATT server."),
+      );
+    }
+    const server = gatt.connected
+      ? gatt
+      : yield* Effect.tryPromise({
+          try: () => gatt.connect(),
+          catch: (cause) => platformError("zmk-studio.ble.connect", cause),
+        });
+    const service = yield* Effect.tryPromise({
+      try: () => server.getPrimaryService(zmkStudioBleServiceUuid),
+      catch: (cause) => platformError("zmk-studio.ble.service", cause),
+    });
+    const characteristic = yield* Effect.tryPromise({
+      try: () => service.getCharacteristic(zmkStudioBleRpcCharacteristicUuid),
+      catch: (cause) => platformError("zmk-studio.ble.characteristic", cause),
+    });
 
-    // Hardware-unverified until tested with a real ZMK Studio board.
     connection = new RealZmkStudioConnection(
       createGattByteTransport({
         characteristic,
@@ -196,22 +224,33 @@ async function connectBleDevice(environment: TransportEnvironment): Promise<Conn
         label: device.name ?? "ZMK Studio BLE keyboard",
       }),
     );
-
-    const info = await connection.call({ type: "get_device_info" });
-    const lock = await connection.call({ type: "get_lock_state" });
+    const activeConnection = connection;
+    const [info, lock] = yield* Effect.all(
+      [
+        Effect.tryPromise({
+          try: () => activeConnection.call({ type: "get_device_info" }),
+          catch: (cause) => platformError("zmk-studio.ble.device-info", cause),
+        }),
+        Effect.tryPromise({
+          try: () => activeConnection.call({ type: "get_lock_state" }),
+          catch: (cause) => platformError("zmk-studio.ble.lock-state", cause),
+        }),
+      ],
+      { concurrency: 2 },
+    );
     if (info.type !== "get_device_info" || lock.type !== "get_lock_state") {
-      throw new Error("ZMK Studio BLE probe returned an unexpected response.");
+      return yield* Effect.fail(
+        platformError("zmk-studio.ble.probe", "ZMK Studio returned an unexpected response."),
+      );
     }
 
-    connection.label = info.deviceName;
+    activeConnection.label = info.deviceName;
     const deviceKey = zmkStudioDeviceKey({
       productName: info.deviceName,
       serialNumber: info.serialNumber,
       transport: "webbluetooth",
     });
-    const notes = [
-      "Real Web Bluetooth ZMK Studio transport is implemented but hardware-unverified.",
-    ];
+    const notes = ["Connected through the ZMK Studio Bluetooth service."];
     if (lock.lockState === "locked") {
       notes.push("ZMK Studio is locked; unlock on the keyboard (&studio_unlock) before writes.");
     }
@@ -232,30 +271,54 @@ async function connectBleDevice(environment: TransportEnvironment): Promise<Conn
       message:
         lock.lockState === "locked"
           ? "Connected, but ZMK Studio is locked. Unlock on the keyboard (&studio_unlock)."
-          : "Connected. Real ZMK Studio BLE is hardware-unverified.",
+          : "Connected over ZMK Studio Bluetooth.",
       productName: info.deviceName,
       protocol: "zmk-studio",
       serialNumber: info.serialNumber,
       status: "connected",
       transport: "webbluetooth",
-      zmkStudio: connection,
-    };
-  } catch (error) {
-    await connection?.close().catch(() => undefined);
-    return {
-      ...getConnectionState(environment),
-      message: connectionErrorMessage(error),
-      protocol: "zmk-studio",
-      status: "error",
-      transport: "webbluetooth",
-    };
-  }
+      zmkStudio: activeConnection,
+    } satisfies ConnectionState;
+  });
+
+  return Effect.matchEffect(connect, {
+    onFailure: (error) => {
+      const cleanup = connection
+        ? Effect.tryPromise({
+            try: () => connection!.close(),
+            catch: (cause) => platformError("zmk-studio.ble.cleanup", cause),
+          })
+        : Effect.void;
+      return Effect.match(cleanup, {
+        onFailure: (cleanupError) =>
+          errorState(
+            environment,
+            `${connectionErrorMessage(error)}; cleanup failed: ${connectionErrorMessage(cleanupError)}`,
+          ),
+        onSuccess: () => errorState(environment, connectionErrorMessage(error)),
+      });
+    },
+    onSuccess: Effect.succeed,
+  });
+}
+
+function errorState(environment: TransportEnvironment, message: string): ConnectionState {
+  return {
+    ...getConnectionState(environment),
+    message,
+    protocol: "zmk-studio",
+    status: "error",
+    transport: "webbluetooth",
+  };
 }
 
 export function createWebBluetoothZmkStudioTransport(): KeyboardTransport {
   return {
     connect: (options: KeyboardTransportConnectOptions = {}) =>
-      connectBleDevice(options.environment ?? browserTransportEnvironment()),
+      runApp(
+        "zmk-studio.ble.connect",
+        connectBleDeviceEffect(options.environment ?? browserTransportEnvironment()),
+      ),
     id: "webbluetooth-zmk-studio",
     label: "Web Bluetooth ZMK Studio",
     mode: "real",

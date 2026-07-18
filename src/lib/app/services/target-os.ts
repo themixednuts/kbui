@@ -40,17 +40,17 @@ export const detect: Effect.Effect<TargetOS> = Effect.sync(() => {
 /** Load the user's stored override, falling back to detection. The two-
  *  step lookup is wrapped in a single Effect so callers don't have to
  *  thread the fallback themselves. */
-export const load: Effect.Effect<TargetOS> = Effect.gen(function* () {
+export const load = Effect.gen(function* () {
   const stored = yield* Preferences.get(STORAGE_KEY);
   if (stored !== null && isTargetOS(stored)) return stored;
   return yield* detect;
 });
 
 /** Persist a target OS choice. */
-export const save = (target: TargetOS): Effect.Effect<void> => Preferences.set(STORAGE_KEY, target);
+export const save = (target: TargetOS) => Preferences.set(STORAGE_KEY, target);
 
 /** Clear the override; next `load` will fall back to auto-detection. */
-export const reset: Effect.Effect<void> = Preferences.remove(STORAGE_KEY);
+export const reset = Preferences.remove(STORAGE_KEY);
 
 /** Compute the next OS in the cycle mac → win → linux → mac. Pure. */
 export const next = (current: TargetOS): TargetOS => {

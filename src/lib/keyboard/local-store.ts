@@ -1,6 +1,13 @@
 import { browser } from "$app/environment";
-import { Effect } from "effect";
-import { SQLocal } from "sqlocal";
+import { Cause, Context, Effect, Layer, ManagedRuntime, Schema } from "effect";
+import type { SQLocal as SQLocalClient } from "sqlocal";
+
+import {
+  decodeWorkbenchVersionGraphEffect,
+  emptyWorkbenchVersionGraph,
+  normalizeWorkbenchVersionGraph,
+  type WorkbenchVersionGraph,
+} from "$lib/app/workbench-version-graph";
 
 import {
   decodeDeviceProfileFromStorageEffect,
@@ -13,48 +20,189 @@ import {
   type SavePoint,
   type WorkspaceFork,
 } from "./schema";
+import { platformError, type PlatformError } from "$lib/effect/errors";
 
-let client: SQLocal | undefined;
+interface LocalStoreService {
+  readonly db: SQLocalClient;
+}
 
-function getClient() {
-  if (!browser) return undefined;
+class LocalStore extends Context.Service<LocalStore, LocalStoreService>()("@kbui/LocalStore") {}
 
-  client ??= new SQLocal({
-    databasePath: "keeb-workbench.sqlite3",
-    reactive: true,
-    onInit: (sql) => [
-      sql`CREATE TABLE IF NOT EXISTS local_profiles (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )`,
-      sql`CREATE TABLE IF NOT EXISTS local_profile_drafts (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )`,
-      sql`CREATE TABLE IF NOT EXISTS local_forks (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`,
-      sql`CREATE TABLE IF NOT EXISTS local_save_points (
-        id TEXT PRIMARY KEY,
-        variant_id TEXT NOT NULL,
-        data TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`,
-      sql`CREATE TABLE IF NOT EXISTS sync_log (
-        id TEXT PRIMARY KEY,
-        agent_name TEXT NOT NULL,
-        status TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`,
-    ],
+export class LocalStoreUnavailable extends Schema.TaggedErrorClass<LocalStoreUnavailable>()(
+  "LocalStoreUnavailable",
+  { message: Schema.String },
+) {}
+
+const databasePath = "kbui.sqlite3";
+const legacyMigrationKey = "kbui.sqlocal.opfs-migration.v1";
+
+type InitStatement = { sql: string; params: unknown[] };
+type InitSql = (
+  queryTemplate: TemplateStringsArray | string,
+  ...params: unknown[]
+) => InitStatement;
+
+function schemaStatements(sql: InitSql): InitStatement[] {
+  return [
+    sql`CREATE TABLE IF NOT EXISTS local_profiles (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    sql`CREATE TABLE IF NOT EXISTS local_profile_drafts (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    sql`CREATE TABLE IF NOT EXISTS local_forks (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    sql`CREATE TABLE IF NOT EXISTS local_save_points (
+      id TEXT PRIMARY KEY,
+      variant_id TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    sql`CREATE TABLE IF NOT EXISTS workbench_version_meta (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    sql`CREATE TABLE IF NOT EXISTS sync_log (
+      id TEXT PRIMARY KEY,
+      agent_name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ];
+}
+
+async function storedRowCount(db: SQLocalClient) {
+  const [row] = await db.sql<{ count: number }>`
+    SELECT
+      (SELECT COUNT(*) FROM local_profiles) +
+      (SELECT COUNT(*) FROM local_profile_drafts) +
+      (SELECT COUNT(*) FROM local_forks) +
+      (SELECT COUNT(*) FROM local_save_points) +
+      (SELECT COUNT(*) FROM workbench_version_meta) +
+      (SELECT COUNT(*) FROM sync_log) AS count
+  `;
+  return Number(row?.count ?? 0);
+}
+
+function hasLegacyLocalStorageDatabase() {
+  if (localStorage.getItem(legacyMigrationKey) === "done") return false;
+  return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).some(
+    (key) => key?.startsWith("kvvfs-local-") === true,
+  );
+}
+
+async function migrateLegacyLocalStorageDatabase(
+  db: SQLocalClient,
+  SQLocal: typeof import("sqlocal").SQLocal,
+) {
+  if (!hasLegacyLocalStorageDatabase()) {
+    localStorage.setItem(legacyMigrationKey, "done");
+    return;
+  }
+
+  // Never overwrite a database that has already been used on the OPFS path.
+  if ((await storedRowCount(db)) > 0) {
+    localStorage.setItem(legacyMigrationKey, "done");
+    return;
+  }
+
+  const legacy = new SQLocal({
+    databasePath: "local",
+    onInit: schemaStatements,
   });
 
-  return client;
+  try {
+    const legacyRows = await storedRowCount(legacy);
+    if (legacyRows > 0) {
+      await db.overwriteDatabaseFile(await legacy.getDatabaseFile());
+      const migratedRows = await storedRowCount(db);
+      if (migratedRows !== legacyRows) {
+        throw new Error(
+          `Local profile migration copied ${migratedRows} of ${legacyRows} stored rows.`,
+        );
+      }
+    }
+
+    // Remove the old KVVFS pages only after OPFS import and verification succeed.
+    await legacy.deleteDatabaseFile(undefined, true);
+    localStorage.setItem(legacyMigrationKey, "done");
+  } catch (error) {
+    await legacy.destroy();
+    throw error;
+  }
+}
+
+function openClientEffect(): Effect.Effect<
+  SQLocalClient,
+  PlatformError | LocalStoreUnavailable,
+  import("effect").Scope.Scope
+> {
+  return Effect.acquireRelease(
+    Effect.tryPromise({
+      try: async () => {
+        if (!browser) {
+          throw new LocalStoreUnavailable({
+            message: "Local profile storage is only available in the browser.",
+          });
+        }
+        const { SQLocal } = await import("sqlocal");
+        // A file path selects SQLocal's worker-backed OPFS VFS. That keeps
+        // SQLite I/O off the UI thread and persists a real database file.
+        const db = new SQLocal({ databasePath, onInit: schemaStatements });
+        const info = await db.getDatabaseInfo();
+        if (info.storageType !== "opfs") {
+          await db.destroy();
+          throw new LocalStoreUnavailable({
+            message:
+              "Local profile storage requires OPFS. Check the cross-origin isolation response headers.",
+          });
+        }
+        await migrateLegacyLocalStorageDatabase(db, SQLocal);
+        return db;
+      },
+      catch: (cause) =>
+        cause instanceof LocalStoreUnavailable ? cause : platformError("local-store.open", cause),
+    }),
+    (db) =>
+      Effect.tryPromise({
+        try: () => db.destroy(),
+        catch: (cause) => platformError("local-store.close", cause),
+      }).pipe(Effect.orDie),
+  );
+}
+
+const localStoreLayer = Layer.effect(
+  LocalStore,
+  Effect.map(openClientEffect(), (db) => LocalStore.of({ db })),
+);
+const localStoreRuntime = ManagedRuntime.make(localStoreLayer);
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => void localStoreRuntime.dispose());
+}
+
+function getClient(): Promise<SQLocalClient> {
+  return localStoreRuntime.runPromise(Effect.map(LocalStore, ({ db }) => db));
+}
+
+function runLocalStoreEffect<A, E>(operation: string, effect: Effect.Effect<A, E>): Promise<A> {
+  return localStoreRuntime.runPromise(
+    effect.pipe(
+      Effect.tapCause((cause) =>
+        Effect.sync(() => console.error(`[${operation}]`, Cause.pretty(cause))),
+      ),
+      Effect.withSpan(operation),
+    ),
+  );
 }
 
 function parseRowJsonEffect(raw: string) {
@@ -113,15 +261,14 @@ function decodeSavePointRowEffect(raw: string) {
   return Effect.flatMap(parseRowJsonEffect(raw), decodeSavePointFromStorageEffect);
 }
 
-export async function loadLocalDevice(id?: string): Promise<DeviceProfile | undefined> {
-  return Effect.runPromise(loadLocalDeviceEffect(id));
+export function loadLocalDevice(id?: string): Promise<DeviceProfile | undefined> {
+  return runLocalStoreEffect("local-store.load-device", loadLocalDeviceEffect(id));
 }
 
 export function loadLocalDeviceEffect(id?: string) {
   return Effect.flatMap(
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return undefined;
+      const db = await getClient();
 
       if (id) {
         const [row] = await db.sql<{
@@ -142,8 +289,8 @@ export function loadLocalDeviceEffect(id?: string) {
   );
 }
 
-export async function saveLocalDevice(device: DeviceProfile): Promise<void> {
-  return Effect.runPromise(saveLocalDeviceEffect(device));
+export function saveLocalDevice(device: DeviceProfile): Promise<void> {
+  return runLocalStoreEffect("local-store.save-device", saveLocalDeviceEffect(device));
 }
 
 export function saveLocalDeviceEffect(device: DeviceProfile) {
@@ -153,8 +300,7 @@ export function saveLocalDeviceEffect(device: DeviceProfile) {
 
   return Effect.flatMap(serializeForStorageEffect(device), (data) =>
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return;
+      const db = await getClient();
 
       const updatedAt = new Date().toISOString();
       await db.sql`
@@ -168,15 +314,14 @@ export function saveLocalDeviceEffect(device: DeviceProfile) {
   );
 }
 
-export async function loadLocalDraft(id?: string): Promise<DeviceProfile | undefined> {
-  return Effect.runPromise(loadLocalDraftEffect(id));
+export function loadLocalDraft(id?: string): Promise<DeviceProfile | undefined> {
+  return runLocalStoreEffect("local-store.load-draft", loadLocalDraftEffect(id));
 }
 
 export function loadLocalDraftEffect(id?: string) {
   return Effect.flatMap(
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return undefined;
+      const db = await getClient();
 
       if (id) {
         const [row] = await db.sql<{
@@ -197,8 +342,8 @@ export function loadLocalDraftEffect(id?: string) {
   );
 }
 
-export async function saveLocalDraft(device: DeviceProfile): Promise<void> {
-  return Effect.runPromise(saveLocalDraftEffect(device));
+export function saveLocalDraft(device: DeviceProfile): Promise<void> {
+  return runLocalStoreEffect("local-store.save-draft", saveLocalDraftEffect(device));
 }
 
 export function saveLocalDraftEffect(device: DeviceProfile) {
@@ -208,8 +353,7 @@ export function saveLocalDraftEffect(device: DeviceProfile) {
 
   return Effect.flatMap(serializeForStorageEffect(device), (data) =>
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return;
+      const db = await getClient();
 
       const updatedAt = new Date().toISOString();
       await db.sql`
@@ -223,40 +367,42 @@ export function saveLocalDraftEffect(device: DeviceProfile) {
   );
 }
 
-export async function clearLocalDraft(id: string): Promise<void> {
-  return Effect.runPromise(clearLocalDraftEffect(id));
+export function clearLocalDraft(id: string): Promise<void> {
+  return runLocalStoreEffect("local-store.clear-draft", clearLocalDraftEffect(id));
 }
 
 export function clearLocalDraftEffect(id: string) {
   return Effect.tryPromise(async () => {
-    const db = getClient();
-    if (!db) return;
+    const db = await getClient();
 
     await db.sql`DELETE FROM local_profile_drafts WHERE id = ${id}`;
   });
 }
 
-export async function clearLocalState(): Promise<void> {
-  return Effect.runPromise(clearLocalStateEffect());
+export function clearLocalState(): Promise<void> {
+  return runLocalStoreEffect("local-store.clear-state", clearLocalStateEffect());
 }
 
 export function clearLocalStateEffect() {
   return Effect.tryPromise(async () => {
-    const db = getClient();
-    if (!db) return;
+    const db = await getClient();
 
     await db.transaction(async (tx) => {
       await tx.sql`DELETE FROM local_profile_drafts`;
       await tx.sql`DELETE FROM local_profiles`;
       await tx.sql`DELETE FROM local_forks`;
       await tx.sql`DELETE FROM local_save_points`;
+      await tx.sql`DELETE FROM workbench_version_meta`;
       await tx.sql`DELETE FROM sync_log`;
     });
   });
 }
 
-export async function createLocalSavePoint(savePoint: SavePoint): Promise<void> {
-  return Effect.runPromise(createLocalSavePointEffect(savePoint));
+export function createLocalSavePoint(savePoint: SavePoint): Promise<void> {
+  return runLocalStoreEffect(
+    "local-store.create-save-point",
+    createLocalSavePointEffect(savePoint),
+  );
 }
 
 export function createLocalSavePointEffect(savePoint: SavePoint) {
@@ -269,8 +415,7 @@ export function createLocalSavePointEffect(savePoint: SavePoint) {
 
   return Effect.flatMap(serializeSavePointForStorageEffect(savePoint), (data) =>
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return;
+      const db = await getClient();
 
       await db.sql`
         INSERT INTO local_save_points (id, variant_id, data, created_at)
@@ -284,53 +429,35 @@ export function createLocalSavePointEffect(savePoint: SavePoint) {
   );
 }
 
-export async function listLocalSavePointsByVariant(variantId: string): Promise<SavePoint[]> {
-  return Effect.runPromise(listLocalSavePointsByVariantEffect(variantId));
+export function listLocalSavePointsByVariant(variantId: string): Promise<SavePoint[]> {
+  return runLocalStoreEffect(
+    "local-store.list-save-points",
+    listLocalSavePointsByVariantEffect(variantId),
+  );
 }
 
 export function listLocalSavePointsByVariantEffect(variantId: string) {
   return Effect.flatMap(
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return [] as { id: string; data: string }[];
+      const db = await getClient();
 
       return db.sql<{
         id: string;
         data: string;
       }>`SELECT id, data FROM local_save_points WHERE variant_id = ${variantId} ORDER BY created_at DESC`;
     }),
-    (rows) =>
-      Effect.sync(() => {
-        const savePoints: SavePoint[] = [];
-        for (const row of rows) {
-          const result = Effect.runSyncExit(decodeSavePointRowEffect(row.data));
-          if (result._tag === "Success") {
-            savePoints.push(result.value);
-            continue;
-          }
-
-          if (typeof console !== "undefined") {
-            console.warn(
-              `Skipping save point ${row.id}: stored data is corrupt and could not be decoded.`,
-              result.cause,
-            );
-          }
-        }
-
-        return savePoints;
-      }),
+    (rows) => Effect.forEach(rows, (row) => decodeSavePointRowEffect(row.data), { concurrency: 8 }),
   );
 }
 
-export async function getLocalSavePoint(id: string): Promise<SavePoint | undefined> {
-  return Effect.runPromise(getLocalSavePointEffect(id));
+export function getLocalSavePoint(id: string): Promise<SavePoint | undefined> {
+  return runLocalStoreEffect("local-store.get-save-point", getLocalSavePointEffect(id));
 }
 
 export function getLocalSavePointEffect(id: string) {
   return Effect.flatMap(
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return undefined;
+      const db = await getClient();
 
       const [row] = await db.sql<{
         data: string;
@@ -344,59 +471,38 @@ export function getLocalSavePointEffect(id: string) {
   );
 }
 
-export async function deleteLocalSavePoint(id: string): Promise<void> {
-  return Effect.runPromise(deleteLocalSavePointEffect(id));
+export function deleteLocalSavePoint(id: string): Promise<void> {
+  return runLocalStoreEffect("local-store.delete-save-point", deleteLocalSavePointEffect(id));
 }
 
 export function deleteLocalSavePointEffect(id: string) {
   return Effect.tryPromise(async () => {
-    const db = getClient();
-    if (!db) return;
+    const db = await getClient();
 
     await db.sql`DELETE FROM local_save_points WHERE id = ${id}`;
   });
 }
 
-export async function loadForks(): Promise<WorkspaceFork[]> {
-  return Effect.runPromise(loadForksEffect());
+export function loadForks(): Promise<WorkspaceFork[]> {
+  return runLocalStoreEffect("local-store.load-forks", loadForksEffect());
 }
 
 export function loadForksEffect() {
   return Effect.flatMap(
     Effect.tryPromise(async () => {
-      const db = getClient();
-      if (!db) return [] as { id: string; data: string }[];
+      const db = await getClient();
 
       return db.sql<{
         id: string;
         data: string;
       }>`SELECT id, data FROM local_forks ORDER BY created_at DESC`;
     }),
-    (rows) =>
-      Effect.sync(() => {
-        const forks: WorkspaceFork[] = [];
-        for (const row of rows) {
-          const result = Effect.runSyncExit(decodeForkRowEffect(row.data));
-          if (result._tag === "Success") {
-            forks.push(result.value);
-            continue;
-          }
-
-          if (typeof console !== "undefined") {
-            console.warn(
-              `Skipping fork ${row.id}: stored data is corrupt and could not be decoded.`,
-              result.cause,
-            );
-          }
-        }
-
-        return forks;
-      }),
+    (rows) => Effect.forEach(rows, (row) => decodeForkRowEffect(row.data), { concurrency: 8 }),
   );
 }
 
-export async function saveForks(forks: WorkspaceFork[]): Promise<void> {
-  return Effect.runPromise(saveForksEffect(forks));
+export function saveForks(forks: WorkspaceFork[]): Promise<void> {
+  return runLocalStoreEffect("local-store.save-forks", saveForksEffect(forks));
 }
 
 export function saveForksEffect(forks: WorkspaceFork[]) {
@@ -408,8 +514,7 @@ export function saveForksEffect(forks: WorkspaceFork[]) {
     ),
     (rows) =>
       Effect.tryPromise(async () => {
-        const db = getClient();
-        if (!db) return;
+        const db = await getClient();
 
         await db.transaction(async (tx) => {
           await tx.sql`DELETE FROM local_forks`;
@@ -425,31 +530,140 @@ export function saveForksEffect(forks: WorkspaceFork[]) {
   );
 }
 
-export async function recordSync(
-  agentName: string,
-  status: string,
-  payload: unknown,
-): Promise<void> {
-  return Effect.runPromise(recordSyncEffect(agentName, status, payload));
+export function loadLocalVersionGraph(): Promise<WorkbenchVersionGraph> {
+  return runLocalStoreEffect("local-store.load-version-graph", loadLocalVersionGraphEffect());
+}
+
+export function loadLocalVersionGraphEffect() {
+  return Effect.gen(function* () {
+    const db = yield* Effect.tryPromise(() => getClient());
+
+    const rows = yield* Effect.tryPromise(
+      () => db.sql<{ data: string }>`SELECT data FROM local_save_points ORDER BY created_at DESC`,
+    );
+    const savePoints = yield* Effect.all(
+      rows.map((row) =>
+        Effect.flatMap(parseRowJsonEffect(row.data), decodeSavePointFromStorageEffect),
+      ),
+      { concurrency: "unbounded" },
+    );
+    const forks = yield* loadForksEffect();
+    const [metadata] = yield* Effect.tryPromise(
+      () =>
+        db.sql<{ data: string }>`
+        SELECT data FROM workbench_version_meta WHERE id = ${"version-graph"} LIMIT 1
+      `,
+    );
+    const newestCreatedAt = [...forks, ...savePoints]
+      .map((item) => item.createdAt)
+      .sort()
+      .at(-1);
+    const rawMetadata = metadata
+      ? yield* parseRowJsonEffect(metadata.data)
+      : {
+          ...emptyWorkbenchVersionGraph(),
+          updatedAt: newestCreatedAt ?? new Date(0).toISOString(),
+        };
+
+    return yield* decodeWorkbenchVersionGraphEffect({
+      ...(rawMetadata as Record<string, unknown>),
+      forks,
+      savePoints,
+    });
+  });
+}
+
+export function replaceLocalVersionGraph(graph: WorkbenchVersionGraph): Promise<void> {
+  return runLocalStoreEffect(
+    "local-store.replace-version-graph",
+    replaceLocalVersionGraphEffect(graph),
+  );
+}
+
+export function replaceLocalVersionGraphEffect(input: WorkbenchVersionGraph) {
+  const graph = normalizeWorkbenchVersionGraph(input);
+  return Effect.gen(function* () {
+    const forkRows = yield* Effect.all(
+      graph.forks.map((fork) =>
+        Effect.map(serializeForkForStorageEffect(fork), (data) => ({ fork, data })),
+      ),
+      { concurrency: "unbounded" },
+    );
+    const savePointRows = yield* Effect.all(
+      graph.savePoints.map((savePoint) =>
+        Effect.map(serializeSavePointForStorageEffect(savePoint), (data) => ({ savePoint, data })),
+      ),
+      { concurrency: "unbounded" },
+    );
+    const metadata = yield* Effect.try({
+      try: () =>
+        JSON.stringify({
+          activeVariantId: graph.activeVariantId,
+          deletedForkIds: graph.deletedForkIds,
+          deletedSavePointIds: graph.deletedSavePointIds,
+          revision: graph.revision,
+          selectedSavePointId: graph.selectedSavePointId,
+          updatedAt: graph.updatedAt,
+        }),
+      catch: (error) =>
+        new Error(
+          error instanceof Error ? error.message : "Version metadata could not be encoded.",
+        ),
+    });
+
+    yield* Effect.tryPromise(async () => {
+      const db = await getClient();
+      await db.transaction(async (tx) => {
+        await tx.sql`DELETE FROM local_forks`;
+        await tx.sql`DELETE FROM local_save_points`;
+        for (const { fork, data } of forkRows) {
+          await tx.sql`
+            INSERT INTO local_forks (id, data, created_at)
+            VALUES (${fork.id}, ${data}, ${fork.createdAt})
+          `;
+        }
+        for (const { savePoint, data } of savePointRows) {
+          await tx.sql`
+            INSERT INTO local_save_points (id, variant_id, data, created_at)
+            VALUES (${savePoint.id}, ${savePoint.variantId}, ${data}, ${savePoint.createdAt})
+          `;
+        }
+        await tx.sql`
+          INSERT INTO workbench_version_meta (id, data, updated_at)
+          VALUES (${"version-graph"}, ${metadata}, ${graph.updatedAt})
+          ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
+        `;
+      });
+    });
+  });
+}
+
+export function recordSync(agentName: string, status: string, payload: unknown): Promise<void> {
+  return runLocalStoreEffect(
+    "local-store.record-sync",
+    recordSyncEffect(agentName, status, payload),
+  );
 }
 
 export function recordSyncEffect(agentName: string, status: string, payload: unknown) {
-  return Effect.tryPromise(async () => {
-    const db = getClient();
-    if (!db) return;
-
-    let serialized: string;
-    try {
-      serialized = JSON.stringify(payload);
-    } catch (error) {
-      serialized = JSON.stringify({
-        error: error instanceof Error ? error.message : "Sync payload could not be serialized",
-      });
-    }
-
-    await db.sql`
-      INSERT INTO sync_log (id, agent_name, status, payload, created_at)
-      VALUES (${crypto.randomUUID()}, ${agentName}, ${status}, ${serialized}, ${new Date().toISOString()})
-    `;
+  return Effect.gen(function* () {
+    const serialized = yield* Effect.try({
+      try: () => JSON.stringify(payload),
+      catch: (cause) => platformError("local-store.serialize-sync-payload", cause),
+    });
+    const db = yield* Effect.tryPromise({
+      try: () => getClient(),
+      catch: (cause) => platformError("local-store.get-client", cause),
+    });
+    yield* Effect.tryPromise({
+      try: () => db.sql`
+        INSERT INTO sync_log (id, agent_name, status, payload, created_at)
+        VALUES (
+          ${crypto.randomUUID()}, ${agentName}, ${status}, ${serialized},
+          ${new Date().toISOString()}
+        )
+      `,
+      catch: (cause) => platformError("local-store.insert-sync-log", cause),
+    });
   });
 }

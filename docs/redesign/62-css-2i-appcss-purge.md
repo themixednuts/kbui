@@ -74,7 +74,7 @@ No size changes were reported.
 - `vp check --fix`: formatted `src/app.css`; lint/type pass clean.
 - `vp check`: passed. 178 files correctly formatted; 246 files with no warnings, lint errors, or type errors.
 - `vp run svelte:check`: passed. 6002 files, 0 errors, 0 warnings.
-- `vp build`: passed. Vite/Rolldown emitted the existing generated CSS optimizer warning for `.bg-[var(...)]`; exit code 0.
+- `vp build`: passed. Vite/Rolldown emitted the existing generated CSS optimizer warning for an arbitrary variable background utility; exit code 0.
 - `vp test`: passed. 37 test files, 194 tests.
 - `vp run capture`: passed. 9/9 screenshots captured.
 - `node scripts/fidelity-diff.mjs "<baseline>"`: passed with all 8 compared screens at 9 px.

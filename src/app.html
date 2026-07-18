@@ -1,9 +1,49 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="text-scale" content="scale" />
+    <link
+      rel="preload"
+      href="/fonts/inter-latin-variable.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/departure-mono.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/material-symbols-outlined.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <script>
+      var r = document.documentElement;
+      r.classList.remove("no-js");
+      r.classList.add("js");
+      // Resolve the user's light/dark/system preference before first paint.
+      // Warm and graphite are the concrete Klakson skins behind those choices.
+      try {
+        var t = localStorage.getItem("klakson.theme.v1");
+        if (t === "warm") t = "light";
+        if (t === "graphite") t = "dark";
+        if (t !== "light" && t !== "dark" && t !== "system") t = "system";
+        var dark =
+          t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        r.setAttribute("data-theme-preference", t);
+        r.setAttribute("data-theme", dark ? "graphite" : "warm");
+        r.classList.toggle("dark", dark);
+        r.style.colorScheme = dark ? "dark" : "light";
+      } catch (e) {}
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

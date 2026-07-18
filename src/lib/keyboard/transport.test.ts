@@ -61,7 +61,7 @@ describe("keyboard transports", () => {
     expect(connection.detection?.keymap?.[1]?.[1]?.[2]).toBe(0x0001);
   });
 
-  it("does not guess a matrix when no VIA definition is resolved", async () => {
+  it("refuses a VIA connection when no verified matrix definition is resolved", async () => {
     const environment = createMockTransportEnvironment({
       productName: "Generic QMK Keyboard",
       vendorId: 0xfeed,
@@ -73,11 +73,9 @@ describe("keyboard transports", () => {
 
     const connection = await connectKeyboard("webhid", [], { environment });
 
-    expect(connection.status).toBe("connected");
+    expect(connection.status).toBe("error");
     expect(connection.detection?.keymap).toBeUndefined();
-    expect(connection.detection?.notes).toContain(
-      "Need a keyboard definition to map physical layout dimensions before reading all keys.",
-    );
+    expect(connection.message).toContain("verified keyboard definition");
   });
 
   it("opens and claims a mock WebUSB keyboard", async () => {
@@ -120,6 +118,72 @@ describe("keyboard transports", () => {
 
     expect(connection?.transport).toBe("webhid");
     expect(connection?.detection?.keymap?.[0]?.[0]?.[0]).toBe(0x0028);
+  });
+
+  it("reuses one granted VIA keyboard without reopening the chooser", async () => {
+    const hidDevice = new MockHidKeyboardDevice({
+      productName: "Granted Charybdis",
+      vendorId: 0xa8f8,
+      productId: 0x1833,
+      layerCount: 1,
+      matrix: { rows: 1, cols: 1 },
+      keymap: [[[0x0028]]],
+    });
+    let chooserRequests = 0;
+    const environment = {
+      isBrowser: true,
+      hid: {
+        getDevices: async () => [hidDevice],
+        requestDevice: async () => {
+          chooserRequests += 1;
+          return [];
+        },
+      },
+    };
+
+    const connection = await connectKeyboard("webhid", [], {
+      environment,
+      matrixHint: { rows: 1, cols: 1 },
+    });
+
+    expect(connection.status).toBe("connected");
+    expect(connection.productId).toBe(0x1833);
+    expect(chooserRequests).toBe(0);
+  });
+
+  it("passes only a plain device identity to the matrix resolver", async () => {
+    const hidDevice = new MockHidKeyboardDevice({
+      productName: "Native browser keyboard",
+      vendorId: 0xa8f8,
+      productId: 0x1833,
+      serialNumber: "SERIAL-POJO",
+      layerCount: 1,
+      matrix: { rows: 1, cols: 1 },
+      keymap: [[[0x0028]]],
+    });
+    const environment = {
+      isBrowser: true,
+      hid: createMockHidController(hidDevice),
+    };
+    let resolverIdentity: object | undefined;
+
+    const connection = await connectKeyboard("webhid", [], {
+      environment,
+      resolveMatrixHint: (identity) => {
+        resolverIdentity = identity;
+        return { rows: 1, cols: 1 };
+      },
+    });
+
+    expect(connection.status).toBe("connected");
+    expect(resolverIdentity).not.toBe(hidDevice);
+    expect(Object.getPrototypeOf(resolverIdentity)).toBe(Object.prototype);
+    expect(resolverIdentity).toEqual({
+      vendorId: 0xa8f8,
+      productId: 0x1833,
+      productName: "Native browser keyboard",
+      serialNumber: "SERIAL-POJO",
+    });
   });
 
   it("validates and applies VIA set-keycode reports sent to the mock WebHID device", async () => {

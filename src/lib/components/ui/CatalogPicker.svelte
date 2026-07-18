@@ -38,7 +38,7 @@
 </script>
 
 <div
-  class="inline-flex h-8 w-full max-w-[420px] min-w-0 items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2"
+  class="inline-flex h-8 w-full max-w-[420px] min-w-0 items-center gap-1.5 rounded-md border border-line-2 bg-surface px-2"
   {title}
 >
   <Search size={14} class="flex-none text-ink-3" />

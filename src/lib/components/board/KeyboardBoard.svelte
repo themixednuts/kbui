@@ -8,8 +8,10 @@
 </script>
 
 <script lang="ts">
+  import { SvelteFlow, type EdgeTypes, type NodeTypes } from "@xyflow/svelte";
   import type { Snippet } from "svelte";
 
+  import { Button } from "$lib/components/ui";
   import type { DeviceProfile } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
 
@@ -20,15 +22,18 @@
     type BoardLens,
     type BoardSelection,
     type BoardSplitPreference,
-    type BoardComboConnector,
   } from "./board-view-model";
-  import Keycap from "./Keycap.svelte";
+  import BoardComboEdge from "./BoardComboEdge.svelte";
+  import BoardKeyNode from "./BoardKeyNode.svelte";
+  import { createBoardFlowGraph, setBoardFlowRuntime } from "./board-flow";
 
   const boardClass = "keyboard-board relative flex min-h-0 min-w-0 flex-1 flex-col";
   const viewportClass =
-    "keyboard-board-viewport relative grid min-h-[260px] min-w-0 flex-1 place-items-center overflow-auto px-kb-24 py-kb-28 overscroll-contain touch-none select-none bg-[linear-gradient(to_right,oklch(0.13_0.01_60/0.04)_1px,transparent_1px),linear-gradient(to_bottom,oklch(0.13_0.01_60/0.04)_1px,transparent_1px),radial-gradient(ellipse_70%_60%_at_50%_35%,oklch(0.96_0.04_60/0.5),transparent_75%)] [background-size:24px_24px,24px_24px,100%_100%] cursor-default max-[640px]:min-h-[220px] max-[640px]:px-[14px] max-[640px]:pt-[18px] max-[640px]:pb-[28px]";
-  const connectorLineClass =
-    "combo-connector-line fill-none stroke-mustard opacity-[0.34] mix-blend-multiply transition-[filter,opacity,stroke,stroke-width] duration-[120ms] ease-[ease] [shape-rendering:geometricPrecision] [stroke-dasharray:4_5] [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:1.25] [vector-effect:non-scaling-stroke]";
+    "keyboard-board-viewport relative grid min-h-[260px] min-w-0 flex-1 place-items-center overflow-hidden bg-stage px-kb-24 py-kb-28 overscroll-contain touch-none select-none [container-type:size] [background-image:radial-gradient(120%_120%_at_50%_0%,color-mix(in_oklch,var(--surface)_40%,transparent),transparent_70%)] cursor-default max-[640px]:min-h-[220px] max-[640px]:px-kb-14 max-[640px]:pt-kb-18 max-[640px]:pb-kb-28";
+  const nodeTypes: NodeTypes = { "board-key": BoardKeyNode };
+  const edgeTypes: EdgeTypes = { "board-combo": BoardComboEdge };
+  const lockedFlowViewport = { x: 0, y: 0, zoom: 1 };
+  const flowProOptions = { hideAttribution: true };
 
   interface Props {
     profile: DeviceProfile;
@@ -72,8 +77,6 @@
     onHoverKey,
   }: Props = $props();
 
-  let viewport: HTMLDivElement | undefined = $state();
-  let viewportWidth = $state(900);
   let hoveredKeyId = $state<string | null>(null);
   let panning = $state(false);
   let panStart:
@@ -102,16 +105,26 @@
       targetOs,
     }),
   );
-  const baseUnit = $derived(computeBoardUnit(model, viewportWidth));
-  const unit = $derived(Math.round(baseUnit * zoom * 100) / 100);
+  // Keep Svelte Flow's coordinate space deterministic across SSR and hydration.
+  // Responsive fitting and user zoom happen on the surface transform instead of
+  // rebuilding every node after the browser reports its viewport dimensions.
+  const unit = $derived(Math.round(computeBoardUnit(model, 900, 500) * 100) / 100);
+  const compactKeycaps = $derived(unit < 42);
   const splitLabelSpace = $derived(model.split.enabled ? 30 : 0);
+  const planeWidth = $derived(unit * model.bounds.width);
+  const planeHeight = $derived(unit * model.bounds.height);
+  const surfaceHeight = $derived(planeHeight + splitLabelSpace);
+  const boardFit = $derived(
+    `calc(min(1, calc((100cqw - 80px) / ${planeWidth}px), calc((100cqh - 72px) / ${surfaceHeight}px)) * ${zoom})`,
+  );
   const surfaceStyle = $derived(
     [
       `--u: ${unit}px`,
       "--board-key-gap: 5px",
-      `width: calc(var(--u) * ${model.bounds.width})`,
-      `height: calc(var(--u) * ${model.bounds.height} + ${splitLabelSpace}px)`,
-      `transform: translate(${pan.x}px, ${pan.y - (model.split.enabled ? 1 : 0)}px)`,
+      `width: ${planeWidth}px`,
+      `height: ${surfaceHeight}px`,
+      `translate: calc(-50% + ${pan.x}px) calc(-50% + ${pan.y - (model.split.enabled ? 1 : 0)}px)`,
+      `scale: ${boardFit}`,
     ].join("; "),
   );
   const planeStyle = $derived(
@@ -120,29 +133,37 @@
       `height: calc(var(--u) * ${model.bounds.height})`,
     ].join("; "),
   );
+  const flowGraph = $derived(
+    createBoardFlowGraph({
+      model,
+      unit,
+      hoveredKeyId,
+    }),
+  );
   const zoomPercent = $derived(`${Math.round(zoom * 100)}%`);
 
-  $effect(() => {
-    if (!viewport) return;
-
-    const measure = () => {
-      viewportWidth = viewport?.clientWidth ?? 900;
-    };
-    measure();
-
-    if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(measure);
-      observer.observe(viewport);
-      return () => observer.disconnect();
-    }
-
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+  setBoardFlowRuntime({
+    get compact() {
+      return compactKeycaps;
+    },
+    get lens() {
+      return lens;
+    },
+    get comboMarker() {
+      return comboMarker;
+    },
+    get layerMarker() {
+      return layerMarker;
+    },
+    get onSelectKey() {
+      return lens === "keys" ? handleSelectKey : undefined;
+    },
+    get onToggleKey() {
+      return lens === "keys" ? handleToggleKey : undefined;
+    },
+    onKeyPointerEnter: handleKeyEnter,
+    onKeyPointerLeave: handleKeyLeave,
   });
-
-  function connectorActive(connector: BoardComboConnector) {
-    return hoveredKeyId ? connector.keyIds.includes(hoveredKeyId) : false;
-  }
 
   function handleSelectKey(keyId: string) {
     onSelectKey?.(keyId);
@@ -275,7 +296,6 @@
 
 <div class={cn(boardClass, className)} data-lens={lens}>
   <div
-    bind:this={viewport}
     class={cn(
       viewportClass,
       lens === "lighting" && "lighting cursor-crosshair [&_.board-keycap]:cursor-crosshair",
@@ -291,39 +311,38 @@
     onpointercancel={handlePointerCancel}
   >
     <div
-      class="keyboard-board-surface relative min-w-max transition-transform duration-[90ms] ease-[var(--ease-out-soft)] will-change-transform"
+      class="keyboard-board-surface absolute top-1/2 left-1/2 min-w-max origin-center"
       style={surfaceStyle}
     >
       <div class="key-plane absolute top-0 left-0" style={planeStyle}>
-        {#if model.comboConnectors.length > 0 && lens === "keys"}
-          <svg
-            class="combo-connectors pointer-events-none absolute inset-0 z-[3] h-full w-full overflow-visible"
-            viewBox={`0 0 ${model.bounds.width} ${model.bounds.height}`}
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            {#each model.comboConnectors as connector (connector.id)}
-              {@const active = connectorActive(connector)}
-              <g class={cn("combo-connector", active && "combo-connector-active")}>
-                <title>{connector.title}</title>
-                {#each connector.segments as segment (segment.id)}
-                  <path
-                    class="combo-connector-hit fill-none stroke-transparent [stroke-width:14] [vector-effect:non-scaling-stroke]"
-                    d={segment.path}
-                  ></path>
-                  <path
-                    class={cn(
-                      connectorLineClass,
-                      active &&
-                        "active stroke-coral opacity-[0.92] [filter:drop-shadow(0_1px_2px_color-mix(in_oklch,var(--coral)_55%,transparent))] [stroke-width:2.35]",
-                    )}
-                    d={segment.path}
-                  ></path>
-                {/each}
-              </g>
-            {/each}
-          </svg>
-        {/if}
+        <SvelteFlow
+          id={`keyboard-${model.profileId}-${lens}`}
+          class="keyboard-flow absolute inset-0"
+          width={planeWidth}
+          height={planeHeight}
+          nodes={flowGraph.nodes}
+          edges={flowGraph.edges}
+          {nodeTypes}
+          {edgeTypes}
+          viewport={lockedFlowViewport}
+          minZoom={1}
+          maxZoom={1}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          nodesFocusable={false}
+          edgesFocusable={false}
+          elementsSelectable={false}
+          elevateNodesOnSelect={false}
+          elevateEdgesOnSelect={false}
+          panOnDrag={false}
+          panOnScroll={false}
+          zoomOnScroll={false}
+          zoomOnPinch={false}
+          zoomOnDoubleClick={false}
+          preventScrolling={false}
+          disableKeyboardA11y
+          proOptions={flowProOptions}
+        />
 
         {#if model.split.enabled && model.split.seamX !== null}
           <span
@@ -333,20 +352,6 @@
           ></span>
         {/if}
 
-        {#each model.rows as row (row.row)}
-          {#each row.keys as keyModel (keyModel.id)}
-            <Keycap
-              cap={keyModel}
-              {lens}
-              {comboMarker}
-              {layerMarker}
-              onSelectKey={lens === "keys" ? handleSelectKey : undefined}
-              onToggleKey={lens === "keys" ? handleToggleKey : undefined}
-              onKeyPointerEnter={handleKeyEnter}
-              onKeyPointerLeave={handleKeyLeave}
-            />
-          {/each}
-        {/each}
       </div>
 
       {#if model.split.enabled && model.split.seamX !== null}
@@ -354,19 +359,21 @@
           class="split-label absolute inline-flex -translate-x-1/2 items-center gap-kb-6 whitespace-nowrap font-mono text-[10px] leading-none tracking-[0.12em] text-ink-3 uppercase"
           style={`left: calc(var(--u) * ${model.split.seamX}); top: calc(var(--u) * ${model.bounds.height} + 10px)`}
         >
-          <span class="material-symbols-outlined !text-[14px]" aria-hidden="true">cable</span>
+          <span class="material-symbols-outlined text-[14px]" aria-hidden="true">cable</span>
           <span>{model.split.label}</span>
         </div>
       {/if}
     </div>
   </div>
 
-  <button
+  <Button
     type="button"
-    class="zoom-readout absolute right-kb-12 bottom-kb-12 inline-grid h-kb-22 min-w-[42px] place-items-center rounded-[6px] !border !border-[rgba(24,22,20,0.18)] !bg-[rgba(255,252,245,0.78)] px-[7px] py-0 !font-mono !text-kb-10 !leading-none !text-ink-2 shadow-card hover:!border-[rgba(24,22,20,0.34)] hover:!bg-paper hover:!text-ink"
+    variant="outline"
+    size="xs"
+    class="zoom-readout absolute right-kb-12 bottom-kb-12 h-kb-22 min-w-[42px] rounded-[6px] border-line-2 bg-[color-mix(in_oklch,var(--surface)_82%,transparent)] px-[7px] py-0 font-mono text-kb-10 leading-none text-ink-2 shadow-card hover:border-[color-mix(in_oklch,var(--ink)_34%,transparent)] hover:bg-surface hover:text-ink"
     title="Reset keyboard zoom"
     onclick={() => (zoom = 1)}
   >
     {zoomPercent}
-  </button>
+  </Button>
 </div>

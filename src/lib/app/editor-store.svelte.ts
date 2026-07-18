@@ -1,8 +1,10 @@
 import { browser } from "$app/environment";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 
+import { forkApp, runApp } from "$lib/app/runtime";
+import * as EditorLayout from "$lib/app/services/editor-layout";
 import * as TargetOS from "$lib/app/services/target-os";
-import { diffProfiles, qmkSnippet, summarizeDiff } from "$lib/keyboard/changes";
+import { diffProfiles, firmwareSnippet, summarizeDiff } from "$lib/keyboard/changes";
 import {
   defaultLightingSwatchId,
   keyLightingEquals,
@@ -19,10 +21,10 @@ import {
   type LogicBindingOption,
 } from "$lib/keyboard/logic-bindings";
 import {
-  clearLocalDraft,
-  loadLocalDraft,
-  saveLocalDevice,
-  saveLocalDraft,
+  clearLocalDraftEffect,
+  loadLocalDraftEffect,
+  saveLocalDeviceEffect,
+  saveLocalDraftEffect,
 } from "$lib/keyboard/local-store";
 import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import {
@@ -35,6 +37,8 @@ import {
   type Combo,
   type DeviceProfileOrigin,
   type DeviceProfile,
+  type FirmwareEditIntent,
+  type FirmwareMetadata,
   type KeyBinding,
   type KeyLighting,
   type KeyboardSettings,
@@ -48,6 +52,7 @@ import { newId } from "$lib/util/id";
 export type EditorLens = "keys" | "lighting";
 export type EditorInspectorTab = "bind" | "hold" | "notes";
 export type EditorTargetOs = TargetOS.TargetOS;
+export type EditorLayoutId = EditorLayout.EditorLayoutId;
 export type BoardTargetOs = "mac" | "windows" | "linux";
 export type EditorLightingEffect = Extract<
   LightingProfile["mode"],
@@ -117,15 +122,57 @@ export const EDITOR_QUICK_PICK_GROUPS = [
       "KC_K",
       "KC_L",
       "KC_M",
+      "KC_N",
+      "KC_O",
+      "KC_P",
+      "KC_Q",
+      "KC_R",
+      "KC_S",
+      "KC_T",
+      "KC_U",
+      "KC_V",
+      "KC_W",
+      "KC_X",
+      "KC_Y",
+      "KC_Z",
     ],
   },
   {
-    name: "Mods",
-    codes: ["KC_LCTL", "KC_LSFT", "KC_LALT", "KC_LGUI", "KC_RCTL", "KC_RSFT", "KC_RALT", "KC_MEH"],
+    name: "Numbers",
+    codes: ["KC_1", "KC_2", "KC_3", "KC_4", "KC_5", "KC_6", "KC_7", "KC_8", "KC_9", "KC_0"],
+  },
+  {
+    name: "Modifiers",
+    codes: [
+      "KC_LCTL",
+      "KC_LSFT",
+      "KC_LALT",
+      "KC_LGUI",
+      "KC_RCTL",
+      "KC_RSFT",
+      "KC_RALT",
+      "KC_RGUI",
+      "OSM(MOD_LCTL)",
+      "OSM(MOD_LSFT)",
+      "OSM(MOD_LALT)",
+      "OSM(MOD_LGUI)",
+    ],
   },
   {
     name: "Layers",
-    codes: ["MO(1)", "MO(2)", "MO(3)", "MO(4)", "TG(1)", "LT(1,KC_SPC)", "KC_TRNS"],
+    codes: [
+      "MO(1)",
+      "MO(2)",
+      "MO(3)",
+      "MO(4)",
+      "TG(1)",
+      "TO(0)",
+      "DF(0)",
+      "OSL(1)",
+      "LT(1,KC_SPC)",
+      "LT(2,KC_ENT)",
+      "KC_TRNS",
+    ],
   },
   {
     name: "Nav",
@@ -134,6 +181,26 @@ export const EDITOR_QUICK_PICK_GROUPS = [
   {
     name: "Media",
     codes: ["KC_MUTE", "KC_VOLU", "KC_VOLD", "KC_MPLY", "KC_MPRV", "KC_MNXT", "KC_BRID", "KC_BRIU"],
+  },
+  {
+    name: "Punctuation",
+    codes: [
+      "KC_MINS",
+      "KC_EQL",
+      "KC_LBRC",
+      "KC_RBRC",
+      "KC_BSLS",
+      "KC_SCLN",
+      "KC_QUOT",
+      "KC_GRV",
+      "KC_COMM",
+      "KC_DOT",
+      "KC_SLSH",
+    ],
+  },
+  {
+    name: "System",
+    codes: ["QK_BOOT", "EE_CLR", "DB_TOGG", "NK_TOGG", "AG_NORM", "AG_SWAP", "RGB_TOG", "RGB_MOD"],
   },
 ] as const;
 
@@ -234,10 +301,11 @@ export class EditorStore {
   profile = $state<DeviceProfile>(starterBoardProfile());
   activeLayer = $state(starterBoardProfile().layers[0]?.id ?? "base");
   lens = $state<EditorLens>("keys");
-  selection = $state<Set<string>>(new Set([defaultSelectedKeyId(starterBoardProfile())]));
+  selection = $state<Set<string>>(new Set());
   currentSwatch = $state<LightingSwatchId>(defaultLightingSwatchId);
   tintByLayer = $state(false);
   targetOs = $state<EditorTargetOs>("win");
+  editorLayout = $state<EditorLayoutId>(EditorLayout.DEFAULT_EDITOR_LAYOUT);
   showFallthrough = $state(true);
   inspectorTab = $state<EditorInspectorTab>("bind");
   hydrated = $state(false);
@@ -272,7 +340,7 @@ export class EditorStore {
   );
   readonly selectedSnippet = $derived.by(() =>
     this.primarySelectedKeyId
-      ? qmkSnippet(this.profile, this.activeLayer, this.primarySelectedKeyId)
+      ? firmwareSnippet(this.profile, this.activeLayer, this.primarySelectedKeyId)
       : "",
   );
   readonly selectedCodeSummary = $derived.by(() =>
@@ -292,7 +360,7 @@ export class EditorStore {
 
   private readonly persistEnabled: boolean;
   private draftProfileId = starterBoardProfile().id;
-  private persistTimer: ReturnType<typeof setTimeout> | undefined;
+  private persistFiber: Fiber.Fiber<void, unknown> | undefined;
 
   constructor(options: EditorStoreOptions = {}) {
     this.persistEnabled = options.persist ?? true;
@@ -301,12 +369,24 @@ export class EditorStore {
     this.profile = cloneDevice(options.profile ?? this.baseProfile);
     this.draftProfileId = this.baseProfile.id;
     this.activeLayer = this.profile.layers[0]?.id ?? "base";
-    this.selection = new Set([defaultSelectedKeyId(this.profile)]);
+    this.selection = new Set();
 
     if (browser) {
-      if (autoHydrate) void this.hydrate();
-      else this.hydrated = true;
-      void this.loadTargetOs();
+      if (autoHydrate) {
+        forkApp("editor.hydrate", this.hydrateEffect(), (_label, message) => {
+          this.persistenceError = message;
+        });
+      } else this.hydrated = true;
+      forkApp(
+        "preferences.target-os.load",
+        Effect.tap(TargetOS.load, (targetOs) => Effect.sync(() => (this.targetOs = targetOs))),
+        (_label, message) => (this.persistenceError = message),
+      );
+      forkApp(
+        "preferences.editor-layout.load",
+        Effect.tap(EditorLayout.load, (layout) => Effect.sync(() => (this.editorLayout = layout))),
+        (_label, message) => (this.persistenceError = message),
+      );
     } else {
       this.hydrated = true;
     }
@@ -347,87 +427,113 @@ export class EditorStore {
     this.queuePersistence();
   }
 
-  async replaceProfile(
+  replaceProfile(
     baseProfile: DeviceProfile,
     profile?: DeviceProfile,
     options: ReplaceProfileOptions = {},
   ) {
-    if (options.flushPersistence !== false) await this.flushPersistence();
-    this.baseProfile = profileWithOptionalOrigin(baseProfile, options.origin);
-    this.profile = profileWithOptionalOrigin(profile ?? this.baseProfile, options.origin);
-    this.draftProfileId = this.baseProfile.id;
-    this.activeLayer = this.profile.layers[0]?.id ?? "base";
-    this.selection = new Set([defaultSelectedKeyId(this.profile)]);
-    this.persistenceError = null;
-    this.hydrated = !browser || !this.persistEnabled || options.hydrateDraft === false;
-
-    if (browser && options.hydrateDraft !== false) await this.hydrate();
+    return runApp(
+      "editor.replace-profile",
+      this.replaceProfileEffect(baseProfile, profile, options),
+      (_label, message) => (this.persistenceError = message),
+    );
   }
 
-  async commitCurrentDraftAsBase() {
-    await this.flushPersistence();
-
-    const committedProfile = cloneDevice(this.profile);
-    this.baseProfile = cloneDevice(committedProfile);
-    this.profile = cloneDevice(committedProfile);
-    this.draftProfileId = committedProfile.id;
-    this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
-      ? this.activeLayer
-      : (this.profile.layers[0]?.id ?? "base");
-    this.selection = sanitizeSelection(this.profile, this.selection);
-
-    if (!this.persistEnabled || !browser) return;
-
-    try {
-      await saveLocalDevice(committedProfile);
-      await clearLocalDraft(committedProfile.id);
+  protected replaceProfileEffect(
+    baseProfile: DeviceProfile,
+    profile?: DeviceProfile,
+    options: ReplaceProfileOptions = {},
+  ) {
+    return Effect.gen({ self: this }, function* () {
+      if (options.flushPersistence !== false) yield* this.flushPersistenceEffect();
+      this.baseProfile = profileWithOptionalOrigin(baseProfile, options.origin);
+      this.profile = profileWithOptionalOrigin(profile ?? this.baseProfile, options.origin);
+      this.draftProfileId = this.baseProfile.id;
+      this.activeLayer = this.profile.layers[0]?.id ?? "base";
+      this.selection = new Set();
       this.persistenceError = null;
-    } catch (error) {
-      this.persistenceError =
-        error instanceof Error ? error.message : "Could not advance local base";
-    }
+      this.hydrated = !browser || !this.persistEnabled || options.hydrateDraft === false;
+
+      if (browser && options.hydrateDraft !== false) yield* this.hydrateEffect();
+    });
   }
 
-  async markBindingSyncedToBase(layerId: string, keyId: string, binding?: KeyBinding) {
-    const base = cloneDevice(this.baseProfile);
-    const layer = base.layers.find((candidate) => candidate.id === layerId);
-    const draftLayer = this.profile.layers.find((candidate) => candidate.id === layerId);
-    const syncedBinding = binding ?? draftLayer?.bindings[keyId];
-    if (!layer || !syncedBinding) return false;
+  commitCurrentDraftAsBase() {
+    return runApp(
+      "editor.commit-draft-as-base",
+      this.commitCurrentDraftAsBaseEffect(),
+      (_label, message) => (this.persistenceError = message),
+    );
+  }
 
-    layer.bindings[keyId] = { ...syncedBinding };
-    base.updatedAt = new Date().toISOString();
-    this.baseProfile = base;
+  protected commitCurrentDraftAsBaseEffect() {
+    return Effect.gen({ self: this }, function* () {
+      yield* this.flushPersistenceEffect();
 
-    if (!this.persistEnabled || !browser) return true;
+      const committedProfile = cloneDevice(this.profile);
+      this.baseProfile = cloneDevice(committedProfile);
+      this.profile = cloneDevice(committedProfile);
+      this.draftProfileId = committedProfile.id;
+      this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
+        ? this.activeLayer
+        : (this.profile.layers[0]?.id ?? "base");
+      this.selection = sanitizeSelection(this.profile, this.selection);
 
-    if (this.persistTimer) {
-      clearTimeout(this.persistTimer);
-      this.persistTimer = undefined;
-    }
-
-    try {
-      await saveLocalDevice(base);
-      await this.persistDraft();
+      if (!this.persistEnabled || !browser) return;
+      yield* saveLocalDeviceEffect(committedProfile);
+      yield* clearLocalDraftEffect(committedProfile.id);
       this.persistenceError = null;
-    } catch (error) {
-      this.persistenceError =
-        error instanceof Error ? error.message : "Could not advance VIA sync base";
-    }
-
-    return true;
+    });
   }
 
-  async loadProfileAsDraft(profile: DeviceProfile, options: { origin?: DeviceProfileOrigin } = {}) {
-    await this.flushPersistence();
+  markBindingSyncedToBase(layerId: string, keyId: string, binding?: KeyBinding) {
+    return runApp(
+      "editor.mark-binding-synced",
+      Effect.gen({ self: this }, function* () {
+        const base = cloneDevice(this.baseProfile);
+        const layer = base.layers.find((candidate) => candidate.id === layerId);
+        const draftLayer = this.profile.layers.find((candidate) => candidate.id === layerId);
+        const syncedBinding = binding ?? draftLayer?.bindings[keyId];
+        if (!layer || !syncedBinding) return false;
 
-    this.profile = profileWithOptionalOrigin(profile, options.origin);
-    this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
-      ? this.activeLayer
-      : (this.profile.layers[0]?.id ?? "base");
-    this.selection = sanitizeSelection(this.profile, this.selection);
-    this.persistenceError = null;
-    this.queuePersistence();
+        layer.bindings[keyId] = { ...syncedBinding };
+        base.updatedAt = new Date().toISOString();
+        this.baseProfile = base;
+
+        if (!this.persistEnabled || !browser) return true;
+        yield* this.cancelQueuedPersistenceEffect();
+        yield* saveLocalDeviceEffect(base);
+        yield* this.persistDraftEffect();
+        this.persistenceError = null;
+        return true;
+      }),
+      (_label, message) => (this.persistenceError = message),
+    );
+  }
+
+  loadProfileAsDraft(profile: DeviceProfile, options: { origin?: DeviceProfileOrigin } = {}) {
+    return runApp(
+      "editor.load-profile-as-draft",
+      this.loadProfileAsDraftEffect(profile, options),
+      (_label, message) => (this.persistenceError = message),
+    );
+  }
+
+  protected loadProfileAsDraftEffect(
+    profile: DeviceProfile,
+    options: { origin?: DeviceProfileOrigin } = {},
+  ) {
+    return Effect.gen({ self: this }, function* () {
+      yield* this.flushPersistenceEffect();
+
+      this.profile = profileWithOptionalOrigin(profile, options.origin);
+      this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
+        ? this.activeLayer
+        : (this.profile.layers[0]?.id ?? "base");
+      this.selection = sanitizeSelection(this.profile, this.selection);
+      this.persistenceError = null;
+      this.queuePersistence();
+    });
   }
 
   setLens(lens: EditorLens) {
@@ -436,7 +542,20 @@ export class EditorStore {
 
   setTargetOs(targetOs: EditorTargetOs) {
     this.targetOs = targetOs;
-    if (browser) void Effect.runPromise(TargetOS.save(targetOs));
+    if (browser) {
+      forkApp("preferences.target-os.save", TargetOS.save(targetOs), (_label, message) => {
+        this.persistenceError = message;
+      });
+    }
+  }
+
+  setEditorLayout(layout: EditorLayoutId) {
+    this.editorLayout = layout;
+    if (browser) {
+      forkApp("preferences.editor-layout.save", EditorLayout.save(layout), (_label, message) => {
+        this.persistenceError = message;
+      });
+    }
   }
 
   cycleTargetOs() {
@@ -512,6 +631,22 @@ export class EditorStore {
     this.commitProfile({
       ...this.profile,
       settings: nextSettings,
+    });
+  }
+
+  updateFirmwareMetadata(metadata: FirmwareMetadata) {
+    if (JSON.stringify(this.profile.firmwareMetadata ?? {}) === JSON.stringify(metadata)) return;
+    this.commitProfile({
+      ...this.profile,
+      firmwareMetadata: metadata,
+    });
+  }
+
+  setFirmwareEditIntent(intent: FirmwareEditIntent) {
+    if (this.profile.firmwareEditIntent === intent) return;
+    this.commitProfile({
+      ...this.profile,
+      firmwareEditIntent: intent,
     });
   }
 
@@ -844,13 +979,10 @@ export class EditorStore {
     return true;
   }
 
-  async flushPersistence() {
-    if (!this.persistEnabled || !browser) return;
-    if (this.persistTimer) {
-      clearTimeout(this.persistTimer);
-      this.persistTimer = undefined;
-    }
-    await this.persistDraft();
+  flushPersistence() {
+    return runApp("editor.flush-persistence", this.flushPersistenceEffect(), (_label, message) => {
+      this.persistenceError = message;
+    });
   }
 
   private applyMutation(result: EditorMutationResult) {
@@ -865,14 +997,14 @@ export class EditorStore {
     this.queuePersistence();
   }
 
-  private async hydrate() {
+  private hydrateEffect() {
     if (!this.persistEnabled) {
       this.hydrated = true;
-      return;
+      return Effect.void;
     }
 
-    try {
-      const draft = await loadLocalDraft(this.draftProfileId);
+    return Effect.gen({ self: this }, function* () {
+      const draft = yield* loadLocalDraftEffect(this.draftProfileId);
       if (draft) {
         this.profile = withDeviceProfileOrigin(draft, "draft");
         this.activeLayer = this.profile.layers.some((layer) => layer.id === this.activeLayer)
@@ -880,38 +1012,64 @@ export class EditorStore {
           : (this.profile.layers[0]?.id ?? "base");
         this.selection = sanitizeSelection(this.profile, this.selection);
       }
-    } catch (error) {
-      this.persistenceError = error instanceof Error ? error.message : "Could not load local draft";
-    } finally {
-      this.hydrated = true;
-    }
+      this.persistenceError = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.hydrated = true;
+        }),
+      ),
+    );
   }
 
-  private async loadTargetOs() {
-    try {
-      this.targetOs = await Effect.runPromise(TargetOS.load);
-    } catch {
-      this.targetOs = "win";
-    }
+  private hydrate() {
+    return runApp("editor.hydrate", this.hydrateEffect(), (_label, message) => {
+      this.persistenceError = message;
+    });
   }
 
   private queuePersistence() {
     if (!this.persistEnabled || !browser) return;
-    if (this.persistTimer) clearTimeout(this.persistTimer);
-    this.persistTimer = setTimeout(() => {
-      this.persistTimer = undefined;
-      void this.persistDraft();
-    }, 350);
+    if (this.persistFiber) {
+      forkApp("editor.cancel-persist-draft", Fiber.interrupt(this.persistFiber));
+    }
+
+    let started!: Fiber.Fiber<void, unknown>;
+    started = forkApp(
+      "editor.persist-draft",
+      Effect.sleep("350 millis").pipe(
+        Effect.andThen(this.persistDraftEffect()),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.persistFiber === started) this.persistFiber = undefined;
+          }),
+        ),
+      ),
+      (_label, message) => {
+        this.persistenceError = message;
+      },
+    );
+    this.persistFiber = started;
   }
 
-  private async persistDraft() {
-    try {
-      if (this.dirty > 0) await saveLocalDraft(this.profile);
-      else await clearLocalDraft(this.profile.id);
+  private cancelQueuedPersistenceEffect() {
+    const fiber = this.persistFiber;
+    if (!fiber) return Effect.void;
+    this.persistFiber = undefined;
+    return Fiber.interrupt(fiber).pipe(Effect.asVoid);
+  }
+
+  protected flushPersistenceEffect() {
+    if (!this.persistEnabled || !browser) return Effect.void;
+    return this.cancelQueuedPersistenceEffect().pipe(Effect.andThen(this.persistDraftEffect()));
+  }
+
+  private persistDraftEffect() {
+    return Effect.gen({ self: this }, function* () {
+      if (this.dirty > 0) yield* saveLocalDraftEffect(this.profile);
+      else yield* clearLocalDraftEffect(this.profile.id);
       this.persistenceError = null;
-    } catch (error) {
-      this.persistenceError = error instanceof Error ? error.message : "Could not save local draft";
-    }
+    });
   }
 }
 
@@ -1280,10 +1438,6 @@ export function targetOsForBoard(targetOs: EditorTargetOs): BoardTargetOs {
   return targetOs === "win" ? "windows" : targetOs;
 }
 
-export function defaultSelectedKeyId(profile: Pick<DeviceProfile, "keys">): string {
-  return profile.keys.find((key) => key.id === "k2-4")?.id ?? profile.keys[0]?.id ?? "";
-}
-
 export function summarizeSelectedCodes(
   profile: DeviceProfile,
   layerId: string,
@@ -1354,8 +1508,7 @@ function validSelection(profile: DeviceProfile, selection: Iterable<string>): st
 }
 
 function sanitizeSelection(profile: DeviceProfile, selection: Iterable<string>): Set<string> {
-  const valid = validSelection(profile, selection);
-  return new Set(valid.length > 0 ? valid : [defaultSelectedKeyId(profile)]);
+  return new Set(validSelection(profile, selection));
 }
 
 function toEditorLightingEffect(mode: LightingProfile["mode"]): EditorLightingEffect {

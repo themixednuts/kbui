@@ -1,5 +1,8 @@
 import { browser } from "$app/environment";
+import { Effect } from "effect";
 
+import { forkApp, runApp } from "$lib/app/runtime";
+import { platformError } from "$lib/effect/errors";
 import {
   getConnectionState,
   type ConnectionState,
@@ -66,7 +69,13 @@ function createSerialByteTransport(port: ZmkSerialPort): ZmkStudioByteTransport 
 
   const abortController = new AbortController();
   abortController.signal.addEventListener("abort", () => {
-    void port.close().catch(() => undefined);
+    forkApp(
+      "zmk-studio.serial.abort",
+      Effect.tryPromise({
+        try: () => port.close(),
+        catch: (cause) => platformError("zmk-studio.serial.abort", cause),
+      }),
+    );
   });
 
   return {
@@ -78,50 +87,68 @@ function createSerialByteTransport(port: ZmkSerialPort): ZmkStudioByteTransport 
   };
 }
 
-async function connectSerialDevice(environment: TransportEnvironment): Promise<ConnectionState> {
+function connectSerialDeviceEffect(environment: TransportEnvironment) {
   const serial = serialController(environment);
   if (!environment.isBrowser) {
-    return {
+    return Effect.succeed({
       ...getConnectionState(environment),
       message: "Browser required",
       protocol: "zmk-studio",
       status: "unsupported",
       transport: "webserial",
-    };
+    } satisfies ConnectionState);
   }
   if (!serial) {
-    return {
+    return Effect.succeed({
       ...getConnectionState(environment),
       message: "Web Serial unavailable",
       protocol: "zmk-studio",
       status: "unsupported",
       transport: "webserial",
-    };
+    } satisfies ConnectionState);
   }
 
   let connection: RealZmkStudioConnection | undefined;
   let port: ZmkSerialPort | undefined;
+  const connect = Effect.gen(function* () {
+    port = yield* Effect.tryPromise({
+      try: () => serial.requestPort({}),
+      catch: (cause) => platformError("zmk-studio.serial.select", cause),
+    });
+    const activePort = port;
+    yield* Effect.tryPromise({
+      try: () => activePort.open({ baudRate: zmkStudioSerialBaudRate }),
+      catch: (cause) => platformError("zmk-studio.serial.open", cause),
+    });
 
-  try {
-    port = await serial.requestPort({});
-    await port.open({ baudRate: zmkStudioSerialBaudRate });
-
-    // Hardware-unverified until tested with a real ZMK Studio USB CDC/ACM board.
-    connection = new RealZmkStudioConnection(createSerialByteTransport(port));
-
-    const info = await connection.call({ type: "get_device_info" });
-    const lock = await connection.call({ type: "get_lock_state" });
+    connection = new RealZmkStudioConnection(createSerialByteTransport(activePort));
+    const activeConnection = connection;
+    const [info, lock] = yield* Effect.all(
+      [
+        Effect.tryPromise({
+          try: () => activeConnection.call({ type: "get_device_info" }),
+          catch: (cause) => platformError("zmk-studio.serial.device-info", cause),
+        }),
+        Effect.tryPromise({
+          try: () => activeConnection.call({ type: "get_lock_state" }),
+          catch: (cause) => platformError("zmk-studio.serial.lock-state", cause),
+        }),
+      ],
+      { concurrency: 2 },
+    );
     if (info.type !== "get_device_info" || lock.type !== "get_lock_state") {
-      throw new Error("ZMK Studio serial probe returned an unexpected response.");
+      return yield* Effect.fail(
+        platformError("zmk-studio.serial.probe", "ZMK Studio returned an unexpected response."),
+      );
     }
 
-    connection.label = info.deviceName;
+    activeConnection.label = info.deviceName;
     const deviceKey = zmkStudioDeviceKey({
       productName: info.deviceName,
       serialNumber: info.serialNumber,
       transport: "webserial",
     });
-    const notes = ["Real Web Serial ZMK Studio transport is implemented but hardware-unverified."];
+    const notes = ["Connected through the ZMK Studio serial protocol."];
     if (lock.lockState === "locked") {
       notes.push("ZMK Studio is locked; unlock on the keyboard (&studio_unlock) before writes.");
     }
@@ -142,31 +169,59 @@ async function connectSerialDevice(environment: TransportEnvironment): Promise<C
       message:
         lock.lockState === "locked"
           ? "Connected, but ZMK Studio is locked. Unlock on the keyboard (&studio_unlock)."
-          : "Connected. Real ZMK Studio serial is hardware-unverified.",
+          : "Connected over ZMK Studio serial.",
       productName: info.deviceName,
       protocol: "zmk-studio",
       serialNumber: info.serialNumber,
       status: "connected",
       transport: "webserial",
-      zmkStudio: connection,
-    };
-  } catch (error) {
-    await connection?.close().catch(() => undefined);
-    if (!connection) await port?.close().catch(() => undefined);
-    return {
-      ...getConnectionState(environment),
-      message: connectionErrorMessage(error),
-      protocol: "zmk-studio",
-      status: "error",
-      transport: "webserial",
-    };
-  }
+      zmkStudio: activeConnection,
+    } satisfies ConnectionState;
+  });
+
+  return Effect.matchEffect(connect, {
+    onFailure: (error) => {
+      const cleanup = connection
+        ? Effect.tryPromise({
+            try: () => connection!.close(),
+            catch: (cause) => platformError("zmk-studio.serial.cleanup-connection", cause),
+          })
+        : port
+          ? Effect.tryPromise({
+              try: () => port!.close(),
+              catch: (cause) => platformError("zmk-studio.serial.cleanup-port", cause),
+            })
+          : Effect.void;
+      return Effect.match(cleanup, {
+        onFailure: (cleanupError) =>
+          errorState(
+            environment,
+            `${connectionErrorMessage(error)}; cleanup failed: ${connectionErrorMessage(cleanupError)}`,
+          ),
+        onSuccess: () => errorState(environment, connectionErrorMessage(error)),
+      });
+    },
+    onSuccess: Effect.succeed,
+  });
+}
+
+function errorState(environment: TransportEnvironment, message: string): ConnectionState {
+  return {
+    ...getConnectionState(environment),
+    message,
+    protocol: "zmk-studio",
+    status: "error",
+    transport: "webserial",
+  };
 }
 
 export function createWebSerialZmkStudioTransport(): KeyboardTransport {
   return {
     connect: (options: KeyboardTransportConnectOptions = {}) =>
-      connectSerialDevice(options.environment ?? browserTransportEnvironment()),
+      runApp(
+        "zmk-studio.serial.connect",
+        connectSerialDeviceEffect(options.environment ?? browserTransportEnvironment()),
+      ),
     id: "webserial-zmk-studio",
     label: "Web Serial ZMK Studio",
     mode: "real",

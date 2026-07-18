@@ -48,6 +48,7 @@ export interface BoardKeyViewModel {
   id: string;
   coord: DesignCoord;
   legend: string;
+  cornerLegend: string | null;
   row: number;
   col: number;
   x: number;
@@ -227,11 +228,20 @@ export function createBoardViewModel(input: CreateBoardViewModelInput): BoardVie
     const keyCombos = combosByKey.get(placedKey.key.id) ?? [];
     const keyActivations = activationsByKey.get(placedKey.key.id) ?? [];
     const lighting = lightingForKey(input.profile, placedKey.key.id);
+    const layerMarker =
+      keyActivations.length > 0
+        ? {
+            text: layerActivationMarkerText(keyActivations),
+            title: keyActivations.map(layerActivationSummary).join("\n"),
+            chain: keyActivations.some((activation) => activation.chain),
+          }
+        : null;
 
     return {
       id: placedKey.key.id,
       coord: coordForKey(placedKey.key),
       legend: placedKey.key.label,
+      cornerLegend: cornerLegendFor(placedKey.key.label, label.label, lens),
       row: placedKey.key.row,
       col: placedKey.key.col,
       x: placedKey.x,
@@ -240,7 +250,7 @@ export function createBoardViewModel(input: CreateBoardViewModelInput): BoardVie
       height: placedKey.height,
       rotation: placedKey.rotation,
       label: label.label,
-      sublabel: label.sublabel,
+      sublabel: label.sublabel === layerMarker?.text ? null : label.sublabel,
       display: label.display,
       rawCode: rawBinding.code,
       sourceLayerId: sourceLayer?.id ?? "",
@@ -261,18 +271,15 @@ export function createBoardViewModel(input: CreateBoardViewModelInput): BoardVie
       comboMarker:
         keyCombos.length > 0
           ? {
-              text: comboMarkerText(keyCombos.length),
+              text:
+                keyCombos.length === 1
+                  ? formatBindingLabel(keyCombos[0].binding, input.profile, input.targetOs).label ||
+                    displayCode(keyCombos[0].binding)
+                  : comboMarkerText(keyCombos.length),
               title: comboSummaries.get(placedKey.key.id) ?? "",
             }
           : null,
-      layerMarker:
-        keyActivations.length > 0
-          ? {
-              text: layerActivationMarkerText(keyActivations),
-              title: keyActivations.map(layerActivationSummary).join("\n"),
-              chain: keyActivations.some((activation) => activation.chain),
-            }
-          : null,
+      layerMarker,
     } satisfies BoardKeyViewModel;
   });
   const rows = rowsFromKeys(keys);
@@ -305,15 +312,30 @@ export function keyLightingToCss(lighting: KeyLighting): string | null {
   return `oklch(${lightness.toFixed(3)} ${chroma.toFixed(3)} ${hue})`;
 }
 
+function cornerLegendFor(physicalLegend: string, renderedLabel: string, lens: BoardLens) {
+  if (lens === "lighting") return null;
+  return normalizeLegend(physicalLegend) === normalizeLegend(renderedLabel) ? null : physicalLegend;
+}
+
+function normalizeLegend(value: string) {
+  return value.replace(/\s+/g, "").toLocaleLowerCase();
+}
+
 export function computeBoardUnit(
   model: Pick<BoardViewModel, "bounds" | "split">,
   containerWidth: number,
+  containerHeight = Number.POSITIVE_INFINITY,
 ): number {
-  const available = Math.max(0, containerWidth - 24);
-  const min = model.split.enabled ? 30 : 28;
+  const availableWidth = Math.max(0, containerWidth - 80);
+  const labelSpace = model.split.enabled ? 30 : 0;
+  const availableHeight = Number.isFinite(containerHeight)
+    ? Math.max(0, containerHeight - 72 - labelSpace)
+    : Number.POSITIVE_INFINITY;
+  const min = 12;
   const max = model.split.enabled ? 60 : 58;
-  const units = Math.max(1, model.bounds.width);
-  return clamp(available / units, min, max);
+  const widthUnit = availableWidth / Math.max(1, model.bounds.width);
+  const heightUnit = availableHeight / Math.max(1, model.bounds.height);
+  return clamp(Math.min(widthUnit, heightUnit), min, max);
 }
 
 function setFrom(values: BoardSelection): Set<string> {
@@ -385,8 +407,8 @@ function formatBindingLabel(
   const layer = LAYER_PATTERN.exec(display);
   if (layer) {
     return {
-      label: `L${layer[2]}`,
-      sublabel: layer[1].toLowerCase(),
+      label: layer[1],
+      sublabel: null,
       display,
       empty: false,
     };

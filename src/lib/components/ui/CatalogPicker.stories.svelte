@@ -4,8 +4,8 @@
   import CatalogPicker from "./CatalogPicker.svelte";
 
   const sample = [
-    { id: "klakson/wb65", label: "Klakson Labs / Workbench 65" },
-    { id: "klakson/corney34", label: "Klakson Labs / Corney 34" },
+    { id: "local/ansi", label: "Local / ANSI profile" },
+    { id: "local/split", label: "Local / split profile" },
     { id: "drop/ctrl", label: "Drop / CTRL" },
   ];
 

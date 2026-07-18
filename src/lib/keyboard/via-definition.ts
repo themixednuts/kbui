@@ -8,57 +8,6 @@ import {
   type Layer,
 } from "./schema";
 
-const priorityTerms: Array<[string, number]> = [
-  ["bastardkb", 5000],
-  ["keychron/q", 2200],
-  ["keychron/v", 2100],
-  ["keychron/k", 2000],
-  ["glorious", 1900],
-  ["gmmk", 1900],
-  ["drop", 1850],
-  ["kbdfans", 1800],
-  ["dztech", 1780],
-  ["tofu", 1750],
-  ["kbd67", 1750],
-  ["cannonkeys", 1700],
-  ["bakeneko", 1680],
-  ["mode", 1660],
-  ["novelkeys", 1640],
-  ["nk", 1640],
-  ["wilba", 1620],
-  ["rama", 1600],
-  ["ai03", 1580],
-  ["polaris", 1580],
-  ["melgeek", 1560],
-  ["monsgeek", 1540],
-  ["akko", 1520],
-  ["olkb", 1500],
-  ["planck", 1500],
-  ["preonic", 1490],
-  ["ergodox", 1480],
-  ["moonlander", 1480],
-  ["zsa", 1480],
-  ["keebio/iris", 1460],
-  ["keebio", 1440],
-  ["splitkb", 1420],
-  ["kyria", 1420],
-  ["lily58", 1400],
-  ["sofle", 1390],
-  ["crkbd", 1380],
-  ["corne", 1380],
-  ["ferris", 1370],
-  ["reviung", 1360],
-  ["tgr", 1350],
-  ["geon", 1340],
-  ["qwertykeys", 1330],
-  ["zoom", 1320],
-  ["neo", 1310],
-  ["mechwild", 1300],
-  ["boardsource", 1290],
-  ["1upkeyboards", 1280],
-  ["cftkb", 1270],
-];
-
 const layerColors = ["#2f7f79", "#d96f32", "#5d6fb8", "#b88a2f", "#a663b8", "#39945f"];
 
 type JsonRecord = Record<string, unknown>;
@@ -101,14 +50,11 @@ export function displayNameForPath(path: string) {
 
 export function scoreViaDefinitionPath(path: string, size = 0) {
   const normalized = path.toLowerCase();
-  const termScore = priorityTerms.reduce(
-    (score, [term, value]) => (normalized.includes(term) ? Math.max(score, value) : score),
-    0,
-  );
+  const pathSpecificity = Math.min(normalized.split("/").filter(Boolean).length * 10, 80);
   const sizeBonus = Math.min(Math.floor(size / 2500), 30);
   const variantPenalty = normalized.includes("iso") || normalized.includes("jis") ? 12 : 0;
   const encoderBonus = normalized.includes("knob") || normalized.includes("encoder") ? 8 : 0;
-  return termScore + sizeBonus + encoderBonus - variantPenalty;
+  return pathSpecificity + sizeBonus + encoderBonus - variantPenalty;
 }
 
 export function parseUsbId(value: unknown) {

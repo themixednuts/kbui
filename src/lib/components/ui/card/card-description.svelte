@@ -14,7 +14,7 @@
 	bind:this={ref}
 	data-slot="card-description"
 	class={cn(
-		"min-w-0 max-w-full flex-[0_1_auto] truncate font-mono text-xs text-muted-foreground",
+		"min-w-0 max-w-full flex-[0_1_auto] text-xs leading-[1.35] text-muted-foreground",
 		className,
 	)}
 	{...restProps}

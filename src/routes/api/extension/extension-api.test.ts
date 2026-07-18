@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { POST as pairPost } from "./pair/+server";
 import { POST as runsPost } from "./runs/+server";
 
+const requestOrigin = "http://kbgui.test";
+
 describe("/api/extension endpoint auth", () => {
   it("rejects anonymous run ingest", async () => {
     const response = await runsPost(
@@ -49,7 +51,7 @@ function eventFor(input: { authorization?: string; body: unknown; path: string; 
     origin: "chrome-extension://abcdefghijklmnop",
   });
   if (input.authorization) headers.set("authorization", input.authorization);
-  const url = new URL(`http://127.0.0.1:8787${input.path}`);
+  const url = new URL(input.path, requestOrigin);
 
   return {
     request: new Request(url, {

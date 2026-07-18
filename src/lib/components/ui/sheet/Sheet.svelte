@@ -3,7 +3,7 @@
    * Sheet — a side-anchored dialog (drawer) for things like the settings
    * panel. Built on bits-ui Dialog primitives so we inherit focus
    * management, ESC-to-close, scroll-lock, and accessible labeling for
-   * free, then styled to match the Klakson editorial palette.
+   * free, then styled to match the kbui workbench palette.
    *
    * Usage:
    *   <Sheet bind:open={settingsOpen} title="Settings" side="right">
@@ -86,8 +86,8 @@
       <header class="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-line-2">
         <div class={cn("min-w-0", hideTitle && "sr-only")}>
           <Dialog.Title
-            class="font-mono text-[11px] tracking-[0.14em] uppercase text-ink-3"
-            >Klakson</Dialog.Title
+            class="font-mono text-kb-11 uppercase text-ink-3"
+            >kbui</Dialog.Title
           >
           <p class="mt-1 font-sans text-[17px] font-semibold leading-tight text-ink">
             {title}
@@ -99,7 +99,7 @@
           {/if}
         </div>
         <Dialog.Close
-          class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-line-2 bg-paper text-ink-3 hover:text-ink hover:bg-paper-2 transition-colors"
+          class="inline-flex size-[var(--control-height-sm)] items-center justify-center rounded-md border border-line-2 bg-surface text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
           aria-label="Close settings"
         >
           <X size={14} />

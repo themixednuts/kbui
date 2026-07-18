@@ -1,4 +1,23 @@
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Fiber, Layer, ManagedRuntime, Scope } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+import * as Preferences from "$lib/app/services/preferences";
+import * as Theme from "$lib/app/services/theme";
+
+const applicationLayer = Layer.mergeAll(
+  FetchHttpClient.layer,
+  Preferences.layer,
+  Theme.layer.pipe(Layer.provide(Preferences.layer)),
+);
+
+export const appRuntime = ManagedRuntime.make(applicationLayer);
+export type AppServices = ManagedRuntime.ManagedRuntime.Services<typeof appRuntime>;
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    void appRuntime.dispose();
+  });
+}
 
 /**
  * `runApp` — fire-and-forget an Effect from imperative call sites (event
@@ -6,20 +25,18 @@ import { Cause, Effect } from "effect";
  * `onError` reporter so we never leave an Effect's error channel
  * unobserved; callers don't have to worry about `runPromise` rejections.
  *
- * This is intentionally a thin wrapper — the eventual goal is a managed
- * runtime via `ManagedRuntime.make(Layer.merge(...))` once we have enough
- * services (Auth, Sync, Preferences) to make the wiring worthwhile. For
- * now everything is pure Effects with no Context requirements, so a
- * direct `runPromise` is sufficient and avoids premature abstraction.
+ * This is the browser Promise boundary for the application ManagedRuntime.
+ * Svelte callbacks may return this Promise, while all application work and
+ * service requirements remain in the Effect program.
  */
-export function runApp<A>(
+export function runApp<A, E>(
   label: string,
-  effect: Effect.Effect<A, unknown>,
+  effect: Effect.Effect<A, E, AppServices>,
   onError?: (label: string, message: string) => void,
-): Promise<A | undefined> {
-  return Effect.runPromise(
+): Promise<A> {
+  return appRuntime.runPromise(
     effect.pipe(
-      Effect.catchCause((cause) =>
+      Effect.tapCause((cause) =>
         Effect.sync(() => {
           const message = Cause.pretty(cause);
           if (onError) {
@@ -27,15 +44,61 @@ export function runApp<A>(
           } else if (typeof console !== "undefined") {
             console.error(`[${label}]`, message);
           }
-          return undefined as A | undefined;
         }),
       ),
+      Effect.withSpan(label),
     ),
   );
 }
 
-/** Run an Effect synchronously, returning its success value or a fallback.
- *  Use only for Effects guaranteed not to fail (Effect.sync wrappers). */
-export function runAppSync<A>(effect: Effect.Effect<A, never>): A {
-  return Effect.runSync(effect);
+export function forkApp<A, E>(
+  label: string,
+  effect: Effect.Effect<A, E, AppServices>,
+  onError?: (label: string, message: string) => void,
+): Fiber.Fiber<A, E> {
+  return appRuntime.runFork(
+    effect.pipe(
+      Effect.tapCause((cause) =>
+        Effect.sync(() => {
+          const message = Cause.pretty(cause);
+          if (onError) onError(label, message);
+          else console.error(`[${label}]`, message);
+        }),
+      ),
+      Effect.withSpan(label),
+    ),
+  );
+}
+
+/** Run an Effect synchronously. Use only for Effects whose error type is never. */
+export function runAppSync<A>(effect: Effect.Effect<A, never, AppServices>): A {
+  return appRuntime.runSync(effect);
+}
+
+/**
+ * Starts one scoped browser program and returns its synchronous lifecycle
+ * finalizer. Svelte attachments use this bridge so listeners, sockets, and
+ * child fibers are released by Effect's Scope instead of bespoke cleanup code.
+ */
+export function startScopedApp<A, E>(
+  label: string,
+  effect: Effect.Effect<A, E, AppServices | Scope.Scope>,
+  onError?: (label: string, message: string) => void,
+): () => void {
+  const fiber = appRuntime.runFork(
+    Effect.scoped(effect).pipe(
+      Effect.tapCause((cause) =>
+        Effect.sync(() => {
+          const message = Cause.pretty(cause);
+          if (onError) onError(label, message);
+          else console.error(`[${label}]`, message);
+        }),
+      ),
+      Effect.withSpan(label),
+    ),
+  );
+
+  return () => {
+    appRuntime.runFork(Fiber.interrupt(fiber));
+  };
 }

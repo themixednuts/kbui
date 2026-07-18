@@ -424,4 +424,101 @@ const dilemma3x5_2: LocalKeyboardDefinition = {
   },
 };
 
-export const localKeyboardDefinitions: LocalKeyboardDefinition[] = [dilemma3x5_2];
+/**
+ * BastardKB Charybdis 4x6.
+ *
+ * The VIA definition is published by BastardKB as a draft definition rather
+ * than in the-via/keyboards. Keep the USB identity exact: 0x1833 is the
+ * Charybdis 4x6 firmware PID, while 0x1835 belongs to the Dilemma above.
+ *
+ * Source: https://docs.bastardkb.com/fw/charybdis-left-handed.html
+ */
+const charybdis4x6: LocalKeyboardDefinition = {
+  sourcePath: "klakson/bastardkb/charybdis/4x6/charybdis_4x6",
+  priority: 6000,
+  json: {
+    name: "Charybdis 4x6",
+    vendorId: "0xA8F8",
+    productId: "0x1833",
+    matrix: { rows: 10, cols: 6 },
+    menus: ["qmk_rgb_matrix"],
+    customKeycodes: [
+      { title: "Default DPI Increase", name: "Default DPI Inc", shortName: "DPI+" },
+      { title: "Default DPI Decrease", name: "Default DPI Dec", shortName: "DPI-" },
+      { title: "Sniping DPI Increase", name: "Sniping DPI Inc", shortName: "Snp+" },
+      { title: "Sniping DPI Decrease", name: "Sniping DPI Dec", shortName: "Snp-" },
+      { title: "Sniping Momentary", name: "Sniping MO", shortName: "Snp" },
+      { title: "Sniping Toggle", name: "Sniping TO", shortName: "SnpT" },
+      { title: "Drag-scroll Momentary", name: "Drag-scroll MO", shortName: "Drg" },
+      { title: "Drag-scroll Toggle", name: "Drag-scroll TG", shortName: "DrgT" },
+    ],
+    layouts: {
+      keymap: [
+        [
+          "0,0",
+          "0,1",
+          "0,2",
+          "0,3",
+          "0,4",
+          "0,5",
+          { x: 4 },
+          "5,5",
+          "5,4",
+          "5,3",
+          "5,2",
+          "5,1",
+          "5,0",
+        ],
+        [
+          "1,0",
+          "1,1",
+          "1,2",
+          "1,3",
+          "1,4",
+          "1,5",
+          { x: 4 },
+          "6,5",
+          "6,4",
+          "6,3",
+          "6,2",
+          "6,1",
+          "6,0",
+        ],
+        [
+          "2,0",
+          "2,1",
+          "2,2",
+          "2,3",
+          "2,4",
+          "2,5",
+          { x: 4 },
+          "7,5",
+          "7,4",
+          "7,3",
+          "7,2",
+          "7,1",
+          "7,0",
+        ],
+        [
+          "3,0",
+          "3,1",
+          "3,2",
+          "3,3",
+          "3,4",
+          "3,5",
+          { x: 4 },
+          "8,5",
+          "8,4",
+          "8,3",
+          "8,2",
+          "8,1",
+          "8,0",
+        ],
+        [{ x: 5 }, "4,3", "4,1", { x: 2 }, "9,1", "9,4", "9,3"],
+        [{ x: 6 }, "4,5", { x: 2 }, "9,2", "9,5"],
+      ],
+    },
+  },
+};
+
+export const localKeyboardDefinitions: LocalKeyboardDefinition[] = [charybdis4x6, dilemma3x5_2];

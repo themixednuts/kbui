@@ -70,7 +70,7 @@ export function sendBackgroundMessage<T extends BackgroundMessageResult>(
       }
 
       if (!response) {
-        reject(new Error("No response from the kbgui extension background worker."));
+        reject(new Error("No response from the kbui extension background worker."));
         return;
       }
 

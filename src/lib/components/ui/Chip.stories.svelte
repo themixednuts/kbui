@@ -20,7 +20,7 @@
 
 <Story name="Neutral with dot">
   {#snippet template(args)}
-    <Chip {...args}>Workbench 65</Chip>
+    <Chip {...args}>Local keyboard</Chip>
   {/snippet}
 </Story>
 

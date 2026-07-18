@@ -14,6 +14,7 @@ import {
 } from "./layer-activations";
 import { parseViaDefinition, summarizeCatalogEntry } from "./via-definition";
 import { localKeyboardDefinitions } from "../server/keyboards/local-defs";
+import { withResolvedQmkTarget } from "../app/via-catalog-resolver";
 
 function summary(
   overrides: Partial<KeyboardCatalogSummary> &
@@ -128,6 +129,47 @@ describe("keyboard catalog identity matching", () => {
   });
 });
 
+describe("connected VIA build-target enrichment", () => {
+  it("keeps the VIA matrix while applying the exact QMK target resolved from USB identity", () => {
+    const localCharybdis = localKeyboardDefinitions.find((definition) =>
+      definition.sourcePath.includes("charybdis/4x6"),
+    );
+    const definition = parseViaDefinition(
+      localCharybdis!.sourcePath,
+      localCharybdis!.json,
+      localCharybdis!.priority,
+    )!;
+    definition.firmwareMetadata = {
+      qmk: { keyOrder: definition.keys.map((key) => key.id) },
+    };
+
+    const enriched = withResolvedQmkTarget(definition, {
+      ...definition,
+      source: "qmk-api",
+      sourcePath: "bastardkb/charybdis/4x6/splinky_3",
+      firmwareMetadata: {
+        qmk: {
+          alternatives: [{ keyboard: "bastardkb/charybdis/4x6/elitec", layout: "LAYOUT" }],
+          keyboard: "bastardkb/charybdis/4x6/splinky_3",
+          layout: "LAYOUT",
+          ref: "0123456789abcdef",
+          repository: "qmk/qmk_firmware",
+          targetConfirmed: true,
+        },
+      },
+    });
+
+    expect(enriched.keys).toEqual(definition.keys);
+    expect(enriched.firmwareMetadata?.qmk).toMatchObject({
+      keyboard: "bastardkb/charybdis/4x6/splinky_3",
+      layout: "LAYOUT",
+      repository: "qmk/qmk_firmware",
+      targetConfirmed: true,
+    });
+    expect(enriched.firmwareMetadata?.qmk?.keyOrder).toEqual(definition.keys.map((key) => key.id));
+  });
+});
+
 describe("keyboard catalog combo extensions", () => {
   it("preserves local combo metadata in full profiles but not summaries", () => {
     const entry = parseViaDefinition(
@@ -233,5 +275,28 @@ describe("local Dilemma compiled defaults", () => {
       sourceLayerName: "Base",
       targetLayerName: "Symbols",
     });
+  });
+});
+
+describe("local Charybdis hardware identity", () => {
+  it("matches the published 4x6 USB identity without a name fallback", () => {
+    const localCharybdis = localKeyboardDefinitions.find((definition) =>
+      definition.sourcePath.includes("charybdis/4x6"),
+    );
+    const entry = parseViaDefinition(localCharybdis!.sourcePath, localCharybdis!.json);
+
+    expect(entry).toMatchObject({
+      name: "Charybdis 4x6",
+      productId: 0x1833,
+      vendorId: 0xa8f8,
+      matrix: { rows: 10, cols: 6 },
+    });
+    expect(entry?.keys).toHaveLength(56);
+    expect(
+      bestCatalogEntryForIdentity([summarizeCatalogEntry(entry!)], {
+        vendorId: 0xa8f8,
+        productId: 0x1833,
+      })?.id,
+    ).toBe(entry?.id);
   });
 });

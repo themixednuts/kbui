@@ -78,6 +78,27 @@ describe("ZMK live change classification", () => {
     });
   });
 
+  it("treats source-supported ZMK behaviors as rebuildable with or without Studio", async () => {
+    const { connection, profile } = await connectedZmkProfile();
+    const draft = cloneDevice(profile);
+    draft.layers[0].bindings["k2-4"] = { code: "ZMK_BT_SEL(2)" };
+
+    for (const activeConnection of [connection, undefined]) {
+      expect(
+        classifyZmkProfileChanges(profile, draft, activeConnection).find(
+          (change) => change.id === "binding:zmk-layer-100.k2-4",
+        ),
+      ).toMatchObject({
+        classification: "firmwareRebuildRequired",
+        live: false,
+        outcome: {
+          live: false,
+          status: "rebuild-required",
+        },
+      });
+    }
+  });
+
   it("marks ZMK lighting edits as local-only and not written live", async () => {
     const { connection, profile } = await connectedZmkProfile();
     const draft = cloneDevice(profile);

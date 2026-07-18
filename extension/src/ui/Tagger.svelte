@@ -4,6 +4,7 @@
 
   import type { ExtensionUiState, ContentRunState, RunCapturePostResult } from "../kbgui/messages";
   import { sendBackgroundMessage } from "../kbgui/messages";
+  import { DEFAULT_KBGUI_BASE_URL } from "../storage";
 
   export let runState: Readable<ContentRunState> = readable({ status: "idle" });
 
@@ -11,7 +12,7 @@
   let selectedKeyboardId = "";
   let selectedLayoutId = "";
   let pairCode = "";
-  let baseUrl = "http://127.0.0.1:8787";
+  let baseUrl = DEFAULT_KBGUI_BASE_URL;
   let busy = false;
   let pairing = false;
   let error = "";
@@ -167,10 +168,10 @@
   }
 </script>
 
-<section class="shell" aria-label="kbgui Monkeytype tagger">
+<section class="shell" aria-label="kbui Monkeytype tagger">
   <div class="bar">
     <div>
-      <div class="eyebrow">kbgui</div>
+      <div class="eyebrow">kbui</div>
       <div class="title">Run tagger</div>
     </div>
     <div class:warn={!state?.paired && !state?.sessionCanUse} class="status">
@@ -262,7 +263,7 @@
   {#if !readyToPost || !state?.paired}
     <div class="pairing">
       <label>
-        <span>kbgui URL</span>
+        <span>kbui URL</span>
         <input bind:value={baseUrl} disabled={pairing || busy} onblur={saveBaseUrl} />
       </label>
       {#if !state?.paired}

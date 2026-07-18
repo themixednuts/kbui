@@ -22,6 +22,28 @@ describe("Monkeytype API client", () => {
     expect(authorization).toBe("ApeKey test-ape-key");
   });
 
+  it("keeps the Worker fetch receiver when using the default fetch implementation", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchReceivers: unknown[] = [];
+
+    globalThis.fetch = function fakeWorkerFetch(this: unknown) {
+      fetchReceivers.push(this);
+      return Promise.resolve(Response.json({ data: { completedTests: 1 } }));
+    } as typeof fetch;
+
+    try {
+      const client = new MonkeytypeApiClient({
+        nowMs: () => 1_000,
+      });
+
+      await client.stats("test-ape-key");
+
+      expect(fetchReceivers).toEqual([globalThis]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("normalizes ApeKey error codes and rate-limit reset headers", () => {
     const headers = new Headers({
       "x-ratelimit-limit": "60",

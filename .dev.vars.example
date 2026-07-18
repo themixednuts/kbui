@@ -8,18 +8,67 @@
 #   openssl rand -base64 32
 BETTER_AUTH_SECRET="replace-with-at-least-32-random-characters"
 
-# Match the host the browser hits. For local Cloudflare dev this is :8787.
+# Match the exact origin the browser hits. `vp run dev:worker` reads this URL
+# and binds Wrangler to the same host/port, so change the GitHub OAuth app
+# URLs together with this value. The app redirects alternate loopback hosts
+# such as localhost <-> 127.0.0.1 back to this origin so auth cookies and
+# OAuth callbacks stay on one host.
 BETTER_AUTH_URL="http://127.0.0.1:8787"
 
 # --- GitHub OAuth ---------------------------------------------------------
 # 1. Create an OAuth App: https://github.com/settings/developers
-#       Application name : Klakson (Local)
-#       Homepage URL     : http://127.0.0.1:8787
-#       Callback URL     : http://127.0.0.1:8787/api/auth/callback/github
+#       Application name : kbui (Local)
+#       Homepage URL     : <BETTER_AUTH_URL>
+#       Callback URL     : <BETTER_AUTH_URL>/api/auth/callback/github
 # 2. Paste the resulting Client ID + Client Secret here.
 # 3. Restart `wrangler dev`.
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
+
+# --- GitHub App firmware builds ------------------------------------------
+# This is separate from the OAuth app above. OAuth signs the user in; this
+# GitHub App is installed on the user's selected firmware repo/account so kbui
+# can commit generated QMK/ZMK files and read Actions results with narrow
+# installation permissions.
+#
+# GitHub App settings:
+#   Homepage URL : <BETTER_AUTH_URL>
+#   Callback URL : <BETTER_AUTH_URL>/api/auth/firmware/github/callback
+#   Setup URL    : <BETTER_AUTH_URL>/api/auth/firmware/github/setup
+#   Request user authorization (OAuth) during installation: enabled
+#
+# Repository permissions:
+#   Actions: read/write
+#   Contents: read/write
+#   Workflows: read/write
+#   Metadata: read
+#   Administration: read/write
+GITHUB_APP_SLUG=""
+GITHUB_APP_ID=""
+GITHUB_APP_CLIENT_ID=""
+GITHUB_APP_CLIENT_SECRET=""
+GITHUB_APP_INSTALL_URL=""
+# Required for ongoing maintenance/build calls. Generate a private key from
+# the GitHub App settings page and paste it with escaped newlines:
+#   GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+GITHUB_APP_PRIVATE_KEY=""
+# Encrypts GitHub App user access/refresh tokens used for setup actions such
+# as create repo, create from template, adopt repo, and fork repo. If omitted,
+# local dev falls back to MONKEYTYPE_SECRET_KEY.
+GITHUB_APP_TOKEN_SECRET_KEY=""
+# Required for event-driven build status. Configure the GitHub App webhook URL
+# as <BETTER_AUTH_URL>/api/webhooks/github, subscribe to Workflow run events,
+# and use the same high-entropy value here and in GitHub App settings.
+GITHUB_WEBHOOK_SECRET=""
+
+# For exact local webhook testing, keep `vp run dev:worker` running and start:
+#   vp run dev:webhook
+# With no additional configuration this uses Wrangler's temporary Quick Tunnel
+# and prints the GitHub App webhook URL. For a stable hostname, create/configure
+# a named Cloudflare Tunnel and set both values below. The named tunnel route
+# must forward its public hostname to BETTER_AUTH_URL.
+KBGUI_TUNNEL_NAME=""
+KBGUI_PUBLIC_ORIGIN=""
 
 # --- Monkeytype data sync -------------------------------------------------
 # Encrypts stored ApeKeys in AuthAgent Durable Object SQLite.

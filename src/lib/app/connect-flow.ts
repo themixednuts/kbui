@@ -1,4 +1,9 @@
+import { Effect } from "effect";
+
+import { runApp } from "$lib/app/runtime";
 import { protocolLabel, type WorkbenchStore } from "$lib/app/workbench-store.svelte";
+import { platformError } from "$lib/effect/errors";
+import { tryMaybePromise } from "$lib/effect/maybe-promise";
 import { profileFromCatalog, type KeyboardCatalogEntry } from "$lib/keyboard/catalog";
 import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import {
@@ -7,6 +12,7 @@ import {
   type Capability,
   type DeviceProfile,
   type DeviceProfileOrigin,
+  type FirmwareMetadata,
   type Layer,
 } from "$lib/keyboard/schema";
 import type {
@@ -20,7 +26,6 @@ import { decodeZmkBinding } from "$lib/keyboard/zmk-binding";
 import {
   createZmkBehaviorCatalog,
   zmkProfileLayerId,
-  type ZmkBehaviorDetails,
   type ZmkPhysicalLayout,
   type ZmkStudioConnection,
   type ZmkStudioKeymap,
@@ -49,6 +54,7 @@ export interface ConnectViaOptions {
 export interface ConnectZmkStudioOptions {
   connectOptions?: KeyboardTransportConnectOptions;
   shell: ShellStore;
+  resolveFirmwareMetadata?: (profile: DeviceProfile) => Promise<FirmwareMetadata | undefined>;
   transport: KeyboardTransport;
   workbench: WorkbenchStore;
 }
@@ -62,6 +68,16 @@ export interface ImportViaJsonOptions {
 
 export interface LocalOnlyOptions {
   baseProfile?: DeviceProfile;
+  shell: ShellStore;
+  workbench: WorkbenchStore;
+}
+
+export interface ActivateViaConnectionOptions {
+  connection: ConnectionState;
+  displayTransport?: string;
+  resolveBaseProfile?: (
+    connection: ConnectionState,
+  ) => DeviceProfile | Promise<DeviceProfile | undefined> | undefined;
   shell: ShellStore;
   workbench: WorkbenchStore;
 }
@@ -100,23 +116,47 @@ function zmkLayerColor(index: number) {
   return colors[index % colors.length];
 }
 
-async function loadZmkBehaviorCatalog(connection: ZmkStudioConnection, keymap: ZmkStudioKeymap) {
-  const list = await connection.call({ type: "list_all_behaviors" });
-  if (list.type !== "list_all_behaviors") throw new Error("ZMK behavior list response mismatch.");
+function zmkCallEffect<A>(operation: string, call: () => PromiseLike<A>) {
+  return Effect.tryPromise({
+    try: call,
+    catch: (cause) => platformError(`connect.zmk.${operation}`, cause),
+  });
+}
 
-  const behaviors: ZmkBehaviorDetails[] = [];
-  for (const behaviorId of list.behaviorIds) {
-    const details = await connection.call({ type: "get_behavior_details", behaviorId });
-    if (details.type !== "get_behavior_details") {
-      throw new Error(`ZMK behavior ${behaviorId} response mismatch.`);
+function loadZmkBehaviorCatalogEffect(connection: ZmkStudioConnection, keymap: ZmkStudioKeymap) {
+  return Effect.gen(function* () {
+    const list = yield* zmkCallEffect("list-behaviors", () =>
+      connection.call({ type: "list_all_behaviors" }),
+    );
+    if (list.type !== "list_all_behaviors") {
+      return yield* Effect.fail(
+        platformError("connect.zmk.list-behaviors", "ZMK behavior list response mismatch."),
+      );
     }
-    behaviors.push(details.behavior);
-  }
-
-  return createZmkBehaviorCatalog(
-    behaviors,
-    keymap.layers.map((layer) => layer.id),
-  );
+    const behaviors = yield* Effect.forEach(
+      list.behaviorIds,
+      (behaviorId) =>
+        Effect.flatMap(
+          zmkCallEffect(`behavior.${behaviorId}`, () =>
+            connection.call({ type: "get_behavior_details", behaviorId }),
+          ),
+          (details) =>
+            details.type === "get_behavior_details"
+              ? Effect.succeed(details.behavior)
+              : Effect.fail(
+                  platformError(
+                    `connect.zmk.behavior.${behaviorId}`,
+                    `ZMK behavior ${behaviorId} response mismatch.`,
+                  ),
+                ),
+        ),
+      { concurrency: 8 },
+    );
+    return createZmkBehaviorCatalog(
+      behaviors,
+      keymap.layers.map((layer) => layer.id),
+    );
+  });
 }
 
 function zmkLayersFromKeymap(
@@ -144,121 +184,167 @@ function zmkLayersFromKeymap(
   });
 }
 
-export async function profileFromConnectedZmkStudio(
-  connection: ConnectionState,
-): Promise<DeviceProfile> {
-  if (connection.status !== "connected") {
-    throw new Error(connection.message || "Keyboard connection did not complete.");
-  }
-  if (connection.protocol !== "zmk-studio" || !connection.zmkStudio) {
-    throw new Error("The connected keyboard is not a ZMK Studio device.");
-  }
-
-  const zmk = connection.zmkStudio;
-  const [info, lock, layouts, keymapResponse, unsaved] = await Promise.all([
-    zmk.call({ type: "get_device_info" }),
-    zmk.call({ type: "get_lock_state" }),
-    zmk.call({ type: "get_physical_layouts" }),
-    zmk.call({ type: "get_keymap" }),
-    zmk.call({ type: "check_unsaved_changes" }),
-  ]);
-
-  if (info.type !== "get_device_info") throw new Error("ZMK device info response mismatch.");
-  if (lock.type !== "get_lock_state") throw new Error("ZMK lock state response mismatch.");
-  if (layouts.type !== "get_physical_layouts") throw new Error("ZMK layout response mismatch.");
-  if (keymapResponse.type !== "get_keymap") throw new Error("ZMK keymap response mismatch.");
-  if (unsaved.type !== "check_unsaved_changes") {
-    throw new Error("ZMK unsaved-change response mismatch.");
-  }
-
-  const keymap = keymapResponse.keymap;
-  const layout = layouts.layouts[layouts.activeLayoutIndex] ?? layouts.layouts[0];
-  if (!layout) throw new Error("ZMK Studio did not return a physical layout.");
-
-  const catalog = await loadZmkBehaviorCatalog(zmk, keymap);
-  const keyPositionByKeyId = Object.fromEntries(
-    layout.keys.map((key) => [key.id, key.keyPosition]),
-  );
-
-  zmk.lockState = lock.lockState;
-  zmk.behaviorCatalog = catalog;
-  zmk.layerIdByLayerIndex = keymap.layers.map((layer) => layer.id);
-  zmk.keyPositionByKeyId = keyPositionByKeyId;
-  zmk.keymap = keymap;
-
-  const capabilities: Capability[] = ["keymap", "layers", "settings", "firmware"];
-  const detectionNotes = [
-    "Imported the current ZMK Studio keymap and physical-layout key positions from the device.",
-  ];
-  if (lock.lockState === "locked") {
-    detectionNotes.push("ZMK Studio is locked; unlock on the keyboard before live writes.");
-  }
-  if (unsaved.hasUnsavedChanges) {
-    detectionNotes.push(
-      "Device reported unsaved ZMK Studio changes; this fetched keymap is accepted as the clean base.",
-    );
-  }
-
-  const profileId = connection.deviceKey ?? `keyboard:zmk-studio:${info.serialNumber}`;
-
-  return {
-    id: profileId,
-    name: info.deviceName,
-    origin: "device",
-    vendor: info.manufacturer,
-    firmware: "zmk",
-    protocol: "zmk-studio",
-    firmwareVersion: info.firmwareVersion,
-    vendorId: connection.vendorId ?? 0,
-    productId: connection.productId ?? 0,
-    identity: {
-      key: profileId,
-      transport: connection.transport ?? "webbluetooth",
-      vendorId: connection.vendorId,
-      productId: connection.productId,
-      productName: info.deviceName,
-      serialNumber: info.serialNumber,
-    },
-    matrix: zmkMatrixForLayout(layout),
-    keys: layout.keys.map(({ keyPosition: _keyPosition, ...key }) => key),
-    capabilities,
-    layers: zmkLayersFromKeymap(keymap, layout, catalog),
-    macros: [],
-    combos: [],
-    tapDances: [],
-    keyOverrides: [],
-    lighting: {
-      mode: "solid",
-      hue: 0,
-      saturation: 0,
-      brightness: 72,
-      speed: 0,
-      keys: {},
-    },
-    settings: {
-      tappingTerm: 200,
-      debounce: 5,
-      permissiveHold: false,
-      retroTapping: false,
-      nkro: true,
-      splitTransport: "none",
-    },
-    detectionNotes,
-    updatedAt: new Date().toISOString(),
-  };
+export function profileFromConnectedZmkStudio(connection: ConnectionState): Promise<DeviceProfile> {
+  return runApp("connect.zmk.profile", profileFromConnectedZmkStudioEffect(connection));
 }
 
-async function activateProfile(
+function profileFromConnectedZmkStudioEffect(connection: ConnectionState) {
+  return Effect.gen(function* () {
+    if (connection.status !== "connected") {
+      return yield* Effect.fail(
+        platformError(
+          "connect.zmk.profile",
+          connection.message || "Keyboard connection did not complete.",
+        ),
+      );
+    }
+    if (connection.protocol !== "zmk-studio" || !connection.zmkStudio) {
+      return yield* Effect.fail(
+        platformError("connect.zmk.profile", "The connected keyboard is not a ZMK Studio device."),
+      );
+    }
+
+    const zmk = connection.zmkStudio;
+    const [info, lock, layouts, keymapResponse, unsaved] = yield* Effect.all(
+      [
+        zmkCallEffect("device-info", () => zmk.call({ type: "get_device_info" })),
+        zmkCallEffect("lock-state", () => zmk.call({ type: "get_lock_state" })),
+        zmkCallEffect("physical-layouts", () => zmk.call({ type: "get_physical_layouts" })),
+        zmkCallEffect("keymap", () => zmk.call({ type: "get_keymap" })),
+        zmkCallEffect("unsaved-changes", () => zmk.call({ type: "check_unsaved_changes" })),
+      ],
+      { concurrency: 5 },
+    );
+
+    if (info.type !== "get_device_info") {
+      return yield* Effect.fail(platformError("connect.zmk.profile", "Device info mismatch."));
+    }
+    if (lock.type !== "get_lock_state") {
+      return yield* Effect.fail(platformError("connect.zmk.profile", "Lock state mismatch."));
+    }
+    if (layouts.type !== "get_physical_layouts") {
+      return yield* Effect.fail(platformError("connect.zmk.profile", "Layout response mismatch."));
+    }
+    if (keymapResponse.type !== "get_keymap") {
+      return yield* Effect.fail(platformError("connect.zmk.profile", "Keymap response mismatch."));
+    }
+    if (unsaved.type !== "check_unsaved_changes") {
+      return yield* Effect.fail(
+        platformError("connect.zmk.profile", "Unsaved-change response mismatch."),
+      );
+    }
+
+    const keymap = keymapResponse.keymap;
+    const layout = layouts.layouts[layouts.activeLayoutIndex] ?? layouts.layouts[0];
+    if (!layout) {
+      return yield* Effect.fail(
+        platformError("connect.zmk.profile", "ZMK Studio did not return a physical layout."),
+      );
+    }
+
+    const catalog = yield* loadZmkBehaviorCatalogEffect(zmk, keymap);
+    const keyPositionByKeyId = Object.fromEntries(
+      layout.keys.map((key) => [key.id, key.keyPosition]),
+    );
+
+    zmk.lockState = lock.lockState;
+    zmk.behaviorCatalog = catalog;
+    zmk.layerIdByLayerIndex = keymap.layers.map((layer) => layer.id);
+    zmk.keyPositionByKeyId = keyPositionByKeyId;
+    zmk.keymap = keymap;
+
+    const capabilities: Capability[] = ["keymap", "layers", "settings", "firmware"];
+    const detectionNotes = [
+      "Imported the current ZMK Studio keymap and physical-layout key positions from the device.",
+    ];
+    if (lock.lockState === "locked") {
+      detectionNotes.push("ZMK Studio is locked; unlock on the keyboard before live writes.");
+    }
+    if (unsaved.hasUnsavedChanges) {
+      detectionNotes.push(
+        "Device reported unsaved ZMK Studio changes; this fetched keymap is accepted as the clean base.",
+      );
+    }
+
+    const profileId = connection.deviceKey ?? `keyboard:zmk-studio:${info.serialNumber}`;
+
+    return {
+      id: profileId,
+      name: info.deviceName,
+      origin: "device",
+      vendor: info.manufacturer,
+      firmware: "zmk",
+      firmwareEditIntent: "live",
+      protocol: "zmk-studio",
+      firmwareVersion: info.firmwareVersion,
+      vendorId: connection.vendorId ?? 0,
+      productId: connection.productId ?? 0,
+      identity: {
+        key: profileId,
+        transport: connection.transport ?? "webbluetooth",
+        vendorId: connection.vendorId,
+        productId: connection.productId,
+        productName: info.deviceName,
+        serialNumber: info.serialNumber,
+      },
+      matrix: zmkMatrixForLayout(layout),
+      keys: layout.keys.map(({ keyPosition: _keyPosition, ...key }) => key),
+      capabilities,
+      layers: zmkLayersFromKeymap(keymap, layout, catalog),
+      macros: [],
+      combos: [],
+      tapDances: [],
+      keyOverrides: [],
+      lighting: {
+        mode: "solid",
+        hue: 0,
+        saturation: 0,
+        brightness: 72,
+        speed: 0,
+        keys: {},
+      },
+      settings: {
+        tappingTerm: 200,
+        debounce: 5,
+        permissiveHold: false,
+        retroTapping: false,
+        nkro: true,
+        splitTransport: "none",
+      },
+      detectionNotes,
+      firmwareMetadata: undefined,
+      updatedAt: new Date().toISOString(),
+    } satisfies DeviceProfile;
+  });
+}
+
+function activateProfileEffect(
   workbench: WorkbenchStore,
   profile: DeviceProfile,
   origin: DeviceProfileOrigin,
 ) {
   const activeProfile = withDeviceProfileOrigin(profile, origin);
-  await workbench.replaceProfile(activeProfile, activeProfile, {
-    hydrateDraft: false,
-    origin,
+  if (origin === "device") {
+    return Effect.tryPromise({
+      try: () => workbench.activateConnectedProfile(activeProfile),
+      catch: (cause) => platformError("connect.activate-device-profile", cause),
+    });
+  }
+
+  return Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: () =>
+        workbench.replaceProfile(activeProfile, activeProfile, {
+          hydrateDraft: false,
+          origin,
+        }),
+      catch: (cause) => platformError("connect.replace-profile", cause),
+    });
+    yield* Effect.tryPromise({
+      try: () => workbench.commitCurrentDraftAsBase(),
+      catch: (cause) => platformError("connect.commit-profile", cause),
+    });
   });
-  await workbench.commitCurrentDraftAsBase();
 }
 
 export function profileFromViaJson(fileName: string, json: unknown): DeviceProfile {
@@ -269,6 +355,7 @@ export function profileFromViaJson(fileName: string, json: unknown): DeviceProfi
 
   const profile = profileFromCatalog(entry);
   profile.id = `import:${entry.id}`;
+  profile.firmwareEditIntent = "source";
   profile.origin = "imported";
   profile.vendor = entry.vendor;
   profile.detectionNotes = [`Imported ${fileName} as a local VIA v3 definition.`];
@@ -286,7 +373,9 @@ export function profileFromConnectedVia(
     throw new Error("The connected keyboard did not return VIA metadata.");
   }
 
-  return profileFromDetection(baseProfile, connection.detection);
+  const profile = profileFromDetection(baseProfile, connection.detection);
+  profile.firmwareEditIntent = "live";
+  return profile;
 }
 
 export function profileFromCatalogForConnection(
@@ -309,10 +398,10 @@ function viaIdentificationError(connection: ConnectionState) {
       ? ` (${vendorId.toString(16).padStart(4, "0")}:${productId.toString(16).padStart(4, "0")})`
       : "";
 
-  return `Could not identify ${productName}${usbId}. Load its VIA definition with Load VIA JSON, then connect again.`;
+  return `Could not safely identify ${productName}${usbId} from the refreshed VIA/QMK catalogs. No device changes were made.`;
 }
 
-export async function connectViaAndActivate({
+export function connectViaAndActivate({
   baseProfile,
   connectOptions,
   resolveBaseProfile,
@@ -321,22 +410,77 @@ export async function connectViaAndActivate({
   workbench,
 }: ConnectViaOptions): Promise<ConnectFlowResult> {
   shell.setConnecting(`Opening ${transport.label}`, transportLabel(transport));
+  return runConnectFlow(
+    "connect.via",
+    shell,
+    transportLabel(transport),
+    Effect.gen(function* () {
+      const connection = yield* Effect.tryPromise({
+        try: () => transport.connect(connectOptions),
+        catch: (cause) => platformError("connect.via.transport", cause),
+      });
+      if (connection.status !== "connected") {
+        return yield* Effect.fail(
+          platformError(
+            "connect.via.transport",
+            connection.message || "Keyboard connection failed.",
+          ),
+        );
+      }
+      return yield* activateViaConnectionAndProfileEffect({
+        connection,
+        displayTransport: transportLabel(transport),
+        resolveBaseProfile: (activeConnection) =>
+          resolveBaseProfile?.(activeConnection) ?? transport.defaultProfile ?? baseProfile,
+        shell,
+        workbench,
+      });
+    }),
+  );
+}
 
-  try {
-    const connection = await transport.connect(connectOptions);
+export function activateViaConnectionAndProfile(
+  options: ActivateViaConnectionOptions,
+): Promise<ConnectFlowResult> {
+  return runConnectFlow(
+    "connect.via.activate",
+    options.shell,
+    options.displayTransport ?? transportLabel(options.connection.transport),
+    activateViaConnectionAndProfileEffect(options),
+  );
+}
+
+function activateViaConnectionAndProfileEffect({
+  connection,
+  displayTransport,
+  resolveBaseProfile,
+  shell,
+  workbench,
+}: ActivateViaConnectionOptions) {
+  return Effect.gen(function* () {
     if (connection.status !== "connected") {
-      shell.setConnectionError(connection.message, transportLabel(transport));
-      throw new Error(connection.message || "Keyboard connection failed.");
+      return yield* Effect.fail(
+        platformError("connect.via.activate", connection.message || "Keyboard connection failed."),
+      );
     }
 
-    const resolvedBase =
-      (await resolveBaseProfile?.(connection)) ?? transport.defaultProfile ?? baseProfile;
-    if (!resolvedBase) throw new Error(viaIdentificationError(connection));
+    const resolvedBase = resolveBaseProfile
+      ? yield* tryMaybePromise(
+          () => resolveBaseProfile(connection),
+          (cause) => platformError("connect.via.resolve-profile", cause),
+        )
+      : undefined;
+    if (!resolvedBase) {
+      return yield* Effect.fail(
+        platformError("connect.via.resolve-profile", viaIdentificationError(connection)),
+      );
+    }
 
     const profile = profileFromConnectedVia(connection, resolvedBase);
     const message = connectedMessage(connection, profile);
+    const transport = displayTransport ?? transportLabel(connection.transport);
 
-    await activateProfile(workbench, profile, "device");
+    yield* activateProfileEffect(workbench, profile, "device");
     shell.setConnected({
       board: profile.name,
       connection,
@@ -344,7 +488,7 @@ export async function connectViaAndActivate({
       productId: profile.productId,
       protocol: protocolLabel(profile.protocol),
       protocolVersion: connection.detection?.protocolVersion,
-      transport: transportLabel(transport),
+      transport,
       vendorId: profile.vendorId,
     });
 
@@ -353,107 +497,139 @@ export async function connectViaAndActivate({
       message,
       profile,
       source: "device",
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Keyboard connection failed.";
-    shell.setConnectionError(message, transportLabel(transport));
-    throw error;
-  }
+    } satisfies ConnectFlowResult;
+  });
 }
 
-export async function connectZmkStudioAndActivate({
+export function connectZmkStudioAndActivate({
   connectOptions,
   shell,
+  resolveFirmwareMetadata,
   transport,
   workbench,
 }: ConnectZmkStudioOptions): Promise<ConnectFlowResult> {
   shell.setConnecting(`Opening ${transport.label}`, transportLabel(transport));
+  return runConnectFlow(
+    "connect.zmk",
+    shell,
+    transportLabel(transport),
+    Effect.gen(function* () {
+      const connection = yield* Effect.tryPromise({
+        try: () => transport.connect(connectOptions),
+        catch: (cause) => platformError("connect.zmk.transport", cause),
+      });
+      if (connection.status !== "connected") {
+        return yield* Effect.fail(
+          platformError(
+            "connect.zmk.transport",
+            connection.message || "Keyboard connection failed.",
+          ),
+        );
+      }
 
-  try {
-    const connection = await transport.connect(connectOptions);
-    if (connection.status !== "connected") {
-      shell.setConnectionError(connection.message, transportLabel(transport));
-      throw new Error(connection.message || "Keyboard connection failed.");
-    }
-
-    const profile = await profileFromConnectedZmkStudio(connection);
-    const lockSuffix =
-      connection.zmkStudio?.lockState === "locked"
-        ? "; locked until you unlock on the keyboard"
+      const profile: DeviceProfile = yield* profileFromConnectedZmkStudioEffect(connection);
+      if (resolveFirmwareMetadata) {
+        profile.firmwareMetadata = yield* Effect.tryPromise({
+          try: () => resolveFirmwareMetadata(profile),
+          catch: (cause) => platformError("connect.zmk.resolve-firmware-metadata", cause),
+        });
+        if (profile.firmwareMetadata?.zmk?.board) {
+          profile.detectionNotes = [
+            ...(profile.detectionNotes ?? []),
+            `Resolved ZMK build target ${profile.firmwareMetadata.zmk.board} from the official hardware catalog.`,
+          ];
+        }
+      }
+      const lockSuffix =
+        connection.zmkStudio?.lockState === "locked"
+          ? "; locked until you unlock on the keyboard"
+          : "";
+      const dirtySuffix = profile.detectionNotes?.some((note) => note.includes("unsaved"))
+        ? "; device had unsaved Studio changes"
         : "";
-    const dirtySuffix = profile.detectionNotes?.some((note) => note.includes("unsaved"))
-      ? "; device had unsaved Studio changes"
-      : "";
-    const message = `Connected ${profile.name} over ${transportLabel(connection.transport)} (ZMK Studio${lockSuffix}${dirtySuffix})`;
+      const message = `Connected ${profile.name} over ${transportLabel(connection.transport)} (ZMK Studio${lockSuffix}${dirtySuffix})`;
 
-    await activateProfile(workbench, profile, "device");
-    shell.setConnected({
-      board: profile.name,
-      connection,
-      message,
-      productId: profile.productId,
-      protocol: protocolLabel(profile.protocol),
-      transport: transportLabel(transport),
-      vendorId: profile.vendorId,
-    });
+      yield* activateProfileEffect(workbench, profile, "device");
+      shell.setConnected({
+        board: profile.name,
+        connection,
+        message,
+        productId: profile.productId,
+        protocol: protocolLabel(profile.protocol),
+        transport: transportLabel(transport),
+        vendorId: profile.vendorId,
+      });
 
-    return {
-      connection,
-      message,
-      profile,
-      source: "device",
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Keyboard connection failed.";
-    shell.setConnectionError(message, transportLabel(transport));
-    throw error;
-  }
+      return {
+        connection,
+        message,
+        profile,
+        source: "device",
+      } satisfies ConnectFlowResult;
+    }),
+  );
 }
 
-export async function importViaJsonAndActivate({
+export function importViaJsonAndActivate({
   fileName,
   json,
   shell,
   workbench,
 }: ImportViaJsonOptions): Promise<ConnectFlowResult> {
   shell.setConnecting(`Importing ${fileName}`, "VIA JSON");
-
-  try {
-    const profile = profileFromViaJson(fileName, json);
-    await activateProfile(workbench, profile, "imported");
-    const message = `Imported ${profile.name} for local editing.`;
-    shell.setDisconnected(message);
-    return {
-      message,
-      profile,
-      source: "import",
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not import VIA JSON.";
-    shell.setConnectionError(message, "VIA JSON");
-    throw error;
-  }
+  return runConnectFlow(
+    "connect.import-via",
+    shell,
+    "VIA JSON",
+    Effect.gen(function* () {
+      const profile = yield* Effect.try({
+        try: () => profileFromViaJson(fileName, json),
+        catch: (cause) => platformError("connect.import-via", cause),
+      });
+      yield* activateProfileEffect(workbench, profile, "imported");
+      const message = `Imported ${profile.name} for local editing.`;
+      yield* Effect.sync(() => shell.setDisconnected(message));
+      return { message, profile, source: "import" } satisfies ConnectFlowResult;
+    }),
+  );
 }
 
-export async function continueWithoutDevice({
+export function continueWithoutDevice({
   baseProfile = starterBoardProfile(),
   shell,
   workbench,
 }: LocalOnlyOptions): Promise<ConnectFlowResult> {
   shell.setConnecting("Preparing local profile", "Local");
+  return runConnectFlow(
+    "connect.local",
+    shell,
+    "Local",
+    Effect.gen(function* () {
+      const profile = withDeviceProfileOrigin(baseProfile, "starter");
+      profile.id = profile.id.startsWith("local:") ? profile.id : `local:${profile.id}`;
+      profile.identity = undefined;
+      profile.firmwareEditIntent = "source";
+      profile.detectionNotes = ["Created a local-only profile without a connected keyboard."];
+      yield* activateProfileEffect(workbench, profile, "starter");
+      const message = `Editing ${profile.name} without a connected device.`;
+      yield* Effect.sync(() => shell.setDisconnected(message));
+      return { message, profile, source: "local" } satisfies ConnectFlowResult;
+    }),
+  );
+}
 
-  const profile = withDeviceProfileOrigin(baseProfile, "starter");
-  profile.id = profile.id.startsWith("local:") ? profile.id : `local:${profile.id}`;
-  profile.identity = undefined;
-  profile.detectionNotes = ["Created a starter local-only profile without a connected keyboard."];
-
-  await activateProfile(workbench, profile, "starter");
-  const message = `Editing ${profile.name} starter without a connected device.`;
-  shell.setDisconnected(message);
-
-  return {
-    message,
-    profile,
-    source: "local",
-  };
+function runConnectFlow<A>(
+  operation: string,
+  shell: ShellStore,
+  displayTransport: string,
+  effect: Effect.Effect<A, { readonly message: string }>,
+) {
+  return runApp(
+    operation,
+    effect.pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => shell.setConnectionError(error.message, displayTransport)),
+      ),
+    ),
+  );
 }

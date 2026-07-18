@@ -1,11 +1,17 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { Copy, Keyboard, Plus, Trash2 } from "@lucide/svelte";
 
+  import {
+    normalizeLibrarySelection,
+    type LibrarySelectionIds,
+    type LibraryTab,
+  } from "$lib/app/library-selection";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { displayCode } from "$lib/app/editor-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
-  import { Button, Chip, SegmentedNav } from "$lib/components/ui";
+  import { Button, Chip, Input, SegmentedNav } from "$lib/components/ui";
   import * as Card from "$lib/components/ui/card/index.js";
   import type { SegmentItem } from "$lib/components/ui/types";
   import {
@@ -22,34 +28,37 @@
   import { keyById, type Combo, type Macro, type TapDance } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
 
-  type LibraryTab = "macros" | "combos" | "tapDance";
-
   const shell = getShellContext();
   const workbench = getWorkbenchContext();
 
-  let tab = $state<LibraryTab>("macros");
-  let selectedIds = $state<Record<LibraryTab, string>>({
+  const tab = $derived<LibraryTab>(libraryTabFromUrl(page.url.searchParams.get("tab")));
+  let selectedIds = $state<LibrarySelectionIds>({
     macros: workbench.profile.macros[0]?.id ?? "",
     combos: workbench.profile.combos[0]?.id ?? "",
     tapDance: workbench.profile.tapDances[0]?.id ?? "",
   });
 
-  const tabItems: SegmentItem<LibraryTab>[] = [
-    { value: "macros", label: "Macros", title: "Macros" },
-    { value: "combos", label: "Combos", title: "Combos" },
-    { value: "tapDance", label: "Tap Dance", title: "Tap dances" },
-  ];
+  const tabItems = $derived<SegmentItem<LibraryTab>[]>([
+    { value: "macros", label: `Macros · ${workbench.profile.macros.length}`, title: "Macros", href: "/library?tab=macros" },
+    { value: "combos", label: `Combos · ${workbench.profile.combos.length}`, title: "Combos", href: "/library?tab=combos" },
+    { value: "tapDance", label: `Tap Dance · ${workbench.profile.tapDances.length}`, title: "Tap dances", href: "/library?tab=tap-dance" },
+  ]);
   const libraryRouteClass =
-    "library-route min-h-[calc(100vh-58px)] bg-[radial-gradient(ellipse_82%_52%_at_78%_0%,color-mix(in_oklch,var(--teal)_7%,transparent),transparent_66%),var(--paper)] p-kb-22 max-[640px]:p-kb-12";
+    "library-route min-h-[calc(100vh-58px)] bg-paper p-kb-22 max-[640px]:p-kb-12";
   const libraryGridClass =
     "library-grid grid min-h-[calc(100vh-102px)] grid-cols-[minmax(0,1fr)_minmax(300px,340px)] items-start gap-kb-16 max-[1080px]:grid-cols-[minmax(0,1fr)] max-[640px]:min-h-[calc(100vh-92px)]";
   const libraryCardClass =
     "library-card min-w-0 min-h-[min(650px,calc(100vh-102px))] overflow-hidden";
   const useCardClass = "use-card min-w-0 overflow-hidden max-[1080px]:max-w-none";
   const libraryCardHeaderClass =
-    "library-card-header gap-kb-10 max-[640px]:items-start max-[640px]:flex-wrap";
-  const libraryCardBodyClass = "library-card-body !p-kb-10";
-  const headerSpacerClass = "header-spacer min-w-[10px] flex-1";
+    "library-card-header grid gap-kb-10 max-[640px]:items-start";
+  const libraryHeaderTopClass =
+    "library-header-top flex min-w-0 items-center gap-kb-10 max-[560px]:items-start max-[560px]:flex-wrap";
+  const libraryTabsClass =
+    "library-tabs w-fit max-w-full overflow-x-auto max-[640px]:w-full max-[640px]:[&_a]:flex-1 max-[640px]:[&_a]:px-kb-10";
+  const libraryHeaderActionsClass =
+    "library-header-actions ml-auto flex min-w-0 items-center gap-kb-8 max-[560px]:ml-0";
+  const libraryCardBodyClass = "library-card-body p-kb-10";
   const libraryListClass = "library-list grid gap-kb-8";
   const libraryRowClass =
     "library-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-keycap border border-transparent bg-paper-2 p-kb-10 transition-[border-color,background,transform] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:-translate-y-px hover:border-line-2 max-[640px]:grid-cols-[minmax(0,1fr)]";
@@ -59,11 +68,16 @@
   const rowTitleClass = "row-title flex min-w-0 items-center gap-kb-8";
   const titleTextClass =
     "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] font-strong";
-  const sequenceClass = "seq !mt-0";
+  const sequenceClass = "seq inline-flex flex-wrap items-center gap-kb-4";
+  const sequenceKeyClass =
+    "seq-key h-auto min-h-kb-22 min-w-kb-22 max-w-full whitespace-normal rounded-[5px] border-line-2 bg-surface-2 px-kb-6 py-0 font-mono text-[10px] leading-[1.1] text-ink shadow-sequence-key [overflow-wrap:anywhere] text-center [word-break:break-word]";
+  const sequenceAddedClass =
+    "added-key border-[var(--success-border)] bg-success-surface text-success-ink";
+  const sequenceArrowClass = "seq-arrow font-mono text-ink-3";
   const draftNoteClass = "draft-note font-mono text-[11px] text-ink-3";
-  const previewClass = "seq preview !mt-0 pt-kb-8 pb-kb-2";
+  const previewClass = "seq preview inline-flex flex-wrap items-center gap-kb-4 pt-kb-8 pb-kb-2";
   const tapGridClass =
-    "tap-grid !mt-0 !gap-kb-8 max-[640px]:!grid-cols-[minmax(0,1fr)]";
+    "tap-grid grid grid-cols-[repeat(3,minmax(0,1fr))] gap-kb-8 max-[640px]:grid-cols-[minmax(0,1fr)]";
   const tapCellClass = "grid min-w-0 gap-kb-4";
   const tapLabelClass = "font-mono text-[9px] tracking-[0.08em] text-ink-3 uppercase";
   const usePanelClass = "use-panel grid gap-kb-14";
@@ -76,18 +90,21 @@
     "combo-mark border-[color-mix(in_oklch,var(--mustard)_50%,transparent)] bg-mustard";
   const danceMarkClass =
     "dance-mark border-[color-mix(in_oklch,var(--teal)_50%,transparent)] bg-teal";
-  const fieldClass = "field grid min-w-0 gap-kb-6";
+  const fieldClass = "grid min-w-0 gap-kb-6";
+  const fieldLabelClass = "block font-mono text-kb-10 tracking-[0.08em] text-ink-3 uppercase";
   const libraryInputClass =
-    "library-input h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 !text-[13px] text-ink [font:inherit] outline-0 focus:border-ink";
-  const monoInputClass = cn(libraryInputClass, "mono font-mono");
+    "library-input h-kb-34 w-full min-w-0 rounded-keycap border-line-2 bg-surface px-kb-10 text-[13px] text-ink [font:inherit] focus-visible:border-ink";
+  const monoInputClass = cn(libraryInputClass, "font-mono");
+  const librarySelectClass =
+    "h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 text-[13px] text-ink outline-none focus-visible:border-ink focus-visible:ring-3 focus-visible:ring-ring/50";
   const choiceRowClass = "choice-row flex flex-wrap gap-kb-6";
   const choiceButtonClass =
-    "rounded-[7px] !border !border-line-2 !bg-surface px-kb-9 py-kb-4 !font-mono !text-[10px] !text-ink-2 min-h-kb-28";
+    "h-kb-28 min-h-kb-28 rounded-[7px] border-line-2 bg-surface px-kb-9 py-kb-4 font-mono text-[10px] text-ink-2 hover:border-line-3 hover:bg-surface-2 hover:text-ink";
   const comboKeyGridClass =
     "combo-key-grid grid max-h-[210px] grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-kb-5 overflow-auto pr-kb-2";
   const comboKeyButtonClass =
-    "grid min-h-[42px] min-w-0 content-center gap-kb-2 rounded-[7px] !border !border-line-2 !bg-surface p-kb-5 !font-mono !text-ink-2";
-  const choiceSelectedClass = "selected !border-[rgba(15,147,140,0.45)] !bg-[#9de2d8] !text-[#062826]";
+    "grid min-h-[42px] min-w-0 content-center gap-kb-2 rounded-[7px] border border-line-2 bg-surface p-kb-5 font-mono text-ink-2";
+  const choiceSelectedClass = "selected border-[rgba(15,147,140,0.45)] bg-[#9de2d8] text-[#062826]";
   const comboKeyPrimaryClass =
     "overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-bold text-ink";
   const comboKeyDetailClass =
@@ -95,39 +112,39 @@
   const wideActionClass = "wide-action w-full justify-center";
   const sideActionsClass =
     "side-actions grid grid-cols-[repeat(2,minmax(0,1fr))] gap-kb-8 pt-kb-2 max-[640px]:grid-cols-[minmax(0,1fr)]";
-  const chipIconClass = "material-symbols-outlined chip-icon !text-[14px]";
+  const chipIconClass = "material-symbols-outlined chip-icon text-[14px]";
   const emptyPanelClass =
     "empty-panel grid min-h-[180px] place-items-center content-center gap-kb-8 font-mono text-[12px] text-ink-3";
   const compactEmptyPanelClass = cn(emptyPanelClass, "compact min-h-[120px]");
-  const emptyPanelIconClass = "material-symbols-outlined !text-[24px]";
+  const emptyPanelIconClass = "material-symbols-outlined text-[24px]";
 
+  const normalizedSelection = $derived(
+    normalizeLibrarySelection(selectedIds, tab, idsForTab(tab)),
+  );
   const selectedMacro = $derived(
-    workbench.profile.macros.find((macro) => macro.id === selectedIds.macros),
+    workbench.profile.macros.find((macro) => macro.id === normalizedSelection.macros),
   );
   const selectedCombo = $derived(
-    workbench.profile.combos.find((combo) => combo.id === selectedIds.combos),
+    workbench.profile.combos.find((combo) => combo.id === normalizedSelection.combos),
   );
   const selectedTapDance = $derived(
-    workbench.profile.tapDances.find((dance) => dance.id === selectedIds.tapDance),
+    workbench.profile.tapDances.find((dance) => dance.id === normalizedSelection.tapDance),
   );
   const currentCount = $derived(idsForTab(tab).length);
   const addLabel = $derived(
     tab === "macros" ? "New macro" : tab === "combos" ? "New combo" : "New tap dance",
   );
 
-  $effect(() => {
-    const ids = idsForTab(tab);
-    if (selectedIds[tab] && ids.includes(selectedIds[tab])) return;
-    selectedIds = {
-      ...selectedIds,
-      [tab]: ids[0] ?? "",
-    };
-  });
-
   function idsForTab(nextTab: LibraryTab): string[] {
     if (nextTab === "macros") return workbench.profile.macros.map((macro) => macro.id);
     if (nextTab === "combos") return workbench.profile.combos.map((combo) => combo.id);
     return workbench.profile.tapDances.map((dance) => dance.id);
+  }
+
+  function libraryTabFromUrl(value: string | null): LibraryTab {
+    if (value === "combos") return "combos";
+    if (value === "tap-dance" || value === "tapDance") return "tapDance";
+    return "macros";
   }
 
   function selectItem(id: string) {
@@ -175,7 +192,7 @@
   }
 
   function removeCurrent() {
-    const id = selectedIds[tab];
+    const id = normalizedSelection[tab];
     if (!id) return;
 
     if (tab === "macros") workbench.removeMacro(id);
@@ -284,19 +301,22 @@
   <div class={libraryGridClass}>
     <Card.Root class={libraryCardClass}>
       <Card.Header class={libraryCardHeaderClass}>
-        <Card.Title>Library</Card.Title>
+        <div class={libraryHeaderTopClass}>
+          <Card.Title>Library</Card.Title>
+          <div class={libraryHeaderActionsClass}>
+            <Chip title={`${currentCount} entries`}>{currentCount} items</Chip>
+            <Button variant="coral" size="sm" onclick={addCurrent}>
+              <Plus size={14} aria-hidden="true" />
+              {addLabel}
+            </Button>
+          </div>
+        </div>
         <SegmentedNav
           items={tabItems}
           value={tab}
-          onselect={(next) => (tab = next)}
           ariaLabel="Library sections"
+          class={libraryTabsClass}
         />
-        <div class={headerSpacerClass}></div>
-        <Chip title={`${currentCount} entries`}>{currentCount} items</Chip>
-        <Button variant="coral" size="sm" onclick={addCurrent}>
-          <Plus size={14} aria-hidden="true" />
-          {addLabel}
-        </Button>
       </Card.Header>
 
       <Card.Content class={libraryCardBodyClass}>
@@ -310,7 +330,7 @@
           {:else}
             <div class={libraryListClass}>
               {#each workbench.profile.macros as macro (macro.id)}
-                <div class={cn(libraryRowClass, selectedIds.macros === macro.id && selectedLibraryRowClass)}>
+                <div class={cn(libraryRowClass, normalizedSelection.macros === macro.id && selectedLibraryRowClass)}>
                   <button type="button" class={rowMainClass} onclick={() => selectItem(macro.id)}>
                     <span class={rowTitleClass}>
                       <strong class={titleTextClass}>{macroTitle(macro)}</strong>
@@ -321,8 +341,8 @@
                         <span class={draftNoteClass}>Add sequence</span>
                       {:else}
                         {#each macro.sequence as step, index (`${macro.id}-${index}`)}
-                          <span class="seq-key">{displayCode(step)}</span>
-                          {#if index < macro.sequence.length - 1}<span class="seq-arrow">-&gt;</span>{/if}
+                          <Chip class={sequenceKeyClass}>{displayCode(step)}</Chip>
+                          {#if index < macro.sequence.length - 1}<span class={sequenceArrowClass}>-&gt;</span>{/if}
                         {/each}
                       {/if}
                     </span>
@@ -351,7 +371,7 @@
           {:else}
             <div class={libraryListClass}>
               {#each workbench.profile.combos as combo (combo.id)}
-                <div class={cn(libraryRowClass, selectedIds.combos === combo.id && selectedLibraryRowClass)}>
+                <div class={cn(libraryRowClass, normalizedSelection.combos === combo.id && selectedLibraryRowClass)}>
                   <button type="button" class={rowMainClass} onclick={() => selectItem(combo.id)}>
                     <span class={rowTitleClass}>
                       <strong class={titleTextClass}>{comboTitle(combo)}</strong>
@@ -362,13 +382,13 @@
                         <span class={draftNoteClass}>Add keys</span>
                       {:else}
                         {#each comboChordLabels(workbench.profile, combo, displayCode, workbench.activeLayer) as keyLabel, index (`${combo.id}-${index}`)}
-                          <span class="seq-key">{keyLabel}</span>
-                          {#if index < combo.keys.length - 1}<span class="seq-arrow">+</span>{/if}
+                          <Chip class={sequenceKeyClass}>{keyLabel}</Chip>
+                          {#if index < combo.keys.length - 1}<span class={sequenceArrowClass}>+</span>{/if}
                         {/each}
                       {/if}
-                      <span class="seq-arrow">-&gt;</span>
+                      <span class={sequenceArrowClass}>-&gt;</span>
                       {#if combo.binding}
-                        <span class="seq-key added-key">{displayCode(combo.binding)}</span>
+                        <Chip class={cn(sequenceKeyClass, sequenceAddedClass)}>{displayCode(combo.binding)}</Chip>
                       {:else}
                         <span class={draftNoteClass}>Set output</span>
                       {/if}
@@ -391,16 +411,16 @@
         {:else}
           <div class={libraryListClass}>
             {#each workbench.profile.tapDances as dance (dance.id)}
-              <div class={cn(libraryRowClass, selectedIds.tapDance === dance.id && selectedLibraryRowClass)}>
+              <div class={cn(libraryRowClass, normalizedSelection.tapDance === dance.id && selectedLibraryRowClass)}>
                 <button type="button" class={rowMainClass} onclick={() => selectItem(dance.id)}>
                   <span class={rowTitleClass}>
                     <strong class={titleTextClass}>{tapDanceSourceLabel(dance)}</strong>
                     <Chip>{isCompleteTapDance(dance) ? "tap dance" : "unassigned"}</Chip>
                   </span>
                   <span class={tapGridClass}>
-                    <span class={tapCellClass}><small class={tapLabelClass}>Tap</small><b class="seq-key">{codeLabel(dance.tap, "Set tap")}</b></span>
-                    <span class={tapCellClass}><small class={tapLabelClass}>Hold</small><b class="seq-key">{codeLabel(dance.hold, "Set hold")}</b></span>
-                    <span class={tapCellClass}><small class={tapLabelClass}>Double</small><b class="seq-key">{codeLabel(dance.doubleTap, "Set double")}</b></span>
+                    <span class={tapCellClass}><small class={tapLabelClass}>Tap</small><Chip class={sequenceKeyClass}>{codeLabel(dance.tap, "Set tap")}</Chip></span>
+                    <span class={tapCellClass}><small class={tapLabelClass}>Hold</small><Chip class={sequenceKeyClass}>{codeLabel(dance.hold, "Set hold")}</Chip></span>
+                    <span class={tapCellClass}><small class={tapLabelClass}>Double</small><Chip class={sequenceKeyClass}>{codeLabel(dance.doubleTap, "Set double")}</Chip></span>
                   </span>
                 </button>
                 <Button
@@ -442,8 +462,8 @@
           </div>
 
           <label class={fieldClass}>
-            <span class="field-label">Name</span>
-            <input
+            <span class={fieldLabelClass}>Name</span>
+            <Input
               class={libraryInputClass}
               value={selectedMacro.name}
               placeholder="Name this macro"
@@ -452,8 +472,8 @@
           </label>
 
           <label class={fieldClass}>
-            <span class="field-label">Trigger note</span>
-            <input
+            <span class={fieldLabelClass}>Trigger note</span>
+            <Input
               class={libraryInputClass}
               value={selectedMacro.trigger}
               oninput={(event) =>
@@ -462,8 +482,8 @@
           </label>
 
           <label class={fieldClass}>
-            <span class="field-label">Sequence</span>
-            <input
+            <span class={fieldLabelClass}>Sequence</span>
+            <Input
               class={monoInputClass}
               spellcheck="false"
               value={selectedMacro.sequence.join(" ")}
@@ -480,7 +500,7 @@
               <span class={draftNoteClass}>Add sequence</span>
             {:else}
               {#each selectedMacro.sequence as step, index (`preview-${selectedMacro.id}-${index}`)}
-                <span class="seq-key">{displayCode(step)}</span>
+                <Chip class={sequenceKeyClass}>{displayCode(step)}</Chip>
               {/each}
             {/if}
           </div>
@@ -505,8 +525,8 @@
           </div>
 
           <label class={fieldClass}>
-            <span class="field-label">Name</span>
-            <input
+            <span class={fieldLabelClass}>Name</span>
+            <Input
               class={libraryInputClass}
               value={selectedCombo.name}
               placeholder="Name this combo"
@@ -515,8 +535,8 @@
           </label>
 
           <label class={fieldClass}>
-            <span class="field-label">Output</span>
-            <input
+            <span class={fieldLabelClass}>Output</span>
+            <Input
               class={monoInputClass}
               spellcheck="false"
               value={selectedCombo.binding}
@@ -527,31 +547,35 @@
           </label>
 
           <div class={fieldClass}>
-            <span class="field-label">Layers</span>
+            <span class={fieldLabelClass}>Layers</span>
             <div class={choiceRowClass}>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="xs"
                 class={cn(choiceButtonClass, !selectedCombo.layerIds?.length && choiceSelectedClass)}
                 aria-pressed={!selectedCombo.layerIds?.length}
                 onclick={() => setComboLayerScope(selectedCombo, undefined)}
               >
                 All
-              </button>
+              </Button>
               {#each workbench.profile.layers as layer (layer.id)}
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="xs"
                   class={cn(choiceButtonClass, comboUsesLayer(selectedCombo, layer.id) && choiceSelectedClass)}
                   aria-pressed={comboUsesLayer(selectedCombo, layer.id)}
                   onclick={() => toggleComboLayer(selectedCombo, layer.id)}
                 >
                   {layer.name}
-                </button>
+                </Button>
               {/each}
             </div>
           </div>
 
           <div class={fieldClass}>
-            <span class="field-label">Members</span>
+            <span class={fieldLabelClass}>Members</span>
             <div class={comboKeyGridClass}>
               {#each workbench.profile.keys as key (key.id)}
                 {@const keyLabel = comboKeyLabel(selectedCombo, key.id)}
@@ -583,9 +607,9 @@
           </div>
 
           <label class={fieldClass}>
-            <span class="field-label">Source key</span>
+            <span class={fieldLabelClass}>Source key</span>
             <select
-              class={libraryInputClass}
+              class={librarySelectClass}
               value={selectedTapDance.keyId}
               onchange={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { keyId: selectValue(event) })}
@@ -598,8 +622,8 @@
           </label>
 
           <label class={fieldClass}>
-            <span class="field-label">Tap</span>
-            <input
+            <span class={fieldLabelClass}>Tap</span>
+            <Input
               class={monoInputClass}
               spellcheck="false"
               value={selectedTapDance.tap}
@@ -610,8 +634,8 @@
           </label>
 
           <label class={fieldClass}>
-            <span class="field-label">Hold</span>
-            <input
+            <span class={fieldLabelClass}>Hold</span>
+            <Input
               class={monoInputClass}
               spellcheck="false"
               value={selectedTapDance.hold}
@@ -622,8 +646,8 @@
           </label>
 
           <label class={fieldClass}>
-            <span class="field-label">Double tap</span>
-            <input
+            <span class={fieldLabelClass}>Double tap</span>
+            <Input
               class={monoInputClass}
               spellcheck="false"
               value={selectedTapDance.doubleTap}

@@ -1,12 +1,31 @@
 <script lang="ts">
   import { browser } from "$app/environment";
-  import { strToU8, zipSync } from "fflate";
+  import { Effect } from "effect";
+  import { strToU8, unzipSync, zipSync } from "fflate";
+  import { untrack } from "svelte";
 
+  import { authClient } from "$lib/auth-client";
+  import { runApp } from "$lib/app";
+  import { getFirmwareBuildEventsContext } from "$lib/app/firmware-build-events.svelte";
+  import {
+    authClientErrorMessage,
+    createFirmwareGithubSyncInput,
+    firmwareGithubBranchLabel,
+    firmwareGithubVariantInput,
+    type AuthClientError,
+  } from "$lib/app/firmware-github-actions";
   import { connectViaAndActivate } from "$lib/app/connect-flow";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import type { LiveSyncChangeNotice } from "$lib/app/via-live-sync.svelte";
   import Button from "$lib/components/ui/Button.svelte";
+  import type {
+    GitHubFirmwareAppStatus,
+    GitHubFirmwareArtifactDownloadResponse,
+    GitHubFirmwareBuildResponse,
+    GitHubFirmwareRunDto,
+    GitHubFirmwareVariantInput,
+  } from "$lib/github-app/types";
   import {
     generateFirmwareArtifacts,
     type FirmwareArtifacts,
@@ -19,10 +38,10 @@
     FirmwareBuildResult,
     FirmwareObjectBundleManifest,
   } from "$lib/keyboard/firmware-build/types";
+  import { verifyGitHubArtifactSha256Digest } from "$lib/keyboard/github-artifact-digest";
   import { profileDisplayName, type DeviceProfile } from "$lib/keyboard/schema";
   import { createWebHidViaTransport } from "$lib/keyboard/transport";
   import {
-    createUf2DownloadFallback,
     createUf2FlashPlan,
     defaultUf2VolumeHints,
     detectUf2FileSystemAccessSupport,
@@ -36,11 +55,14 @@
     type Uf2FlashSupportEnvironment,
     type Uf2VerifyResult,
   } from "$lib/keyboard/uf2-flash";
+  import { uf2TargetForProfile } from "$lib/keyboard/uf2-families";
   import { encodeViaCommandReport } from "$lib/keyboard/via-protocol";
   import { cn } from "$lib/utils.js";
+  import { platformError } from "$lib/effect/errors";
 
   type Props = {
     changes?: readonly LiveSyncChangeNotice[];
+    githubVariant?: GitHubFirmwareVariantInput | null;
     onclose?: () => void;
     open?: boolean;
     profile: DeviceProfile;
@@ -72,69 +94,68 @@
   const overlayClass =
     "flash-overlay fixed inset-0 z-40 grid place-items-center p-[20px] max-[720px]:items-end max-[720px]:p-[10px]";
   const scrimClass =
-    "flash-scrim absolute inset-0 ![background-color:rgba(27,25,23,0.46)] backdrop-blur-[5px]";
+    "flash-scrim absolute inset-0 [background-color:color-mix(in_oklch,var(--ink)_46%,transparent)] backdrop-blur-[5px]";
   const modalClass =
-    "flash-modal relative grid w-[min(720px,calc(100vw-28px))] max-h-[min(860px,calc(100vh-28px))] gap-[14px] overflow-auto rounded-[20px] border border-[color-mix(in_oklch,var(--surface)_42%,var(--line-2))] bg-surface p-[22px] shadow-modal max-[720px]:w-full max-[720px]:max-h-[calc(100vh-20px)] max-[720px]:rounded-[16px] max-[720px]:p-[16px]";
+    "flash-modal relative grid w-[min(720px,calc(100vw-28px))] max-h-[min(860px,calc(100vh-28px))] gap-kb-14 overflow-auto rounded-lg border border-line-2 bg-surface p-kb-22 shadow-modal max-[720px]:w-full max-[720px]:max-h-[calc(100vh-20px)] max-[720px]:p-kb-16";
   const modalHeadClass =
     "modal-head grid grid-cols-[22px_minmax(0,1fr)_30px] items-start gap-[10px]";
-  const modalBoltClass = "material-symbols-outlined modal-bolt !text-[22px] text-coral";
+  const modalBoltClass = "material-symbols-outlined modal-bolt text-[22px] text-coral";
   const modalTitleClass = "m-0 text-[15px] leading-[1.25] [overflow-wrap:anywhere]";
   const modalSubtitleClass =
     "mt-[3px] mb-0 font-mono text-[11px] text-ink-3 [overflow-wrap:anywhere]";
   const modalCloseClass =
-    "modal-close grid size-[30px] place-items-center rounded-[8px] !text-ink-3 hover:bg-paper-2 hover:!text-ink";
+    "modal-close size-kb-30 text-ink-3 hover:bg-surface-2 hover:text-ink";
   const flashStepsClass =
     "flash-steps grid grid-cols-[repeat(3,minmax(0,1fr))] gap-x-[10px] gap-y-[8px] max-[720px]:grid-cols-[minmax(0,1fr)]";
   const flashStepClass = "flash-step flex min-w-0 items-center gap-[8px] text-[12px] text-ink-3";
   const flashStepActiveClass = "active text-ink [&_.material-symbols-outlined]:text-coral";
-  const flashStepDoneClass = "done [&_.material-symbols-outlined]:text-added";
-  const flashStepIconClass = "material-symbols-outlined flex-none !text-[19px]";
+  const flashStepDoneClass = "done [&_.material-symbols-outlined]:text-success";
+  const flashStepIconClass = "material-symbols-outlined flex-none text-[19px]";
   const flashStepLabelClass = "overflow-hidden text-ellipsis whitespace-nowrap";
   const sourceFactsClass =
     "source-facts grid grid-cols-[repeat(5,minmax(0,1fr))] gap-[8px] max-[720px]:grid-cols-[minmax(0,1fr)]";
   const sourceFactClass =
-    "grid min-w-0 gap-[3px] rounded-[8px] border border-line bg-paper-2 px-[10px] py-[9px]";
+    "grid min-w-0 gap-kb-3 rounded-lg border border-line bg-surface-2 px-kb-10 py-kb-9";
   const sourceFactBlockedClass =
-    "source-blocked border-[oklch(0.62_0.2_25_/_0.36)] bg-[oklch(0.95_0.04_25)]";
+    "source-blocked border-[var(--danger-border)] bg-danger-surface";
   const microLabelClass =
     "font-mono text-[9px] tracking-[0.08em] text-ink-3 uppercase";
   const sourceFactValueClass =
     "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px]";
   const diagnosticBannerClass =
-    "diagnostic-banner grid min-w-0 gap-[9px] rounded-[10px] border border-line px-[12px] py-[11px]";
+    "diagnostic-banner grid min-w-0 gap-kb-9 rounded-lg border border-line px-kb-12 py-kb-11";
   const diagnosticBannerErrorClass =
-    "error border-[oklch(0.62_0.2_25_/_0.36)] bg-[oklch(0.95_0.04_25)]";
+    "error border-[var(--danger-border)] bg-danger-surface";
   const diagnosticBannerWarningClass =
-    "warning border-[color-mix(in_oklch,var(--mustard)_48%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_14%,var(--surface))]";
+    "warning border-[var(--warning-border)] bg-warning-surface";
   const diagnosticTitleClass =
     "diagnostic-title grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-[9px]";
   const diagnosticIconClass =
-    "material-symbols-outlined !grid size-[26px] place-items-center rounded-[8px] border border-[color-mix(in_oklch,currentColor_30%,var(--surface))] bg-surface !text-[17px]";
-  const diagnosticIconErrorClass = "text-[oklch(0.42_0.15_25)]";
-  const diagnosticIconWarningClass =
-    "text-[color-mix(in_oklch,var(--mustard)_72%,var(--ink))]";
+    "material-symbols-outlined grid size-kb-26 place-items-center rounded-md border border-[color-mix(in_oklch,currentColor_30%,var(--surface))] bg-surface text-kb-17";
+  const diagnosticIconErrorClass = "text-danger-ink";
+  const diagnosticIconWarningClass = "text-warning-ink";
   const diagnosticTitleStrongClass =
     "block min-w-0 font-mono text-[12px] leading-[1.35] text-ink [overflow-wrap:anywhere]";
   const diagnosticTitleSmallClass =
     "mt-[3px] block min-w-0 text-[11px] leading-[1.35] text-ink-3 [overflow-wrap:anywhere]";
   const diagnosticListClass = "diagnostic-list m-0 grid list-none gap-[6px] p-0";
   const diagnosticListItemClass =
-    "grid min-w-0 grid-cols-[minmax(110px,0.42fr)_minmax(0,1fr)] items-start gap-[8px] rounded-[8px] border border-[color-mix(in_oklch,var(--surface)_55%,var(--line))] bg-[color-mix(in_oklch,var(--surface)_70%,transparent)] px-[8px] py-[7px]";
+    "grid min-w-0 grid-cols-[minmax(110px,0.42fr)_minmax(0,1fr)] items-start gap-kb-8 rounded-lg border border-line bg-surface px-kb-8 py-kb-7";
   const diagnosticListTargetClass =
     "min-w-0 font-mono text-[10px] leading-[1.35] text-ink-3 [overflow-wrap:anywhere]";
   const diagnosticListMessageClass = "m-0 min-w-0 text-[11px] leading-[1.35] text-ink-2";
   const flashPanelsClass =
     "flash-panels grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[10px] max-[720px]:grid-cols-[minmax(0,1fr)]";
   const flashPanelClass =
-    "flash-panel grid min-w-0 gap-[10px] rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--paper-2)_62%,transparent)] p-[12px]";
+    "flash-panel grid min-w-0 gap-kb-10 rounded-lg border border-line bg-surface-2 p-kb-12";
   const copyPanelClass =
-    "copy-panel grid min-w-0 gap-[11px] rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--paper-2)_62%,transparent)] p-[12px]";
+    "copy-panel grid min-w-0 gap-kb-11 rounded-lg border border-line bg-surface-2 p-kb-12";
   const panelHeadClass =
     "panel-head grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-[9px]";
   const supportRowClass =
-    "support-row grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-[9px] data-[supported=true]:[&>.material-symbols-outlined]:border-[oklch(0.62_0.16_150_/_0.28)] data-[supported=true]:[&>.material-symbols-outlined]:text-[oklch(0.35_0.12_150)]";
+    "support-row grid min-w-0 grid-cols-[26px_minmax(0,1fr)] items-start gap-kb-9 data-[supported=true]:[&>.material-symbols-outlined]:border-[var(--success-border)] data-[supported=true]:[&>.material-symbols-outlined]:text-success-ink";
   const panelIconClass =
-    "material-symbols-outlined !grid size-[26px] place-items-center rounded-[8px] border border-line-2 bg-surface !text-[17px] text-coral-ink";
+    "material-symbols-outlined grid size-kb-26 place-items-center rounded-md border border-line-2 bg-surface text-kb-17 text-coral-ink";
   const panelTitleClass =
     "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px]";
   const panelSmallClass =
@@ -147,6 +168,10 @@
     "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px]";
   const browserBuildCalloutClass =
     "browser-build-callout grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-[10px] rounded-[8px] border border-[color-mix(in_oklch,var(--coral)_35%,var(--line))] bg-[color-mix(in_oklch,var(--coral)_8%,var(--surface))] p-[9px]";
+  const githubBuildCalloutClass = cn(
+    browserBuildCalloutClass,
+    "github-build-callout border-[var(--success-border)] bg-success-surface",
+  );
   const browserBuildTitleClass =
     "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px]";
   const browserBuildSmallClass =
@@ -165,27 +190,37 @@
   const progressTrackBarClass =
     "block h-full rounded-[inherit] bg-coral [transition:width_160ms_ease]";
   const verifyMessageClass =
-    "verify-message m-0 rounded-[8px] px-[10px] py-[8px] font-mono text-[11px] leading-[1.35]";
-  const verifyOkClass = "verify-ok bg-[oklch(0.94_0.05_150)] text-[oklch(0.35_0.12_150)]";
+    "verify-message m-0 rounded-lg px-kb-10 py-kb-8 font-mono text-kb-11 leading-[1.35]";
+  const verifyOkClass = "verify-ok bg-success-surface text-success-ink";
   const verifyErrorClass =
-    "verify-error bg-[oklch(0.95_0.04_25)] text-[oklch(0.42_0.15_25)]";
+    "verify-error bg-danger-surface text-danger-ink";
   const commandLogClass =
-    "command-log m-0 min-h-[170px] max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[10px] bg-ink px-[16px] py-[14px] font-mono text-[11px] leading-[1.65] text-paper";
+    "command-log m-0 min-h-[170px] max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[8px] bg-ink px-[16px] py-[14px] font-mono text-[11px] leading-[1.65] text-paper";
   const hardwareNoteClass = "hardware-note mt-[-4px] mb-0 text-[11px] leading-[1.4] text-ink-3";
   const copyErrorClass =
-    "copy-error mt-[-4px] mb-0 text-[11px] leading-[1.4] text-[oklch(0.42_0.15_25)]";
+    "copy-error mt-[-4px] mb-0 text-kb-11 leading-[1.4] text-danger-ink";
   const copyActionsClass = "copy-actions max-[720px]:grid max-[720px]:grid-cols-[minmax(0,1fr)]";
   const modalActionsClass =
     "modal-actions flex flex-wrap justify-end gap-[8px] max-[720px]:grid max-[720px]:grid-cols-[minmax(0,1fr)]";
   const hiddenFileInputClass =
     "hidden-file-input pointer-events-none absolute size-px overflow-hidden opacity-0";
 
-  let { changes = [], onclose, open = $bindable(false), profile }: Props = $props();
+  let {
+    changes = [],
+    githubVariant = null,
+    onclose,
+    open = $bindable(false),
+    profile,
+  }: Props = $props();
 
   const shell = getShellContext();
   const workbench = getWorkbenchContext();
+  const firmwareBuildEvents = getFirmwareBuildEventsContext();
 
   let result = $state<FirmwareArtifacts | null>(null);
+  let transactionProfile = $state<DeviceProfile | null>(null);
+  let transactionChanges = $state<readonly LiveSyncChangeNotice[]>([]);
+  let transactionVariant = $state<GitHubFirmwareVariantInput | null>(null);
   let copied = $state(false);
   let copyError = $state<string | null>(null);
   let uf2Input = $state<HTMLInputElement | undefined>();
@@ -197,7 +232,6 @@
   let jumping = $state(false);
   let flashing = $state(false);
   let verifying = $state(false);
-  let manualCopied = $state(false);
   let flashProgress = $state<Uf2FlashProgress | null>(null);
   let flashResult = $state<Uf2FileSystemFlashResult | null>(null);
   let verifyResult = $state<Uf2VerifyResult | null>(null);
@@ -205,21 +239,51 @@
   let browserBuilding = $state(false);
   let browserBuildResult = $state<FirmwareBuildResult | null>(null);
   let browserBuildError = $state<string | null>(null);
+  let githubStatus = $state<GitHubFirmwareAppStatus | null>(null);
+  let githubLoadedFor = $state<string | null>(null);
+  let githubBusy = $state(false);
+  let githubError = $state<string | null>(null);
+  let githubNotice = $state<string | null>(null);
+  let githubBuildResult = $state<GitHubFirmwareBuildResponse | null>(null);
+  let githubDownloadingArtifact = $state(false);
   let fsSupport = $state<Uf2FlashSupport>(
     detectUf2FileSystemAccessSupport({ isBrowser: false }),
   );
 
+  const activeProfile = $derived(transactionProfile ?? profile);
+  const verifiedUf2Target = $derived(uf2TargetForProfile(activeProfile));
+  const expectedUf2FamilyId = $derived(verifiedUf2Target?.familyId);
+
+  const githubVariantRef = $derived(
+    githubVariant ??
+      transactionVariant ??
+      firmwareGithubVariantInput({
+        id: workbench.activeVariant.id,
+        name: workbench.activeVariant.name,
+        sourceSavePointId: workbench.changes.length === 0 ? workbench.selectedSavePoint?.id : undefined,
+      }),
+  );
+  const githubBranchName = $derived(firmwareGithubBranchLabel(activeProfile, githubVariantRef));
+  const githubSignedIn = $derived(shell.account.status === "signed-in");
+  const githubConnected = $derived(githubStatus?.connected === true);
+  const githubBuildEvent = $derived(
+    firmwareBuildEvents.latestForRequest(githubBuildResult?.build.requestId),
+  );
+  const githubRun = $derived(githubBuildEvent?.run ?? null);
+  const githubArtifact = $derived(githubRun?.artifact ?? null);
   const commandLog = $derived(
     result
       ? commandLogFor(
           result,
-          profile,
-          changes,
+          activeProfile,
+          transactionChanges,
           uf2Plan,
           uf2Log,
           fsSupport,
           flashResult,
           browserBuildResult,
+          githubBuildResult,
+          githubRun,
         )
       : "",
   );
@@ -248,22 +312,37 @@
   );
 
   $effect(() => {
-    if (!open) {
-      resetOverlayState();
-      return;
-    }
+    const visible = open;
+    untrack(() => {
+      if (!visible) {
+        resetOverlayState();
+        return;
+      }
 
-    const generated = generateFirmwareArtifacts(profile);
-    result = generated;
-    resetUf2State();
-    copied = false;
-    copyError = null;
-    fsSupport = currentFileSystemSupport();
-    browserBuildAvailable = canOfferBrowserBuild(profile, generated);
+      transactionProfile = $state.snapshot(profile);
+      transactionChanges = $state.snapshot([...changes]);
+      transactionVariant = firmwareGithubVariantInput({
+        id: workbench.activeVariant.id,
+        name: workbench.activeVariant.name,
+        sourceSavePointId:
+          workbench.changes.length === 0 ? workbench.selectedSavePoint?.id : undefined,
+      });
+      const generated = generateFirmwareArtifacts(transactionProfile);
+      result = generated;
+      resetUf2State();
+      copied = false;
+      copyError = null;
+      fsSupport = currentFileSystemSupport();
+      browserBuildAvailable = canOfferBrowserBuild(transactionProfile, generated);
+      maybeLoadGithubStatus();
+    });
   });
 
   function resetOverlayState() {
     result = null;
+    transactionProfile = null;
+    transactionChanges = [];
+    transactionVariant = null;
     copied = false;
     copyError = null;
     resetUf2State();
@@ -278,7 +357,6 @@
     jumping = false;
     flashing = false;
     verifying = false;
-    manualCopied = false;
     flashProgress = null;
     flashResult = null;
     verifyResult = null;
@@ -286,6 +364,10 @@
     browserBuilding = false;
     browserBuildResult = null;
     browserBuildError = null;
+    githubError = null;
+    githubNotice = null;
+    githubBuildResult = null;
+    githubDownloadingArtifact = false;
   }
 
   function close() {
@@ -308,63 +390,101 @@
     uf2Log = [...uf2Log, line];
   }
 
-  async function copyLog() {
+  function selectUf2Artifact(
+    bytes: Uint8Array,
+    fileName: string,
+    sourceLabel: string,
+    options: { expectedFamilyId?: number } = {},
+  ) {
+    const familyId = options.expectedFamilyId ?? expectedUf2FamilyId;
+    if (familyId === undefined) {
+      throw new Error(
+        "This profile has no verified UF2 processor/family metadata. Direct flashing is blocked.",
+      );
+    }
+    const plan = createUf2FlashPlan({
+      boardName: activeProfile.name,
+      expectedFamilyId: familyId,
+      expectedVolumeHints: volumeHintsFor(activeProfile),
+      fileName,
+      uf2Bytes: bytes,
+    });
+    uf2Bytes = bytes;
+    uf2Plan = plan;
+    uf2Error = null;
+    flashProgress = null;
+    flashResult = null;
+    verifyResult = null;
+    phase = "enter_bootloader";
+    appendUf2Log(
+      `${sourceLabel} ${plan.artifact.fileName} (${formatBytes(plan.artifact.size)}, ${plan.artifact.blockCount} UF2 blocks)`,
+    );
+    if (plan.artifact.familyIdHex) appendUf2Log(`family id ${plan.artifact.familyIdHex}`);
+    for (const warning of plan.warnings) appendUf2Log(`warning: ${warning}`);
+  }
+
+  function rejectUf2Artifact(error: unknown) {
+    uf2Bytes = null;
+    uf2Plan = null;
+    phase = "artifact";
+    uf2Error = error instanceof Error ? error.message : "Could not read UF2 artifact.";
+    appendUf2Log(`UF2 rejected: ${uf2Error}`);
+  }
+
+  function hostEffect<A>(operation: string, task: () => PromiseLike<A>) {
+    return Effect.tryPromise({
+      try: task,
+      catch: (cause) => platformError(operation, cause),
+    });
+  }
+
+  function copyLog() {
     if (!commandLog) return;
 
-    try {
-      await navigator.clipboard.writeText(commandLog);
-      copied = true;
-      copyError = null;
-      setTimeout(() => {
-        copied = false;
-      }, 1500);
-    } catch (error) {
-      copyError = error instanceof Error ? error.message : "Could not copy command log";
-    }
+    void runApp(
+      "flash.copy-log",
+      hostEffect("flash.copy-log", () => navigator.clipboard.writeText(commandLog)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            copied = true;
+            copyError = null;
+          }),
+        ),
+        Effect.andThen(Effect.sleep("1500 millis")),
+        Effect.tap(() => Effect.sync(() => (copied = false))),
+        Effect.catch((error) =>
+          Effect.sync(
+            () =>
+              (copyError =
+                error instanceof Error ? error.message : "Could not copy command log"),
+          ),
+        ),
+      ),
+    );
   }
 
   function chooseUf2File() {
     uf2Input?.click();
   }
 
-  async function loadUf2File(event: Event) {
+  function loadUf2File(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
 
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const plan = createUf2FlashPlan({
-        boardName: profile.name,
-        expectedVolumeHints: volumeHintsFor(profile),
-        fileName: file.name,
-        uf2Bytes: bytes,
-      });
-      uf2Bytes = bytes;
-      uf2Plan = plan;
-      uf2Error = null;
-      flashProgress = null;
-      flashResult = null;
-      verifyResult = null;
-      manualCopied = false;
-      phase = "enter_bootloader";
-      appendUf2Log(
-        `selected ${plan.artifact.fileName} (${formatBytes(plan.artifact.size)}, ${plan.artifact.blockCount} UF2 blocks)`,
-      );
-      if (plan.artifact.familyIdHex) appendUf2Log(`family id ${plan.artifact.familyIdHex}`);
-      for (const warning of plan.warnings) appendUf2Log(`warning: ${warning}`);
-    } catch (error) {
-      uf2Bytes = null;
-      uf2Plan = null;
-      phase = "artifact";
-      uf2Error = error instanceof Error ? error.message : "Could not read UF2 artifact.";
-      appendUf2Log(`UF2 rejected: ${uf2Error}`);
-    } finally {
-      input.value = "";
-    }
+    void runApp(
+      "flash.load-uf2-file",
+      hostEffect("flash.read-uf2-file", () => file.arrayBuffer()).pipe(
+        Effect.tap((buffer) =>
+          Effect.sync(() => selectUf2Artifact(new Uint8Array(buffer), file.name, "selected")),
+        ),
+        Effect.catch((error) => Effect.sync(() => rejectUf2Artifact(error))),
+        Effect.ensuring(Effect.sync(() => (input.value = ""))),
+      ),
+    );
   }
 
-  async function buildFirmwareInBrowser() {
+  function buildFirmwareInBrowser() {
     if (!result || browserBuilding) return;
     if (!result.buildReady) {
       browserBuildError = `Browser build blocked: generated source is not build-ready (${diagnosticSummary(errorDiagnostics)}).`;
@@ -372,7 +492,7 @@
       return;
     }
 
-    const manifest = experimentalBrowserBuildManifest(profile);
+    const manifest = experimentalBrowserBuildManifest(activeProfile);
     if (!manifest) {
       browserBuildError =
         "Browser build unavailable: no RP2040 QMK object-bundle manifest is installed for this board.";
@@ -393,12 +513,16 @@
       },
       generatedSource: sourceBundleFor(result),
       manifest,
-      outputFileName: `${bundleSlug(profile)}-${result.sourceHash}.uf2`,
+      outputFileName: `${bundleSlug(activeProfile)}-${result.sourceHash}.uf2`,
       requestId: `flash-${result.sourceHash}`,
     };
 
-    try {
-      const build = await new WasmFirmwareBuilder().build(request);
+    void runApp(
+      "flash.browser-build",
+      Effect.gen(function* () {
+      const build = yield* hostEffect("flash.browser-build", () =>
+        new WasmFirmwareBuilder().build(request),
+      );
       browserBuildResult = build;
       for (const line of build.log) appendUf2Log(`${line.phase}: ${line.message}`);
       if (!build.ok) {
@@ -409,34 +533,194 @@
       }
 
       const bytes = build.artifact.bytes;
-      const plan = createUf2FlashPlan({
-        boardName: profile.name,
+      selectUf2Artifact(bytes, build.artifact.fileName, "browser build produced", {
         expectedFamilyId: manifest.output.uf2FamilyId,
-        expectedVolumeHints: volumeHintsFor(profile),
-        fileName: build.artifact.fileName,
-        uf2Bytes: bytes,
       });
-      uf2Bytes = bytes;
-      uf2Plan = plan;
-      uf2Error = null;
-      flashProgress = null;
-      flashResult = null;
-      verifyResult = null;
-      manualCopied = false;
-      phase = "enter_bootloader";
-      appendUf2Log(
-        `browser build produced ${plan.artifact.fileName} (${formatBytes(plan.artifact.size)}, ${plan.artifact.blockCount} UF2 blocks)`,
-      );
-    } catch (error) {
-      browserBuildError = error instanceof Error ? error.message : "Browser firmware build failed.";
-      phase = "artifact";
-      appendUf2Log(`browser build failed: ${browserBuildError}`);
-    } finally {
-      browserBuilding = false;
-    }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            browserBuildError =
+              error instanceof Error ? error.message : "Browser firmware build failed.";
+            phase = "artifact";
+            appendUf2Log(`browser build failed: ${browserBuildError}`);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => (browserBuilding = false))),
+      ),
+    );
   }
 
-  async function enterBootloaderVia() {
+  function maybeLoadGithubStatus() {
+    const accountKey =
+      shell.account.status === "signed-in"
+        ? (shell.account.id ?? shell.account.login)
+        : shell.account.status;
+    if (githubLoadedFor === accountKey) return;
+    githubLoadedFor = accountKey;
+
+    if (!githubSignedIn) {
+      githubStatus = null;
+      return;
+    }
+
+    void refreshGithubFirmwareStatus(false);
+  }
+
+  function refreshGithubFirmwareStatus(showBusy = true) {
+    if (!githubSignedIn || (showBusy && githubBusy)) return;
+    if (showBusy) githubBusy = true;
+    githubError = null;
+    void runApp(
+      "flash.github-status",
+      Effect.gen(function* () {
+      const response = yield* hostEffect("flash.github-status", () =>
+        authClient.firmwareGithub.status(),
+      );
+      const error = response.error as AuthClientError | null | undefined;
+      if (error) {
+        githubError = authClientErrorMessage(error, "GitHub firmware status failed.");
+        return;
+      }
+      githubStatus = response.data;
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(
+            () =>
+              (githubError = authClientErrorMessage(error, "GitHub firmware status failed.")),
+          ),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (showBusy) githubBusy = false;
+          }),
+        ),
+      ),
+    );
+  }
+
+  function buildFirmwareWithGithub() {
+    if (!result || githubBusy) return;
+    const generated = result;
+    if (!githubSignedIn) {
+      githubError = "Sign in with GitHub first.";
+      shell.profileOpen = true;
+      return;
+    }
+    if (!githubConnected) {
+      githubError = "Install the GitHub App in Settings before building firmware.";
+      return;
+    }
+    if (!result.buildReady) {
+      githubError = `GitHub build blocked: generated source is not build-ready (${diagnosticSummary(errorDiagnostics)}).`;
+      appendUf2Log(githubError);
+      return;
+    }
+
+    githubBusy = true;
+    githubError = null;
+    githubNotice = null;
+    githubBuildResult = null;
+    phase = "generate";
+    appendUf2Log(`dispatching GitHub Actions build on ${githubBranchName}`);
+
+    void runApp(
+      "flash.github-build",
+      Effect.gen(function* () {
+        const response = yield* hostEffect("flash.github-build", () =>
+          authClient.firmwareGithub.build(
+            createFirmwareGithubSyncInput({
+              generated,
+              profile: activeProfile,
+              variant: githubVariantRef,
+            }),
+          ),
+        );
+      const error = response.error as AuthClientError | null | undefined;
+      if (error) {
+        githubError = authClientErrorMessage(error, "GitHub firmware build dispatch failed.");
+        appendUf2Log(`GitHub build dispatch failed: ${githubError}`);
+        phase = "artifact";
+        return;
+      }
+      if (!response.data) {
+        githubError = "GitHub firmware build did not return a result.";
+        appendUf2Log(githubError);
+        phase = "artifact";
+        return;
+      }
+
+      githubBuildResult = response.data;
+      githubNotice = `Build dispatched on ${response.data.branch.branchName}.`;
+      appendUf2Log(
+        `GitHub Actions build dispatched: ${response.data.repository.fullName}@${response.data.branch.branchName}`,
+      );
+      phase = "artifact";
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            githubError = authClientErrorMessage(error, "GitHub firmware build dispatch failed.");
+            appendUf2Log(`GitHub build dispatch failed: ${githubError}`);
+            phase = "artifact";
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => (githubBusy = false))),
+      ),
+    );
+  }
+
+  function loadGithubArtifactUf2() {
+    const requestId = githubRun?.requestId ?? githubBuildResult?.build.requestId;
+    const artifact = githubArtifact;
+    if (!requestId || !artifact || githubDownloadingArtifact) return;
+
+    githubDownloadingArtifact = true;
+    githubError = null;
+    void runApp(
+      "flash.github-artifact",
+      Effect.gen(function* () {
+      const response = yield* hostEffect("flash.github-artifact", () =>
+        authClient.firmwareGithub.downloadArtifact({
+          artifactId: artifact.id,
+          requestId,
+        }),
+      );
+      const error = response.error as AuthClientError | null | undefined;
+      if (error) {
+        githubError = authClientErrorMessage(error, "GitHub artifact download failed.");
+        appendUf2Log(`GitHub artifact download failed: ${githubError}`);
+        return;
+      }
+      if (!response.data) {
+        githubError = "GitHub artifact download did not return an archive.";
+        appendUf2Log(githubError);
+        return;
+      }
+      const archiveBytes = bytesFromBase64(response.data.zipBase64);
+      if (response.data.digest) {
+        yield* hostEffect("flash.verify-github-artifact", () =>
+          verifyGitHubArtifactSha256Digest(archiveBytes, response.data!.digest!),
+        );
+        appendUf2Log(`verified GitHub artifact digest ${response.data.digest}`);
+      } else {
+        appendUf2Log("warning: GitHub did not provide an artifact digest");
+      }
+      const uf2 = uf2FromGithubArtifactZip(response.data, archiveBytes);
+      selectUf2Artifact(uf2.bytes, uf2.fileName, "GitHub artifact loaded");
+      githubNotice = `Loaded ${uf2.fileName} from ${response.data.artifactName}.`;
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            githubError =
+              error instanceof Error ? error.message : "GitHub artifact download failed.";
+            appendUf2Log(`GitHub artifact download failed: ${githubError}`);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => (githubDownloadingArtifact = false))),
+      ),
+    );
+  }
+
+  function enterBootloaderVia() {
     if (!viaJumpAvailable || jumping) return;
     const connection = shell.liveConnection;
     const sendReport = connection?.hidDevice?.sendReport?.bind(connection.hidDevice);
@@ -453,24 +737,29 @@
 
     jumping = true;
     phase = "enter_bootloader";
-    try {
-      await sendReport(0, encodeViaCommandReport("bootloaderJump"));
-      appendUf2Log("sent VIA bootloader jump command");
-    } catch (error) {
-      appendUf2Log(
-        `bootloader jump failed: ${error instanceof Error ? error.message : "unknown error"}`,
-      );
-    } finally {
-      jumping = false;
-    }
+    void runApp(
+      "flash.enter-bootloader",
+      hostEffect("flash.enter-bootloader", () =>
+        sendReport(0, encodeViaCommandReport("bootloaderJump")),
+      ).pipe(
+        Effect.tap(() => Effect.sync(() => appendUf2Log("sent VIA bootloader jump command"))),
+        Effect.catch((error) =>
+          Effect.sync(() =>
+            appendUf2Log(
+              `bootloader jump failed: ${error instanceof Error ? error.message : "unknown error"}`,
+            ),
+          ),
+        ),
+        Effect.ensuring(Effect.sync(() => (jumping = false))),
+      ),
+    );
   }
 
-  async function chooseBootloaderVolume() {
+  function chooseBootloaderVolume() {
     if (!uf2Bytes || !uf2Plan || flashing) return;
     fsSupport = currentFileSystemSupport();
     if (!fsSupport.supported) {
       appendUf2Log(fsSupport.reason ?? "File System Access copy is unavailable");
-      downloadUf2();
       return;
     }
 
@@ -483,45 +772,69 @@
     verifyResult = null;
     appendUf2Log("opening bootloader volume picker");
 
-    try {
-      const handle = (await picker({ mode: "readwrite" })) as Uf2FileSystemAccessTarget;
+    void runApp(
+      "flash.copy-uf2",
+      Effect.gen(function* () {
+      const handle = (yield* hostEffect("flash.pick-bootloader-volume", () =>
+        picker({ mode: "readwrite" }),
+      )) as Uf2FileSystemAccessTarget;
       // Real device copy/reboot timing is hardware-unverified; tests cover injected mock handles.
-      const written = await flashUf2ViaFileSystemAccess(handle, uf2Bytes, {
-        fileName: uf2Plan.artifact.fileName,
-        onProgress: (progress) => {
-          flashProgress = progress;
-        },
-      });
+      const written = yield* hostEffect("flash.copy-uf2", () =>
+        flashUf2ViaFileSystemAccess(handle, uf2Bytes!, {
+          expectedFamilyId: uf2Plan!.targetBootloader.familyId,
+          expectedVolumeHints: uf2Plan!.targetBootloader.expectedVolumeHints,
+          fileName: uf2Plan!.artifact.fileName,
+          onProgress: (progress) => {
+            flashProgress = progress;
+          },
+        }),
+      );
       flashResult = written;
       for (const line of written.log) appendUf2Log(line);
       phase = "verify";
-    } catch (error) {
-      appendUf2Log(
-        `UF2 copy failed: ${error instanceof Error ? error.message : "permission or write failed"}`,
-      );
-    } finally {
-      flashing = false;
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() =>
+            appendUf2Log(
+              `UF2 copy failed: ${error instanceof Error ? error.message : "permission or write failed"}`,
+            ),
+          ),
+        ),
+        Effect.ensuring(Effect.sync(() => (flashing = false))),
+      ),
+    );
+  }
+
+  function uf2FromGithubArtifactZip(
+    download: GitHubFirmwareArtifactDownloadResponse,
+    zipBytes: Uint8Array,
+  ) {
+    const archive = unzipSync(zipBytes);
+    const entry = Object.entries(archive)
+      .filter(([path]) => path.toLowerCase().endsWith(".uf2"))
+      .sort(([left], [right]) => left.localeCompare(right))[0];
+
+    if (!entry) {
+      throw new Error(`GitHub artifact ${download.artifactName} did not contain a UF2 file.`);
     }
+
+    const [path, bytes] = entry;
+    return {
+      bytes,
+      fileName: path.split("/").pop() || `${download.artifactName}.uf2`,
+    };
   }
 
-  function downloadUf2() {
-    if (!uf2Bytes || !uf2Plan) return;
-
-    const fallback = createUf2DownloadFallback(uf2Bytes, uf2Plan.artifact.fileName);
-    downloadBlob(fallback.blob, fallback.fileName);
-    manualCopied = false;
-    phase = "flash";
-    appendUf2Log(`downloaded ${fallback.fileName} for manual copy`);
+  function bytesFromBase64(value: string) {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
   }
 
-  function markManualCopied() {
-    if (!uf2Plan) return;
-    manualCopied = true;
-    phase = "verify";
-    appendUf2Log("manual UF2 copy marked complete");
-  }
-
-  async function verifyReconnect() {
+  function verifyReconnect() {
     if (!uf2Plan || verifying) return;
 
     verifying = true;
@@ -529,41 +842,64 @@
     verifyResult = null;
     appendUf2Log("starting Connect flow verification");
 
-    try {
-      const verified = await verifyUf2Reconnect(
-        async () => {
-          const result = await connectViaAndActivate({
-            baseProfile: profile,
-            connectOptions: { matrixHint: profile.matrix },
+    const reconnect = () =>
+      runApp(
+        "flash.reconnect-device",
+        hostEffect("flash.reconnect-device", () =>
+          connectViaAndActivate({
+            baseProfile: activeProfile,
+            connectOptions: { matrixHint: activeProfile.matrix },
             shell,
-            transport: createWebHidViaTransport(currentFilters(profile)),
+            transport: createWebHidViaTransport(currentFilters(activeProfile)),
             workbench,
-          });
-          if (!result.connection) throw new Error("Connect flow did not return a connection.");
-          return result.connection;
-        },
-        {
-          productId: profile.productId,
-          protocol: profile.protocol === "via-v3" ? "via-v3" : undefined,
-          vendorId: profile.vendorId,
-        },
+          }),
+        ).pipe(
+          Effect.flatMap((result) =>
+            result.connection
+              ? Effect.succeed(result.connection)
+              : Effect.fail(
+                  platformError(
+                    "flash.reconnect-device",
+                    "Connect flow did not return a connection.",
+                  ),
+                ),
+          ),
+        ),
       );
+
+    void runApp(
+      "flash.verify-reconnect",
+      hostEffect("flash.verify-reconnect", () =>
+        verifyUf2Reconnect(reconnect, {
+          productId: activeProfile.productId,
+          protocol: activeProfile.protocol === "via-v3" ? "via-v3" : undefined,
+          vendorId: activeProfile.vendorId,
+        }),
+      ).pipe(
+        Effect.tap((verified) =>
+          Effect.sync(() => {
       verifyResult = verified;
       for (const line of verified.log) appendUf2Log(line);
       for (const warning of verified.warnings) appendUf2Log(`warning: ${warning}`);
       phase = verified.ok ? "done" : "verify";
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Reconnect verification failed.";
-      verifyResult = {
-        log: [message],
-        message,
-        ok: false,
-        warnings: [],
-      };
-      appendUf2Log(`verification failed: ${message}`);
-    } finally {
-      verifying = false;
-    }
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            const message =
+              error instanceof Error ? error.message : "Reconnect verification failed.";
+            verifyResult = {
+              log: [message],
+              message,
+              ok: false,
+              warnings: [],
+            };
+            appendUf2Log(`verification failed: ${message}`);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => (verifying = false))),
+      ),
+    );
   }
 
   function downloadSourceBundle() {
@@ -572,7 +908,7 @@
     const entries: Record<string, Uint8Array> = {};
     for (const file of result.artifacts) entries[file.path] = strToU8(file.content);
     entries["COMMANDS.txt"] = strToU8(`${commandLog}\n`);
-    entries["kbgui-diagnostics.json"] = strToU8(
+    entries["kbui-diagnostics.json"] = strToU8(
       `${JSON.stringify(
         {
           buildCommand: result.buildCommand,
@@ -590,7 +926,7 @@
     const zipped = zipSync(entries, { level: 6 });
     downloadBlob(
       new Blob([arrayBufferCopy(zipped)], { type: "application/zip" }),
-      `${bundleSlug(profile)}-${result.sourceHash}.zip`,
+      `${bundleSlug(activeProfile)}-${result.sourceHash}.zip`,
     );
   }
 
@@ -599,7 +935,7 @@
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = fileName;
-    document.body.append(anchor);
+    document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
@@ -619,7 +955,9 @@
   }
 
   function volumeHintsFor(activeProfile: DeviceProfile) {
-    return defaultUf2VolumeHints(activeProfile.name);
+    return verifiedUf2Target?.volumeLabels.length
+      ? verifiedUf2Target.volumeLabels
+      : defaultUf2VolumeHints(activeProfile.name);
   }
 
   function sourceBundleFor(artifacts: FirmwareArtifacts): FirmwareSourceBundle {
@@ -652,7 +990,7 @@
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "") || "kbgui-firmware-source";
+      .replace(/(^-|-$)/g, "") || "kbui-firmware-source";
   }
 
   function commandLogFor(
@@ -664,6 +1002,8 @@
     support: Uf2FlashSupport,
     written: Uf2FileSystemFlashResult | null,
     browserBuild: FirmwareBuildResult | null,
+    githubBuild: GitHubFirmwareBuildResponse | null,
+    githubRun: GitHubFirmwareRunDto | null,
   ) {
     const changeLines =
       profileChanges.length > 0
@@ -714,9 +1054,24 @@
                 ]
               : [`  error: ${browserBuild.error.message}`]),
           ];
+    const githubBuildLines =
+      githubBuild === null
+        ? []
+        : [
+            "",
+            "github actions:",
+            `  status: ${githubBuild.build.status}`,
+            `  request: ${githubBuild.build.requestId}`,
+            `  repository: ${githubBuild.repository.fullName}`,
+            `  branch: ${githubBuild.branch.branchName}`,
+            `  commit: ${githubBuild.commit?.sha ?? "not returned"}`,
+            `  run: ${githubRun?.runId ?? githubBuild.build.runId ?? "not visible yet"}`,
+            `  run-status: ${githubRun?.label ?? githubBuild.build.status}`,
+            `  artifact: ${githubRun?.artifact?.name ?? "not available yet"}`,
+          ];
 
     return [
-      `$ kbgui firmware-source generate --target ${artifacts.target}`,
+      `$ kbui firmware-source generate --target ${artifacts.target}`,
       `profile: ${profileDisplayName(activeProfile)}`,
       `source-hash: ${artifacts.sourceHash}`,
       `source-status: ${artifacts.buildReady ? "build-ready" : "not build-ready"}`,
@@ -734,13 +1089,14 @@
       `  ${artifacts.buildCommand}`,
       ...uf2Lines,
       ...browserBuildLines,
+      ...githubBuildLines,
       ...flashLines,
       "",
       "notes:",
       artifacts.buildReady
         ? "  Generated source has no build-blocking diagnostics."
         : "  Generated source is not build-ready; replace required metadata markers before compiling or flashing firmware from it.",
-      "  UF2 guided flash is mock-tested and real-device hardware-unverified.",
+      "  UF2 guided flash is automated-test-covered and real-device hardware-unverified.",
       "  VIA EEPROM may override flashed default keymaps until a future reset flow exists.",
     ].join("\n");
   }
@@ -790,12 +1146,19 @@
       <header class={modalHeadClass}>
         <span class={modalBoltClass} aria-hidden="true">bolt</span>
         <div>
-          <h2 id="flash-overlay-title" class={modalTitleClass}>Flash to {profileDisplayName(profile)}</h2>
+          <h2 id="flash-overlay-title" class={modalTitleClass}>Flash to {profileDisplayName(activeProfile)}</h2>
           <p class={modalSubtitleClass}>{targetLabel} source export · UF2 guided flash</p>
         </div>
-        <button type="button" class={modalCloseClass} aria-label="Close" onclick={close}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          class={modalCloseClass}
+          aria-label="Close"
+          onclick={close}
+        >
           <span class="material-symbols-outlined" aria-hidden="true">close</span>
-        </button>
+        </Button>
       </header>
 
       <div class={flashStepsClass} aria-label="Firmware flash steps">
@@ -865,7 +1228,7 @@
             <span class={cn(diagnosticIconClass, diagnosticIconWarningClass)} aria-hidden="true">warning</span>
             <div>
               <strong class={diagnosticTitleStrongClass}>Incomplete coverage - review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
-              <small class={diagnosticTitleSmallClass}>These source sections compile to fallbacks, TODOs, or board-specific review points.</small>
+              <small class={diagnosticTitleSmallClass}>These source sections compile to placeholders, TODOs, or board-specific review points.</small>
             </div>
           </div>
           <ul class={diagnosticListClass}>
@@ -934,6 +1297,60 @@
             </dl>
           {/if}
 
+          <div class={githubBuildCalloutClass} aria-label="GitHub Actions firmware build">
+            <div>
+              <strong class={browserBuildTitleClass}>GitHub Actions build</strong>
+              <small class={browserBuildSmallClass}>
+                {githubConnected
+                  ? `${githubBranchName} · ${firmwareBuildEvents.connected ? "live" : "reconnecting"}`
+                  : "Install the GitHub App in Settings"}
+              </small>
+            </div>
+            {#if githubConnected}
+              <Button
+                variant="coral"
+                size="sm"
+                disabled={githubBusy || !result.buildReady}
+                onclick={buildFirmwareWithGithub}
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">cloud_upload</span>
+                {githubBusy ? "Dispatching..." : "Build"}
+              </Button>
+            {:else}
+              <Button variant="ghost" size="sm" href="/settings">
+                <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+                Settings
+              </Button>
+            {/if}
+          </div>
+
+          {#if githubError}
+            <p class={copyErrorClass} role="status">{githubError}</p>
+          {:else if githubNotice}
+            <p class={hardwareNoteClass} role="status">{githubNotice}</p>
+          {/if}
+
+          {#if githubBuildResult}
+            <dl class={cn(artifactMetaClass, browserBuildMetaClass)}>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>GitHub build</dt><dd class={artifactMetaDescriptionClass}>{githubRun?.label ?? githubBuildResult.build.status}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Repo</dt><dd class={artifactMetaDescriptionClass}>{githubBuildResult.repository.fullName}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Branch</dt><dd class={artifactMetaDescriptionClass}>{githubBuildResult.branch.branchName}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Run</dt><dd class={artifactMetaDescriptionClass}>{githubRun?.runId ? `#${githubRun.runNumber ?? githubRun.runId}` : "waiting"}</dd></div>
+              <div class={artifactMetaRowClass}><dt class={microLabelClass}>Artifact</dt><dd class={artifactMetaDescriptionClass}>{githubArtifact ? `${githubArtifact.name} · ${formatBytes(githubArtifact.sizeBytes)}` : "waiting"}</dd></div>
+            </dl>
+            <div class={buttonRowClass}>
+              <Button
+                variant="coral"
+                size="sm"
+                disabled={!githubArtifact || githubDownloadingArtifact}
+                onclick={loadGithubArtifactUf2}
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">inventory_2</span>
+                {githubDownloadingArtifact ? "Loading..." : "Load UF2"}
+              </Button>
+            </div>
+          {/if}
+
           <div class={buttonRowClass}>
             <Button variant="ghost" size="sm" onclick={chooseUf2File}>
               <span class="material-symbols-outlined" aria-hidden="true">upload_file</span>
@@ -983,7 +1400,7 @@
           {/if}
 
           <div class={volumeHintsClass} aria-label="Expected UF2 volume names">
-            {#each (uf2Plan?.targetBootloader.expectedVolumeHints ?? volumeHintsFor(profile)) as hint (hint)}
+            {#each (uf2Plan?.targetBootloader.expectedVolumeHints ?? volumeHintsFor(activeProfile)) as hint (hint)}
               <code class={volumeHintClass}>{hint}</code>
             {/each}
           </div>
@@ -995,8 +1412,8 @@
           <div class={supportRowClass} data-supported={fsSupport.supported}>
             <span class={panelIconClass} aria-hidden="true">{fsSupport.supported ? "folder_managed" : "download"}</span>
             <div>
-              <strong class={panelTitleClass}>{fsSupport.supported ? "Browser copy available" : "Manual copy fallback"}</strong>
-              <small class={panelSmallClass}>{fsSupport.supported ? "Choose the mounted bootloader volume and kbgui will copy the UF2 file." : fsSupport.reason}</small>
+              <strong class={panelTitleClass}>{fsSupport.supported ? "Browser copy available" : "Direct copy unavailable"}</strong>
+              <small class={panelSmallClass}>{fsSupport.supported ? "Choose the mounted bootloader volume and kbui will copy the UF2 file." : fsSupport.reason}</small>
             </div>
           </div>
 
@@ -1019,17 +1436,9 @@
           {/if}
 
           <div class={cn(buttonRowClass, copyActionsClass)}>
-            <Button variant="coral" size="sm" disabled={flashing} onclick={chooseBootloaderVolume}>
+            <Button variant="coral" size="sm" disabled={flashing || !fsSupport.supported} onclick={chooseBootloaderVolume}>
               <span class="material-symbols-outlined" aria-hidden="true">drive_folder_upload</span>
-              {flashing ? "Copying..." : fsSupport.supported ? "Choose UF2 volume" : "Download UF2"}
-            </Button>
-            <Button variant="ghost" size="sm" onclick={downloadUf2}>
-              <span class="material-symbols-outlined" aria-hidden="true">download</span>
-              Download UF2
-            </Button>
-            <Button variant="ghost" size="sm" onclick={markManualCopied}>
-              <span class="material-symbols-outlined" aria-hidden="true">{manualCopied ? "check" : "task_alt"}</span>
-              Copied manually
+              {flashing ? "Copying..." : "Choose UF2 volume"}
             </Button>
             <Button variant="ghost" size="sm" disabled={verifying} onclick={verifyReconnect}>
               <span class="material-symbols-outlined" aria-hidden="true">fact_check</span>
@@ -1042,7 +1451,7 @@
       <pre class={commandLogClass}>{commandLog}</pre>
 
       <p class={hardwareNoteClass}>
-        Real device flashing is hardware-unverified in this wave. VIA firmware may keep using existing EEPROM keymaps after a default keymap flash; a reset VIA EEPROM flow is still future work.
+        Direct copy requires a verified processor family, matching UF2 family ID, expected bootloader volume, and a successful post-flash reconnect readback.
       </p>
 
       {#if copyError}

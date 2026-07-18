@@ -74,7 +74,76 @@ describe("workbench store profile provenance", () => {
     expect(workbench.changes).toEqual([expect.objectContaining({ before: "KC_A", after: "KC_B" })]);
   });
 
-  it("selects starter boards explicitly and labels starter display names", async () => {
+  it("preserves matching local firmware and compile settings when a device reconnects", () => {
+    const starter = starterBoardProfile();
+    const connected = cloneDevice(starter);
+    connected.id = "keyboard:1209:0001:connected";
+    const draft = cloneDevice(connected);
+    draft.settings.tappingTerm = 205;
+    draft.firmwareMetadata = {
+      qmk: {
+        keyboard: "bastardkb/charybdis/4x6",
+        keymap: "kbui",
+        layout: "LAYOUT",
+        repository: "bastardkb/bastardkb-qmk",
+        ref: "bkb-master",
+      },
+    };
+
+    const result = resolveWorkbenchHydration({
+      connectedProfile: connected,
+      draftProfile: draft,
+      starterProfile: starter,
+    });
+
+    expect(result).toMatchObject({
+      baseProfile: { settings: { tappingTerm: 185 } },
+      origin: "device",
+      profile: {
+        firmwareMetadata: {
+          qmk: {
+            repository: "bastardkb/bastardkb-qmk",
+            ref: "bkb-master",
+          },
+        },
+        settings: { tappingTerm: 205 },
+      },
+    });
+    expect(result.baseProfile.firmwareMetadata).toBeUndefined();
+  });
+
+  it("activates a connected profile without discarding its matching firmware draft", async () => {
+    const connected = starterBoardProfile();
+    connected.origin = "device";
+    connected.firmwareMetadata = undefined;
+
+    const draft = cloneDevice(connected);
+    draft.firmwareMetadata = {
+      qmk: {
+        keyboard: "bastardkb/charybdis/4x6",
+        keymap: "charybdis_4x6_splinky",
+        layout: "LAYOUT",
+        repository: "bastardkb/bastardkb-qmk",
+        ref: "bkb-master",
+      },
+    };
+
+    const workbench = new WorkbenchStore({
+      autoHydrate: false,
+      loadDraft: async (id) => (id === connected.id ? draft : undefined),
+      persist: false,
+    });
+
+    await workbench.activateConnectedProfile(connected);
+
+    expect(workbench.baseProfile.firmwareMetadata).toBeUndefined();
+    expect(workbench.profile.firmwareMetadata).toEqual(draft.firmwareMetadata);
+    expect(workbench.changes).toEqual([
+      expect.objectContaining({ kind: "metadata", path: "firmware/target" }),
+    ]);
+  });
+
+  it("selects local fallback boards explicitly and labels profile display names", async () => {
     const workbench = new WorkbenchStore({ persist: false });
 
     await workbench.selectStarterBoard("split");
@@ -82,7 +151,7 @@ describe("workbench store profile provenance", () => {
     expect(workbench.activeBoardId).toBe("split");
     expect(workbench.profile.id).toBe(splitDemoKeyboard.id);
     expect(workbench.profile.origin).toBe("starter");
-    expect(profileDisplayName(workbench.profile)).toBe("Corney Split 34 Starter");
+    expect(profileDisplayName(workbench.profile)).toBe("Local split keyboard");
   });
 });
 
@@ -329,6 +398,47 @@ describe("workbench store save points", () => {
     expect(materialized?.layers[0].bindings["k2-4"].code).toBe("KC_G");
     materialized!.layers[0].bindings["k2-4"] = { code: "KC_A" };
     expect(savePoint?.snapshot.layers[0].bindings["k2-4"].code).toBe("KC_G");
+  });
+
+  it("deletes only leaf history and records tombstones for offline reconciliation", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_G");
+    const mainPoint = await workbench.createSavePoint("Main", {
+      id: "sp-main",
+      createdAt: "2026-07-04T12:00:00.000Z",
+    });
+    await workbench.branchFromSavePoint("first", {
+      id: "variant-first",
+      savePointId: mainPoint?.id,
+      createdAt: "2026-07-04T13:00:00.000Z",
+    });
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_H");
+    const firstPoint = await workbench.createSavePoint("First", {
+      id: "sp-first",
+      createdAt: "2026-07-04T14:00:00.000Z",
+    });
+    await workbench.branchFromSavePoint("child", {
+      id: "variant-child",
+      savePointId: firstPoint?.id,
+      createdAt: "2026-07-04T15:00:00.000Z",
+    });
+
+    await expect(workbench.deleteVariant("variant-first")).rejects.toThrow(
+      "Delete child variants before removing this variant.",
+    );
+    await expect(workbench.deleteSavePoint("sp-main")).rejects.toThrow(
+      "Delete child history or dependent variants",
+    );
+
+    expect(await workbench.deleteVariant("variant-child")).toBe(true);
+    expect(await workbench.deleteVariant("variant-first")).toBe(true);
+    expect(workbench.versionGraphSnapshot()).toMatchObject({
+      activeVariantId: "main",
+      deletedForkIds: ["variant-child", "variant-first"],
+      deletedSavePointIds: ["sp-first"],
+    });
   });
 });
 

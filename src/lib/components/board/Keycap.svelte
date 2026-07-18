@@ -7,6 +7,8 @@
 
   interface Props {
     cap: BoardKeyViewModel;
+    compact?: boolean;
+    flowManaged?: boolean;
     lens?: BoardLens;
     disabled?: boolean;
     comboMarker?: Snippet<[BoardKeyViewModel]>;
@@ -20,6 +22,8 @@
 
   let {
     cap,
+    compact = false,
+    flowManaged = false,
     lens = "keys",
     disabled = false,
     comboMarker,
@@ -32,9 +36,9 @@
   }: Props = $props();
 
   const keycapRootClass =
-    "board-keycap group/keycap absolute block min-w-0 overflow-visible p-0 text-left text-inherit select-none [transform:rotate(var(--rotation))] origin-top-left";
+    "board-keycap group/keycap block min-w-0 overflow-visible p-0 text-left text-inherit select-none [transform:rotate(var(--rotation))] origin-top-left";
   const keycapFaceClass =
-    "keycap-face relative grid h-full w-full min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-visible rounded-keycap border border-[rgba(24,22,20,0.18)] [background:var(--keycap-base)] px-[7px] pt-[5px] pb-[6px] text-ink shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-cap)] transition-[transform,box-shadow,border-color,background] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] group-hover/keycap:-translate-y-px group-active/keycap:translate-y-px group-data-[label-size=xs]/keycap:px-[5px]";
+    "keycap-face relative grid h-full w-full min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-visible rounded-keycap border border-[color-mix(in_oklch,var(--ink)_18%,transparent)] [background:var(--keycap-base)] px-[7px] pt-[5px] pb-[6px] text-ink shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-cap)] transition-[transform,box-shadow,border-color,background] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] group-hover/keycap:-translate-y-px group-active/keycap:translate-y-px group-data-[label-size=xs]/keycap:px-[5px]";
   const capLegendClass =
     "cap-legend min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[length:9px] leading-none uppercase text-ink-3";
   const capSourceClass =
@@ -45,6 +49,17 @@
     "g-sub max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[length:8px] leading-none tracking-[0.05em] text-ink-3 uppercase";
   const markerSlotClass =
     "marker-slot pointer-events-none absolute z-[4] inline-grid h-[15px] min-w-[16px] place-items-center rounded-pill px-[5px] py-0 font-mono text-[length:8px] font-[800] leading-none shadow-[0_1px_2px_rgba(24,22,20,0.18)]";
+
+  const compactModifierLabels: Record<string, string> = {
+    "Left Alt": "LAlt",
+    "Left Ctrl": "LCtrl",
+    "Left GUI": "LGUI",
+    "Left Shift": "LShift",
+    "Right Alt": "RAlt",
+    "Right Ctrl": "RCtrl",
+    "Right GUI": "RGUI",
+    "Right Shift": "RShift",
+  };
 
   const isLighting = $derived(lens === "lighting");
   const isLedOff = $derived(isLighting && !cap.lightingColor);
@@ -57,12 +72,21 @@
     cap.selected || cap.marked || isAccent || isLightingOverride || isLedOff,
   );
   const usePressShadow = $derived(!cap.selected && !cap.marked && !isLighting && !isLedOff);
+  const faceLabel = $derived(
+    (compact || cap.width <= 1.05) && isModifier
+      ? (compactModifierLabels[cap.label] ?? cap.label)
+      : cap.label,
+  );
   const geometryStyle = $derived(
     [
-      `left: calc(var(--u) * ${cap.x})`,
-      `top: calc(var(--u) * ${cap.y})`,
-      `width: calc(var(--u) * ${cap.width} - var(--board-key-gap))`,
-      `height: calc(var(--u) * ${cap.height} - var(--board-key-gap))`,
+      ...(flowManaged
+        ? ["width: 100%", "height: 100%"]
+        : [
+            `left: calc(var(--u) * ${cap.x})`,
+            `top: calc(var(--u) * ${cap.y})`,
+            `width: calc(var(--u) * ${cap.width} - var(--board-key-gap))`,
+            `height: calc(var(--u) * ${cap.height} - var(--board-key-gap))`,
+          ]),
       `--rotation: ${cap.rotation}deg`,
       `--source-color: ${cap.sourceColor}`,
       `--key-lighting: ${cap.lightingColor ?? "#1b1917"}`,
@@ -84,7 +108,7 @@
       isLighting ? `${cap.legend}, LED ${cap.lightingColor ?? "off"}` : `${cap.legend}: ${cap.display}`,
       cap.selected ? "selected" : "",
       cap.marked ? "marked" : "",
-      cap.comboMarker ? `combo marker ${cap.comboMarker.text}` : "",
+      cap.comboMarker ? `combo output ${cap.comboMarker.text}` : "",
       cap.layerMarker ? `layer activation ${cap.layerMarker.text}` : "",
     ]
       .filter(Boolean)
@@ -105,6 +129,7 @@
   type="button"
   class={cn(
     keycapRootClass,
+    flowManaged ? "relative h-full w-full" : "absolute",
     cap.selected && "selected z-[5]",
     cap.marked && "marked",
     isFallThrough && "fall-through",
@@ -135,49 +160,78 @@
   <span
     class={cn(
       keycapFaceClass,
-      !suppressHoverBorder && "group-hover/keycap:border-[rgba(24,22,20,0.36)]",
+      compact && "px-[3px] pt-[2px] pb-[3px]",
+      !suppressHoverBorder && "group-hover/keycap:border-[color-mix(in_oklch,var(--ink)_36%,transparent)]",
       usePressShadow && "group-active/keycap:shadow-cap-press",
       cap.selected && "border-coral shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-keycap-selected)]",
       cap.marked && "border-teal shadow-keycap-picked",
       (isFallThrough || isEmpty) && "[background:var(--keycap-transparent)] text-ink-3",
-      isModifier && "[background:var(--keycap-modifier)] text-paper",
-      isAccent && "border-[oklch(0.55_0.18_30)] [background:var(--keycap-accent)] text-[#1c0a04]",
+      isModifier && "[background:var(--keycap-modifier)] text-[var(--mod-ink)]",
+      isAccent && "border-[oklch(0.55_0.18_30)] [background:var(--keycap-accent)] text-on-accent",
       cap.encoder && "rounded-pill",
       isLighting &&
         "[background:linear-gradient(180deg,color-mix(in_oklch,var(--key-lighting)_45%,#fffdf7)_0%,var(--key-lighting)_100%)] text-[#221c12] shadow-[inset_0_-4px_8px_color-mix(in_oklch,var(--key-lighting)_55%,transparent),var(--shadow-cap)]",
-      isLightingOverride && "border-[rgba(24,22,20,0.28)]",
+      isLightingOverride && "border-[color-mix(in_oklch,var(--ink)_28%,transparent)]",
       isLedOff && "border-[rgba(0,0,0,0.4)] [background:var(--led-off)] text-[rgba(242,237,227,0.58)] shadow-cap",
     )}
   >
-    <span class="cap-top flex min-h-[10px] min-w-0 items-start justify-between gap-kb-4">
-      <span
-        class={cn(
-          capLegendClass,
-          isModifier && "text-[rgba(244,239,230,0.56)]",
-          isLedOff && "text-[rgba(242,237,227,0.4)]",
-        )}
-      >
-        {cap.legend}
-      </span>
+    <span
+      class={cn(
+        "cap-top flex min-h-[10px] min-w-0 items-start justify-between gap-kb-4",
+        compact && "min-h-[6px] gap-0",
+      )}
+    >
+      {#if cap.cornerLegend}
+        <span
+          class={cn(
+            capLegendClass,
+            compact && "text-[6px]",
+            isModifier && "text-[var(--mod-sub)]",
+            isLedOff && "text-[rgba(242,237,227,0.4)]",
+          )}
+        >
+          {cap.cornerLegend}
+        </span>
+      {/if}
       {#if cap.sourceLabel && !isLighting}
-        <span class={cn(capSourceClass, isModifier && "text-[rgba(244,239,230,0.56)]")}>
+        <span
+          class={cn(
+            capSourceClass,
+            compact && "hidden",
+            isModifier && "text-[var(--mod-sub)]",
+          )}
+        >
           {cap.sourceLabel}
         </span>
       {/if}
     </span>
 
     <span
-      class="cap-glyph flex max-h-[2.35em] min-w-0 flex-1 flex-col items-center justify-center gap-kb-2 overflow-hidden text-center font-mono"
+      class={cn(
+        "cap-glyph flex max-h-[2.35em] min-w-0 flex-1 flex-col items-center justify-center gap-kb-2 overflow-hidden text-center font-mono",
+        compact && "max-h-[1.8em] gap-0",
+      )}
     >
-      <span class={glyphMainClass}>{isLighting ? cap.legend : cap.label}</span>
+      <span class={cn(glyphMainClass, compact && "text-[8px] leading-none")}
+        >{isLighting ? cap.legend : faceLabel}</span
+      >
       {#if cap.sublabel && !isLighting}
-        <span class={cn(glyphSubClass, isModifier && "text-[rgba(244,239,230,0.56)]")}>
+        <span
+          class={cn(
+            glyphSubClass,
+            compact && "hidden",
+            isModifier && "text-[var(--mod-sub)]",
+          )}
+        >
           {cap.sublabel}
         </span>
       {/if}
     </span>
 
-    <span class="cap-home flex min-h-kb-4 justify-center" aria-hidden="true">
+    <span
+      class={cn("cap-home flex min-h-kb-4 justify-center", compact && "hidden")}
+      aria-hidden="true"
+    >
       {#if cap.homing}
         <i class="h-[2px] w-[14px] rounded-[2px] bg-current opacity-[0.74]"></i>
       {/if}

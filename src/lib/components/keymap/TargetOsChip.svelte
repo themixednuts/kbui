@@ -17,7 +17,11 @@
   variant="ghost"
   size="icon"
   type="button"
-  class={cn("os-chip", "size-[34px] rounded-pill border-line-2 bg-surface p-0 shadow-card")}
+  class={cn(
+    "os-chip size-kb-34 flex-none rounded-md border-line-2 bg-surface p-0 text-ink-2 shadow-card hover:border-ink-3 hover:bg-surface-2 hover:text-ink",
+    "data-[os=mac]:border-[color-mix(in_oklch,var(--mint)_35%,var(--line-2))] data-[os=win]:border-[color-mix(in_oklch,var(--teal)_30%,var(--line-2))] data-[os=linux]:border-[color-mix(in_oklch,var(--mustard)_35%,var(--line-2))]",
+    "[&_.os-logo]:block [&_.os-logo]:size-[15px]",
+  )}
   data-os={value}
   title={`Shortcut labels match ${label}. Click to cycle (or open Settings for more).`}
   aria-label={`Target OS: ${label}. Click to change.`}

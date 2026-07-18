@@ -64,9 +64,32 @@ describe("Monkeytype better-auth plugin", () => {
     expect(serialized).not.toContain("apeKey");
     expect(serialized).not.toContain("ApeKey");
   });
+
+  it("returns a setup error instead of 500 when the encryption secret is missing", async () => {
+    const auth = createTestAuth({ secretKey: "" });
+    const { cookie } = await signIn(auth);
+
+    const response = await auth.handler(
+      new Request("http://localhost/api/auth/monkeytype/connect", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie,
+        },
+        body: JSON.stringify({
+          apeKey: "local-test-ape-key",
+        }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string; message?: string };
+
+    expect(response.status).toBe(503);
+    expect(body.code).toBe("MONKEYTYPE_SECRET_NOT_CONFIGURED");
+    expect(body.message).toContain("MONKEYTYPE_SECRET_KEY");
+  });
 });
 
-function createTestAuth() {
+function createTestAuth({ secretKey = testSecret() }: { secretKey?: string } = {}) {
   return betterAuth({
     baseURL: "http://localhost",
     secret: "better-auth-secret-for-monkeytype-plugin-tests",
@@ -81,7 +104,7 @@ function createTestAuth() {
     rateLimit: { enabled: false },
     plugins: [
       monkeytypePlugin({
-        secretKey: testSecret(),
+        secretKey,
         nowMs: () => new Date("2026-07-04T13:00:00.000Z").getTime(),
       }),
     ],

@@ -1,7 +1,10 @@
 import { getContext, setContext } from "svelte";
+import { Effect, Semaphore } from "effect";
 
 import type { EditorStore } from "$lib/app/editor-store.svelte";
+import { forkApp, runApp } from "$lib/app/runtime";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
+import { platformError } from "$lib/effect/errors";
 import {
   summarizeLiveSyncLocalOnly,
   type LiveSyncLocalOnlyCategory,
@@ -216,8 +219,8 @@ export class ViaLiveSyncEngine {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pendingWrites = new Map<string, PendingWrite>();
   private readonly failedSignatures = new Map<string, string>();
+  private readonly writeSemaphore = Semaphore.makeUnsafe(1);
   private lastConnectionRevision = 0;
-  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: ViaLiveSyncOptions) {
     this.debounceMs = options.debounceMs ?? 160;
@@ -235,7 +238,11 @@ export class ViaLiveSyncEngine {
     const liveChanges = this.liveWritableChanges;
     this.pruneResolvedLanes(liveChanges);
 
-    if (!this.canWrite(connection) || this.paused) {
+    if (
+      this.editor.profile.firmwareEditIntent === "source" ||
+      !this.canWrite(connection) ||
+      this.paused
+    ) {
       this.clearTimers();
       return;
     }
@@ -284,9 +291,13 @@ export class ViaLiveSyncEngine {
     this.pendingWrites.clear();
   }
 
-  async flush() {
-    await new Promise((resolve) => setTimeout(resolve, this.debounceMs + 10));
-    await this.writeQueue;
+  flush() {
+    return runApp(
+      "via-live-sync.flush",
+      Effect.sleep(`${this.debounceMs + 10} millis`).pipe(
+        Effect.andThen(this.writeSemaphore.withPermit(Effect.void)),
+      ),
+    );
   }
 
   private computeStatus(): ViaLiveSyncStatus {
@@ -332,46 +343,59 @@ export class ViaLiveSyncEngine {
     this.pendingWrites.delete(laneKey);
     this.setLaneStatus(pending.change, "syncing");
 
-    this.writeQueue = this.writeQueue.then(() => this.writeOne(pending)).catch(() => undefined);
+    forkApp("via-live-sync.write", this.writeSemaphore.withPermit(this.writeOneEffect(pending)));
   }
 
-  private async writeOne(pending: PendingWrite) {
+  private writeOneEffect(pending: PendingWrite) {
     const target = pending.change.liveWrite;
-    if (!target) return;
+    if (!target) return Effect.void;
 
     if (pending.connectionRevision !== this.shell.connectionRevision) {
       this.removeLaneStatus(target.laneKey);
-      return;
+      return Effect.void;
     }
 
     const binding = currentBinding(this.editor, target);
     if (bindingSignature(binding) !== target.signature) {
       this.removeLaneStatus(target.laneKey);
-      return;
+      return Effect.void;
     }
 
-    try {
-      await this.writeKeycode(pending.connection, {
-        col: target.col,
-        keycode: target.keycode,
-        layer: target.layerIndex,
-        row: target.row,
+    const write = Effect.gen({ self: this }, function* () {
+      yield* Effect.tryPromise({
+        try: () =>
+          this.writeKeycode(pending.connection, {
+            col: target.col,
+            keycode: target.keycode,
+            layer: target.layerIndex,
+            row: target.row,
+          }),
+        catch: (cause) => platformError("via-live-sync.write-keycode", cause),
       });
       this.patchConnectionKeymap(pending.connection, target);
       this.failedSignatures.delete(target.laneKey);
 
       const latestBinding = currentBinding(this.editor, target);
       if (bindingSignature(latestBinding) === target.signature) {
-        await this.editor.markBindingSyncedToBase(target.layerId, target.keyId, latestBinding);
+        yield* Effect.tryPromise({
+          try: () =>
+            this.editor.markBindingSyncedToBase(target.layerId, target.keyId, latestBinding),
+          catch: (cause) => platformError("via-live-sync.advance-base", cause),
+        });
         this.setLaneStatus(pending.change, "synced");
       } else {
         this.removeLaneStatus(target.laneKey);
         this.processChanges();
       }
-    } catch (error) {
-      this.failedSignatures.set(target.laneKey, target.signature);
-      this.setLaneStatus(pending.change, "sync-failed", errorMessage(error));
-    }
+    });
+
+    return Effect.match(write, {
+      onFailure: (error) => {
+        this.failedSignatures.set(target.laneKey, target.signature);
+        this.setLaneStatus(pending.change, "sync-failed", errorMessage(error));
+      },
+      onSuccess: () => undefined,
+    });
   }
 
   private patchConnectionKeymap(connection: ConnectionState, target: ViaLiveWriteTarget) {

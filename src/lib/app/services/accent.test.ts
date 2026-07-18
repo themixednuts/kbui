@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_ACCENT_ID, STORAGE_KEY, accentById, load, saveAndApply } from "./accent";
+import * as Preferences from "./preferences";
 
 type MutableGlobal = typeof globalThis & {
   document?: Document;
@@ -66,19 +67,23 @@ afterEach(() => {
 
 describe("accent preferences", () => {
   it("falls back to the default accent when storage is missing or invalid", async () => {
-    expect(await Effect.runPromise(load)).toBe(DEFAULT_ACCENT_ID);
+    expect(await Effect.runPromise(load.pipe(Effect.provide(Preferences.layer)))).toBe(
+      DEFAULT_ACCENT_ID,
+    );
 
     localStorage.setItem(STORAGE_KEY, "unknown");
 
-    expect(await Effect.runPromise(load)).toBe(DEFAULT_ACCENT_ID);
+    expect(await Effect.runPromise(load.pipe(Effect.provide(Preferences.layer)))).toBe(
+      DEFAULT_ACCENT_ID,
+    );
   });
 
   it("persists and applies the selected accent to the app theme variable", async () => {
-    await Effect.runPromise(saveAndApply("teal"));
+    await Effect.runPromise(saveAndApply("teal").pipe(Effect.provide(Preferences.layer)));
 
     expect(localStorage.getItem(STORAGE_KEY)).toBe("teal");
     expect(styleWrites["--coral"]).toBe(accentById("teal").value);
-    expect(await Effect.runPromise(load)).toBe("teal");
+    expect(await Effect.runPromise(load.pipe(Effect.provide(Preferences.layer)))).toBe("teal");
   });
 });
 

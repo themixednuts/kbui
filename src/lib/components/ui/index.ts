@@ -15,6 +15,7 @@ export { Slider } from "./slider/index.js";
 export * as Select from "./select/index.js";
 export * as ToggleGroup from "./toggle-group/index.js";
 export * as Card from "./card/index.js";
+export * as Popover from "./popover/index.js";
 export type {
   ButtonSize,
   ButtonVariant,

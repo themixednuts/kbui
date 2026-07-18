@@ -1,4 +1,5 @@
 import type { ChangeRecord, Combo, DeviceProfile, KeyBinding, Macro, TapDance } from "./schema";
+import { zmkBindingExpression } from "./zmk-keycodes";
 
 function stableValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -190,6 +191,20 @@ export function diffProfiles(base: DeviceProfile, draft: DeviceProfile): ChangeR
     }
   }
 
+  const firmwareMetadataBefore = stableValue(base.firmwareMetadata);
+  const firmwareMetadataAfter = stableValue(draft.firmwareMetadata);
+  if (firmwareMetadataBefore !== firmwareMetadataAfter) {
+    changes.push({
+      id: changeId("metadata", "firmware-target"),
+      kind: "metadata",
+      scope: "Firmware target",
+      path: "firmware/target",
+      before: firmwareMetadataBefore,
+      after: firmwareMetadataAfter,
+      staged: true,
+    });
+  }
+
   for (const key of ["mode", "hue", "saturation", "brightness", "speed"] as const) {
     const before = stableValue(base.lighting[key]);
     const after = stableValue(draft.lighting[key]);
@@ -272,4 +287,35 @@ export function qmkSnippet(device: DeviceProfile, layerId: string, keyId: string
     `  ${binding.code}${binding.tap ? `, // tap ${binding.tap}` : ""}${binding.hold ? `, hold ${binding.hold}` : ""}`,
     `);`,
   ].join("\n");
+}
+
+export function zmkSnippet(device: DeviceProfile, layerId: string, keyId: string): string {
+  const layerIndex = device.layers.findIndex((layer) => layer.id === layerId);
+  const layer = device.layers[layerIndex] ?? device.layers[0];
+  const binding = layer.bindings[keyId];
+  const key = device.keys.find((candidate) => candidate.id === keyId);
+
+  if (!key || !binding) return "";
+
+  const nativeBinding =
+    zmkBindingExpression(binding.code) ?? `&none /* unsupported: ${binding.code} */`;
+  const metadata = [binding.tap && `tap ${binding.tap}`, binding.hold && `hold ${binding.hold}`]
+    .filter(Boolean)
+    .join(" · ");
+
+  return [
+    `// ${device.name} / ${layer.name}`,
+    `// position ${key.id} · matrix[${key.row}][${key.col}] ${key.label}`,
+    `${layer.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_layer {`,
+    "  bindings = <",
+    `    ${nativeBinding}${metadata ? ` /* ${metadata} */` : ""}`,
+    "  >;",
+    "};",
+  ].join("\n");
+}
+
+export function firmwareSnippet(device: DeviceProfile, layerId: string, keyId: string): string {
+  return device.firmware === "zmk"
+    ? zmkSnippet(device, layerId, keyId)
+    : qmkSnippet(device, layerId, keyId);
 }

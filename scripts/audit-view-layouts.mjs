@@ -1,135 +1,119 @@
 import { chromium } from "playwright";
 
-const BASE = process.env.BASE_URL ?? "http://127.0.0.1:8787";
-const WIDTHS = [720, 980, 1100, 1280, 1440];
+import { formatAuditReport, inspectLayout, watchPageErrors } from "./lib/layout-audit.mjs";
+import { findLocalDevUrl, parseLocalDevUrl } from "./lib/local-dev-url.mjs";
 
-const VIEWS = [
-  { id: "connect", url: "/keymap?clearLocal=1", setup: null },
-  { id: "keymap", url: "/keymap?clearLocal=1", setup: "continue" },
-  { id: "logic", url: "/logic?clearLocal=1", setup: "continue" },
-  { id: "keymap-rgb", url: "/keymap?mode=rgb&clearLocal=1", setup: "continue" },
-  { id: "versioning", url: "/versioning?clearLocal=1", setup: "continue" },
-  { id: "firmware", url: "/firmware?clearLocal=1", setup: "continue" },
+const configuredBase =
+  process.env.BASE_URL ??
+  findLocalDevUrl({ envNames: ["KBGUI_WORKER_URL", "BETTER_AUTH_URL"] })?.value;
+const BASE = configuredBase ? parseLocalDevUrl(configuredBase, "BASE_URL").origin : null;
+
+if (!BASE) {
+  throw new Error("Set BASE_URL or BETTER_AUTH_URL in .dev.vars before running this audit.");
+}
+
+const ROUTES = ["/connect", "/editor", "/browse", "/library", "/versions", "/settings"];
+
+const VIEWPORTS = [
+  { name: "mobile", width: 390, height: 844 },
+  { name: "tablet", width: 768, height: 1024 },
+  { name: "desktop", width: 1440, height: 900 },
 ];
 
-function layoutIssues(page, viewportWidth) {
-  return page.evaluate((vw) => {
-    const issues = [];
-    const doc = document.documentElement;
-    if (doc.scrollWidth > doc.clientWidth + 1) {
-      issues.push({
-        kind: "page-overflow-x",
-        detail: `${doc.scrollWidth}px > ${doc.clientWidth}px`,
-      });
-    }
+const baseError = await baseAvailabilityError(BASE);
 
-    const topbar = document.querySelector(".topbar");
-    if (topbar) {
-      const buttons = [...topbar.querySelectorAll(".view-seg button")];
-      for (let i = 1; i < buttons.length; i++) {
-        const prev = buttons[i - 1].getBoundingClientRect();
-        const cur = buttons[i].getBoundingClientRect();
-        if (cur.left < prev.right - 1) {
-          issues.push({
-            kind: "topbar-nav-overlap",
-            detail: `${buttons[i - 1].title} overlaps ${buttons[i].title}`,
+if (baseError) {
+  console.error(`FAIL layout audit: ${baseError}`);
+  process.exitCode = 1;
+} else {
+  const results = await runAudit();
+  const report = formatAuditReport(results, {
+    routeCount: ROUTES.length,
+    viewportCount: VIEWPORTS.length,
+  });
+
+  console.log(report.output);
+  if (report.failed) process.exitCode = 1;
+}
+
+async function runAudit() {
+  const browser = await chromium.launch();
+  const results = [];
+
+  try {
+    for (const viewport of VIEWPORTS) {
+      for (const route of ROUTES) {
+        const context = await browser.newContext({
+          reducedMotion: "reduce",
+          viewport: { height: viewport.height, width: viewport.width },
+        });
+        const page = await context.newPage();
+        const pageErrors = watchPageErrors(page, BASE);
+        let layoutIssues = [];
+
+        try {
+          const response = await page.goto(`${BASE}${route}`, {
+            timeout: 60_000,
+            waitUntil: "domcontentloaded",
           });
-          break;
+
+          if (!response) {
+            pageErrors.record("navigation", `No response while loading ${route}`);
+          } else if (!response.ok()) {
+            pageErrors.record(
+              "http-error",
+              `${response.request().method()} ${route} returned ${response.status()} (document)`,
+            );
+          }
+
+          await page.waitForSelector(".new-app-shell", { state: "visible", timeout: 60_000 });
+
+          const loadedPath = new URL(page.url()).pathname;
+          if (loadedPath !== route) {
+            pageErrors.record("navigation", `Expected ${route}, but loaded ${loadedPath}`);
+          }
+
+          await page.waitForLoadState("networkidle", { timeout: 1_500 }).catch(() => {});
+          await page.evaluate(async () => {
+            await document.fonts?.ready;
+            await new Promise((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            });
+          });
+
+          layoutIssues = await inspectLayout(page);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message.split(/\r?\n/, 1)[0] : String(error);
+          pageErrors.record("navigation", `${route} could not be audited: ${message}`);
+        } finally {
+          results.push({
+            issues: [...layoutIssues, ...pageErrors.snapshot()],
+            route,
+            viewport,
+          });
+          pageErrors.stop();
+          await context.close();
         }
       }
-      const labels = [...topbar.querySelectorAll(".view-seg [data-label]")];
-      const visibleLabels = labels.filter((el) => {
-        const s = getComputedStyle(el);
-        return s.display !== "none" && el.getBoundingClientRect().width > 2;
-      });
-      const narrowButtons = buttons.filter((b) => b.getBoundingClientRect().width < 40);
-      if (visibleLabels.length && narrowButtons.length) {
-        issues.push({
-          kind: "topbar-label-in-icon-slot",
-          detail: `${visibleLabels.length} labels visible with ${narrowButtons.length} narrow buttons`,
-        });
-      }
-      if (topbar.scrollWidth > topbar.clientWidth + 1) {
-        issues.push({
-          kind: "topbar-overflow-x",
-          detail: `${topbar.scrollWidth}px > ${topbar.clientWidth}px`,
-        });
-      }
     }
-
-    const shell = document.querySelector(".view-shell");
-    if (shell) {
-      if (shell.scrollWidth > shell.clientWidth + 1) {
-        issues.push({
-          kind: "view-shell-overflow-x",
-          detail: `${shell.scrollWidth}px > ${shell.clientWidth}px`,
-        });
-      }
-      const overflowing = [...shell.querySelectorAll("*")].filter((el) => {
-        if (el.closest(".keyboard-stage")) return false;
-        const r = el.getBoundingClientRect();
-        return r.width > 0 && r.right > vw + 2;
-      });
-      if (overflowing.length) {
-        const sample = overflowing
-          .slice(0, 3)
-          .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].slice(0, 2).join(".")}`)
-          .join(", ");
-        issues.push({
-          kind: "child-past-viewport",
-          detail: `${overflowing.length} nodes (e.g. ${sample})`,
-        });
-      }
-    }
-
-    const frame = document.querySelector(".app-frame");
-    if (frame && frame.scrollHeight > frame.clientHeight + 1) {
-      issues.push({
-        kind: "app-frame-scrolls",
-        detail: "unexpected outer scroll on app-frame",
-      });
-    }
-
-    return issues;
-  }, viewportWidth);
-}
-
-async function scrollShell(page) {
-  await page.evaluate(() => {
-    const shell = document.querySelector(".view-shell");
-    if (!shell || shell.scrollHeight <= shell.clientHeight) return;
-    shell.scrollTop = shell.scrollHeight;
-    shell.scrollTop = 0;
-  });
-  await page.waitForTimeout(150);
-}
-
-const browser = await chromium.launch();
-const report = [];
-
-for (const width of WIDTHS) {
-  const page = await browser.newPage({ viewport: { width, height: 800 } });
-  for (const view of VIEWS) {
-    await page.goto(`${BASE}${view.url}`, { waitUntil: "networkidle", timeout: 60_000 });
-    await page.waitForSelector("[data-testid=app-frame]", { timeout: 60_000 });
-    if (view.setup === "continue") {
-      const btn = page.getByRole("button", { name: "Continue without device →" });
-      if (await btn.isVisible().catch(() => false)) await btn.click();
-      await page.waitForTimeout(400);
-    }
-    if (view.id === "versioning") {
-      for (let i = 0; i < 8; i++) {
-        const fork = page.getByRole("button", { name: "New fork" });
-        if (await fork.isVisible().catch(() => false)) await fork.click();
-      }
-    }
-    await scrollShell(page);
-    const issues = await layoutIssues(page, width);
-    if (issues.length) report.push({ width, view: view.id, issues });
+  } finally {
+    await browser.close();
   }
-  await page.close();
+
+  return results;
 }
 
-await browser.close();
-console.log(JSON.stringify(report, null, 2));
-console.log(`\nTotal issue groups: ${report.length}`);
+async function baseAvailabilityError(base) {
+  try {
+    await fetch(base, {
+      method: "HEAD",
+      redirect: "manual",
+      signal: AbortSignal.timeout(5_000),
+    });
+    return null;
+  } catch (error) {
+    const reason = error?.cause?.code ?? (error instanceof Error ? error.message : String(error));
+    return `Cannot reach ${base} (${reason}). Start the app or set BASE_URL to its origin.`;
+  }
+}

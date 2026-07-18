@@ -30,14 +30,14 @@ export function accentById(id: AccentId): AccentOption {
   return accentOptions.find((option) => option.id === id) ?? accentOptions[0];
 }
 
-export const load: Effect.Effect<AccentId> = Effect.gen(function* () {
+export const load = Effect.gen(function* () {
   const stored = yield* Preferences.get(STORAGE_KEY);
   return isAccentId(stored) ? stored : DEFAULT_ACCENT_ID;
 });
 
-export const save = (id: AccentId): Effect.Effect<void> => Preferences.set(STORAGE_KEY, id);
+export const save = (id: AccentId) => Preferences.set(STORAGE_KEY, id);
 
-export const reset: Effect.Effect<void> = Preferences.remove(STORAGE_KEY);
+export const reset = Preferences.remove(STORAGE_KEY);
 
 export const apply = (id: AccentId): Effect.Effect<void> =>
   Effect.sync(() => {
@@ -45,13 +45,13 @@ export const apply = (id: AccentId): Effect.Effect<void> =>
     document.documentElement.style.setProperty("--coral", accentById(id).value);
   });
 
-export const loadAndApply: Effect.Effect<AccentId> = Effect.gen(function* () {
+export const loadAndApply = Effect.gen(function* () {
   const id = yield* load;
   yield* apply(id);
   return id;
 });
 
-export const saveAndApply = (id: AccentId): Effect.Effect<void> =>
+export const saveAndApply = (id: AccentId) =>
   Effect.gen(function* () {
     yield* save(id);
     yield* apply(id);

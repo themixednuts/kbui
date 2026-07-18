@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  firmwareDiagnosticKey,
   firmwareSourceHash,
   generateFirmwareArtifacts,
   generateQmkKeymapJson,
@@ -11,44 +12,34 @@ import {
 import { defaultSampleKeyboard, splitDemoKeyboard } from "./sample-boards";
 import { cloneDevice, type DeviceProfile } from "./schema";
 
-type QmkProfileWithMetadata = DeviceProfile & {
-  qmk: {
-    keyboard: string;
-    keyOrder: string[];
-    layout: string;
-  };
-};
-
-type ZmkProfileWithMetadata = DeviceProfile & {
-  zmk: {
-    board: string;
-    keyOrder: string[];
-    shield: string;
-  };
-};
-
 function matrixOrder(profile: DeviceProfile) {
   return [...profile.keys]
     .sort((left, right) => left.row - right.row || left.col - right.col)
     .map((key) => key.id);
 }
 
-function qmkProfileWithMetadata(profile = defaultSampleKeyboard): QmkProfileWithMetadata {
-  const next = cloneDevice(profile) as QmkProfileWithMetadata;
-  next.qmk = {
-    keyboard: "klakson/wb65",
-    keyOrder: matrixOrder(next),
-    layout: "LAYOUT",
+function qmkProfileWithMetadata(profile = defaultSampleKeyboard): DeviceProfile {
+  const next = cloneDevice(profile);
+  next.firmwareMetadata = {
+    qmk: {
+      keyboard: "klakson/wb65",
+      keymap: "daily_driver",
+      keyOrder: matrixOrder(next),
+      layout: "LAYOUT",
+    },
   };
   return next;
 }
 
-function zmkProfileWithMetadata(profile = splitDemoKeyboard): ZmkProfileWithMetadata {
-  const next = cloneDevice(profile) as ZmkProfileWithMetadata;
-  next.zmk = {
-    board: "nice_nano_v2",
-    keyOrder: matrixOrder(next),
-    shield: "corney_left",
+function zmkProfileWithMetadata(profile = splitDemoKeyboard): DeviceProfile {
+  const next = cloneDevice(profile);
+  next.firmwareMetadata = {
+    zmk: {
+      board: "nice_nano_v2",
+      keymap: "corney",
+      keyOrder: matrixOrder(next),
+      shields: ["corney_left", "corney_right"],
+    },
   };
   return next;
 }
@@ -61,6 +52,23 @@ function sourceByRole(
 }
 
 describe("firmware source generation", () => {
+  it("gives diagnostics with a shared code distinct stable UI keys", () => {
+    const first = {
+      code: "qmk.target.missing",
+      message: "Choose a keyboard target.",
+      path: "metadata.qmk.keyboard",
+      severity: "error",
+    } as const;
+    const second = {
+      ...first,
+      message: "Choose a layout macro.",
+      path: "metadata.qmk.layout",
+    };
+
+    expect(firmwareDiagnosticKey(first)).toBe(firmwareDiagnosticKey({ ...first }));
+    expect(firmwareDiagnosticKey(first)).not.toBe(firmwareDiagnosticKey(second));
+  });
+
   it("generates QMK Configurator keymap JSON with ordered layers and canonical keycodes", () => {
     const profile = qmkProfileWithMetadata();
     profile.macros = [];
@@ -85,7 +93,7 @@ describe("firmware source generation", () => {
 
     expect(generated.keymap).toMatchObject({
       keyboard: "klakson/wb65",
-      keymap: "workbench_65",
+      keymap: "daily_driver",
       layout: "LAYOUT",
     });
     expect(generated.keymap.layers).toHaveLength(profile.layers.length);
@@ -111,13 +119,30 @@ describe("firmware source generation", () => {
     expect(rules).toContain("COMBO_ENABLE = yes");
     expect(rules).toContain("TAP_DANCE_ENABLE = yes");
     expect(rules).toContain("KEY_OVERRIDE_ENABLE = yes");
-    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(false);
+    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(true);
     expect(generated.diagnostics.map((item) => item.code)).toEqual(
       expect.arrayContaining(["qmk.macros.sequence_semantics", "qmk.tap_dance.hold_unsupported"]),
     );
   });
 
-  it("emits QMK warning diagnostics for TODO-backed feature gaps and unsupported key fallbacks", () => {
+  it("emits portable QMK C for combined modifiers while keeping canonical JSON keycodes", () => {
+    const profile = qmkProfileWithMetadata();
+    profile.layers[0].bindings["k0-0"] = { code: "LCS(KC_1)" };
+    profile.layers[0].bindings["k0-1"] = { code: "LCS_T(KC_A)" };
+
+    const json = generateQmkKeymapJson(profile);
+    const generated = generateQmkSourceBundle(profile);
+    const keymap = sourceByRole(generated.files, "qmk-keymap-c");
+
+    expect(json.keymap.layers[0][0]).toBe("LCS(KC_1)");
+    expect(json.keymap.layers[0][1]).toBe("LCS_T(KC_A)");
+    expect(keymap).toContain("LCTL(LSFT(KC_1))");
+    expect(keymap).toContain("MT(MOD_LCTL | MOD_LSFT, KC_A)");
+    expect(keymap).not.toContain("LCS(KC_1)");
+    expect(keymap).not.toContain("LCS_T(KC_A)");
+  });
+
+  it("blocks QMK generation for unsupported keys while retaining non-blocking review diagnostics", () => {
     const profile = qmkProfileWithMetadata();
     const combo = profile.combos[0];
     if (!combo) throw new Error("sample profile needs a combo fixture");
@@ -137,7 +162,7 @@ describe("firmware source generation", () => {
       ].includes(item.code),
     );
 
-    expect(keymap).toContain("KC_NO /* UNSUPPORTED: KC_FAKE_UNKNOWN */");
+    expect(keymap).toContain("KBUI_UNSUPPORTED_KEYCODE /* KC_FAKE_UNKNOWN */");
     expect(diagnostics.map((item) => item.code)).toEqual(
       expect.arrayContaining([
         "qmk.combos.layer_scope",
@@ -147,15 +172,15 @@ describe("firmware source generation", () => {
         "qmk.settings.split_transport",
       ]),
     );
-    expect(diagnostics.every((item) => item.severity === "warning")).toBe(true);
+    expect(diagnostics.some((item) => item.severity === "warning")).toBe(true);
     expect(
       generated.diagnostics.find((item) => item.code === "qmk.keycode.unsupported"),
     ).toMatchObject({
       message: expect.stringContaining("KC_FAKE_UNKNOWN"),
       path: "layers/Base/k0-0",
-      severity: "warning",
+      severity: "error",
     });
-    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(false);
+    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(true);
   });
 
   it("excludes incomplete logic drafts from generated QMK source and clears their key bindings", () => {
@@ -172,8 +197,8 @@ describe("firmware source generation", () => {
     const keymap = sourceByRole(generated.files, "qmk-keymap-c");
     const rules = sourceByRole(generated.files, "qmk-rules-mk");
 
-    expect(json.keymap.layers[0][0]).toBe("KC_NO");
-    expect(json.keymap.layers[0][1]).toBe("KC_NO");
+    expect(json.keymap.layers[0][0]).toBe("KBUI_INCOMPLETE_BINDING");
+    expect(json.keymap.layers[0][1]).toBe("KBUI_INCOMPLETE_BINDING");
     expect(keymap).not.toContain("case QK_MACRO_0");
     expect(keymap).not.toContain("combo_t key_combos");
     expect(keymap).not.toContain("tap_dance_actions");
@@ -216,6 +241,7 @@ describe("firmware source generation", () => {
     const build = sourceByRole(generated.files, "zmk-build-yaml");
 
     expect(keymap).toContain('compatible = "zmk,keymap"');
+    expect(keymap).toContain("#include <dt-bindings/zmk/outputs.h>");
     expect(keymap).toContain("&kp Q");
     expect(keymap).toContain("&lt 1 ESC");
     expect(keymap).toContain("key-positions = <13 16>;");
@@ -223,11 +249,30 @@ describe("firmware source generation", () => {
     expect(conf).toContain("CONFIG_BT=y");
     expect(build).toContain("board: nice_nano_v2");
     expect(build).toContain("shield: corney_left");
+    expect(build).toContain("shield: corney_right");
+    expect(generated.files.map((file) => file.path)).toContain("zmk/config/corney.keymap");
     expect(generated.buildCommand).toBe("west build -b nice_nano_v2 -- -DSHIELD=corney_left");
-    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(false);
+    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(true);
   });
 
-  it("emits ZMK warning diagnostics for unsupported keys, serial split, and tapping term gaps", () => {
+  it("generates native ZMK Bluetooth, output, and system behavior bindings", () => {
+    const profile = zmkProfileWithMetadata();
+    profile.layers[0].bindings["s0-0"] = { code: "ZMK_BT_SEL(2)" };
+    profile.layers[0].bindings["s0-1"] = { code: "ZMK_OUT_BLE" };
+    profile.layers[0].bindings["s0-2"] = { code: "ZMK_STUDIO_UNLOCK" };
+
+    const generated = generateZmkSource(profile);
+    const keymap = sourceByRole(generated.files, "zmk-keymap");
+
+    expect(keymap).toContain("&bt BT_SEL 2");
+    expect(keymap).toContain("&out OUT_BLE");
+    expect(keymap).toContain("&studio_unlock");
+    expect(generated.diagnostics.some((item) => item.code === "zmk.keycode.unsupported")).toBe(
+      false,
+    );
+  });
+
+  it("blocks ZMK generation for unsupported keys while retaining review diagnostics", () => {
     const profile = zmkProfileWithMetadata();
     profile.settings.splitTransport = "serial";
     profile.settings.tappingTerm = 220;
@@ -244,7 +289,7 @@ describe("firmware source generation", () => {
       ].includes(item.code),
     );
 
-    expect(keymap).toContain("&none /* UNSUPPORTED: KC_FAKE_ZMK */");
+    expect(keymap).toContain("&kbui_unsupported_keycode /* KC_FAKE_ZMK */");
     expect(conf).toContain("# TODO: configure ZMK serial split transport for this board.");
     expect(conf).toContain("# TODO: map tapping term 220ms to specific hold-tap behaviors.");
     expect(diagnostics.map((item) => item.code)).toEqual(
@@ -254,15 +299,15 @@ describe("firmware source generation", () => {
         "zmk.settings.tapping_term_scope",
       ]),
     );
-    expect(diagnostics.every((item) => item.severity === "warning")).toBe(true);
+    expect(diagnostics.some((item) => item.severity === "warning")).toBe(true);
     expect(
       generated.diagnostics.find((item) => item.code === "zmk.keycode.unsupported"),
     ).toMatchObject({
       message: expect.stringContaining("KC_FAKE_ZMK"),
       path: "layers/Base/s0-0",
-      severity: "warning",
+      severity: "error",
     });
-    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(false);
+    expect(generated.diagnostics.some((item) => item.severity === "error")).toBe(true);
   });
 
   it("flags missing build-critical metadata instead of guessing compile targets", () => {
@@ -291,11 +336,13 @@ describe("firmware source generation", () => {
     );
     expect(qmk.buildReady).toBe(false);
     expect(qmk.summary).toMatchObject({ buildReady: false, errors: expect.any(Number) });
-    expect(qmk.buildCommand).toBe("qmk compile -kb <REQUIRED: qmk keyboard path> -km workbench_65");
+    expect(qmk.buildCommand).toBe(
+      "qmk compile -kb <REQUIRED: qmk keyboard path> -km local_keyboard",
+    );
     expect(qmk.buildCommand).not.toContain("<qmk-keyboard>");
     expect(qmkJson).toContain('"keyboard": "<REQUIRED: qmk keyboard path>"');
     expect(qmkJson).toContain('"layout": "<REQUIRED: qmk layout macro>"');
-    expect(qmkKeymap).toContain("KBGUI_REQUIRED_QMK_LAYOUT_MACRO(");
+    expect(qmkKeymap).toContain("KBUI_REQUIRED_QMK_LAYOUT_MACRO(");
     expect(qmkKeymap).not.toContain("= LAYOUT(");
 
     expect(zmk.diagnostics.map((item) => item.code)).toEqual(
@@ -312,7 +359,7 @@ describe("firmware source generation", () => {
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ severity: "error", path: "metadata.zmk.board" }),
-        expect.objectContaining({ severity: "error", path: "metadata.zmk.shield" }),
+        expect.objectContaining({ severity: "error", path: "metadata.zmk.shields" }),
       ]),
     );
     expect(zmk.buildReady).toBe(false);
@@ -341,13 +388,15 @@ describe("firmware source generation", () => {
     expect(qmk.summary.buildReady).toBe(true);
     expect(qmk.artifacts.map((file) => file.path)).toEqual([
       "qmk/keymap.json",
-      "qmk/keymaps/workbench_65/keymap.c",
-      "qmk/keymaps/workbench_65/config.h",
-      "qmk/keymaps/workbench_65/rules.mk",
+      "qmk/keymaps/daily_driver/keymap.c",
+      "qmk/keymaps/daily_driver/config.h",
+      "qmk/keymaps/daily_driver/rules.mk",
     ]);
     expect(qmk.buildCommand).toBe("qmk compile qmk/keymap.json");
 
-    const zmk = generateFirmwareArtifacts(zmkProfileWithMetadata());
+    const zmkSimple = zmkProfileWithMetadata();
+    zmkSimple.tapDances = [];
+    const zmk = generateFirmwareArtifacts(zmkSimple);
     expect(zmk.target).toBe("zmk");
     expect(zmk.buildReady).toBe(true);
     expect(zmk.artifacts.map((file) => file.role)).toEqual([
@@ -358,5 +407,39 @@ describe("firmware source generation", () => {
 
     expect(qmk.sourceHash).toBe(firmwareSourceHash(qmk.artifacts));
     expect(generateFirmwareArtifacts(qmkSimple).sourceHash).toBe(qmk.sourceHash);
+  });
+
+  it("blocks QMK builds until an ambiguous controller target is confirmed", () => {
+    const profile = qmkProfileWithMetadata();
+    profile.firmwareMetadata!.qmk!.targetConfirmed = false;
+
+    const generated = generateFirmwareArtifacts(profile);
+
+    expect(generated.buildReady).toBe(false);
+    expect(generated.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "qmk.metadata.target_unconfirmed",
+          severity: "error",
+        }),
+      ]),
+    );
+  });
+
+  it("blocks ZMK builds until an ambiguous controller and shield target is confirmed", () => {
+    const profile = zmkProfileWithMetadata();
+    profile.firmwareMetadata!.zmk!.targetConfirmed = false;
+
+    const generated = generateFirmwareArtifacts(profile);
+
+    expect(generated.buildReady).toBe(false);
+    expect(generated.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "zmk.metadata.target_unconfirmed",
+          severity: "error",
+        }),
+      ]),
+    );
   });
 });

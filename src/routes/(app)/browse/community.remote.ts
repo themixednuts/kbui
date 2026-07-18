@@ -11,18 +11,24 @@ import {
   unlikeCommunityKeymapFromEnvironment,
 } from "$lib/community/service";
 import type { CommunityMutationUser } from "$lib/community/types";
+import {
+  communityAdoptInput,
+  communityKeymapIdInput,
+  communityListInput,
+  communityReportInput,
+} from "$lib/server/remote-input";
 
-export const listCommunityKeymaps = query("unchecked", async (rawInput: unknown) => {
+export const listCommunityKeymaps = query(communityListInput, (rawInput) => {
   const event = getRequestEvent();
   return listCommunityKeymapsFromEnvironment(event.platform?.env, rawInput, event.locals.user?.id);
 });
 
-export const getCommunityKeymap = query("unchecked", async (rawId: unknown) => {
+export const getCommunityKeymap = query(communityKeymapIdInput, (rawId) => {
   const event = getRequestEvent();
   return getCommunityKeymapFromEnvironment(event.platform?.env, rawId, event.locals.user?.id);
 });
 
-export const likeCommunityKeymap = command("unchecked", async (rawId: unknown) => {
+export const likeCommunityKeymap = command(communityKeymapIdInput, (rawId) => {
   const event = getRequestEvent();
   const user = requireCommunitySession(event.locals.user);
   assertCommunityMutationBinding(event.platform?.env);
@@ -30,7 +36,7 @@ export const likeCommunityKeymap = command("unchecked", async (rawId: unknown) =
   return likeCommunityKeymapFromEnvironment(event.platform?.env, rawId, user);
 });
 
-export const unlikeCommunityKeymap = command("unchecked", async (rawId: unknown) => {
+export const unlikeCommunityKeymap = command(communityKeymapIdInput, (rawId) => {
   const event = getRequestEvent();
   const user = requireCommunitySession(event.locals.user);
   assertCommunityMutationBinding(event.platform?.env);
@@ -38,7 +44,7 @@ export const unlikeCommunityKeymap = command("unchecked", async (rawId: unknown)
   return unlikeCommunityKeymapFromEnvironment(event.platform?.env, rawId, user);
 });
 
-export const adoptCommunityKeymap = command("unchecked", async (rawInput: unknown) => {
+export const adoptCommunityKeymap = command(communityAdoptInput, (rawInput) => {
   const event = getRequestEvent();
   const user = requireCommunitySession(event.locals.user);
   assertCommunityMutationBinding(event.platform?.env);
@@ -46,7 +52,7 @@ export const adoptCommunityKeymap = command("unchecked", async (rawInput: unknow
   return adoptCommunityKeymapFromEnvironment(event.platform?.env, rawInput, user);
 });
 
-export const reportCommunityKeymap = command("unchecked", async (rawInput: unknown) => {
+export const reportCommunityKeymap = command(communityReportInput, (rawInput) => {
   const event = getRequestEvent();
   const user = requireCommunitySession(event.locals.user);
   assertCommunityMutationBinding(event.platform?.env);

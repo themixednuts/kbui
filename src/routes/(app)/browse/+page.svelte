@@ -1,12 +1,14 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { Clock3, GitFork, Heart, Search } from "@lucide/svelte";
+  import { Effect } from "effect";
 
+  import { runApp } from "$lib/app";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import CommunityKeymapCard from "$lib/components/browse/CommunityKeymapCard.svelte";
   import CommunityPreviewModal from "$lib/components/browse/CommunityPreviewModal.svelte";
-  import { Button, Chip, SegmentedNav } from "$lib/components/ui";
+  import { Button, Chip, Input, SegmentedNav } from "$lib/components/ui";
   import { Switch } from "$lib/components/ui/switch/index.js";
   import { untrack } from "svelte";
   import type {
@@ -20,6 +22,7 @@
   import { decodeDeviceProfileFromStorage, profileDisplayName } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
   import { newId } from "$lib/util/id";
+  import { platformError } from "$lib/effect/errors";
 
   import type { PageData } from "./$types";
   import {
@@ -41,46 +44,51 @@
     { value: "adoptions", label: "Adoptions", title: "Sort by adoptions", icon: GitFork },
   ];
   const browseRouteClass =
-    "browse-route min-h-[calc(100vh-58px)] bg-[radial-gradient(ellipse_82%_52%_at_84%_0%,color-mix(in_oklch,var(--coral)_8%,transparent),transparent_64%),radial-gradient(ellipse_70%_44%_at_0%_16%,color-mix(in_oklch,var(--teal)_8%,transparent),transparent_62%),var(--paper)] p-kb-22 max-[640px]:p-kb-12";
-  const browseShellClass = "browse-shell grid min-w-0 gap-kb-16";
+    "browse-route min-h-full bg-paper";
+  const browseShellClass = "browse-shell grid min-w-0 gap-0";
   const browseHeaderClass =
-    "browse-header grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] items-end gap-kb-16 max-[940px]:grid-cols-[minmax(0,1fr)]";
-  const headlineClass = "headline grid min-w-0 gap-kb-4";
+    "browse-header flex min-h-[58px] items-center justify-end gap-kb-16 border-b border-line px-kb-24 py-kb-10 max-[640px]:px-kb-12";
   const eyebrowClass = "font-mono text-[10px] tracking-[0.12em] text-ink-3 uppercase";
   const searchBoxClass =
-    "search-box grid h-kb-38 min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-[8px] border border-line-2 bg-surface px-kb-12 py-0 shadow-card";
+    "search-box grid h-kb-34 w-[min(100%,420px)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-lg border border-line-2 bg-card px-kb-12 py-0 shadow-card";
   const filterPanelClass =
-    "filter-panel grid min-w-0 gap-kb-10 rounded-[8px] border border-line-2 bg-[color-mix(in_oklch,var(--surface)_86%,transparent)] p-kb-12 shadow-card";
+    "filter-panel grid min-w-0 gap-kb-12 border-b border-line bg-paper px-kb-24 py-kb-12 max-[640px]:px-kb-12";
+  const filterBandClass =
+    "filter-band grid min-w-0 grid-cols-[58px_minmax(0,1fr)] items-start gap-x-kb-12 max-[640px]:grid-cols-[minmax(0,1fr)] max-[640px]:gap-y-kb-7";
+  const filterBandLabelClass =
+    "filter-band-label pt-kb-8 font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase max-[640px]:pt-0";
   const filterGroupClass = "flex min-w-0 flex-wrap items-center gap-kb-8";
-  const filterRowClass = `${filterGroupClass} max-[640px]:items-start`;
+  const scopeGridClass =
+    "scope-grid grid min-w-0 grid-cols-[minmax(250px,1fr)_auto_auto] items-center gap-kb-10 max-[820px]:grid-cols-[minmax(0,1fr)] max-[820px]:items-start";
+  const scopeFiltersClass = "scope-filters flex min-w-0 flex-wrap items-center gap-kb-10";
   const filterButtonClass =
-    "min-h-[28px] rounded-pill !border !border-line !bg-paper-2 px-kb-10 py-0 !font-mono !text-[11px] !text-ink-2 hover:!border-line-2 hover:!text-ink";
+    "h-[28px] min-h-[28px] rounded-pill border-line bg-paper-2 px-kb-10 py-0 font-mono text-[11px] text-ink-2 hover:border-line-2 hover:bg-paper-2 hover:text-ink";
   const activeFilterButtonClass =
-    "active !border-[color-mix(in_oklch,var(--coral)_55%,var(--line-2))] !bg-coral !text-[#1c0a04]";
+    "active border-transparent bg-ink text-paper hover:bg-ink hover:text-paper";
   const toggleFilterClass =
     "toggle-filter inline-flex min-h-kb-30 items-center gap-kb-8 font-mono text-[11px] text-ink-2";
   const sortControlClass =
-    "sort-control ml-auto inline-flex items-center gap-kb-8 max-[940px]:ml-0 max-[940px]:w-full max-[940px]:justify-between max-[640px]:flex-col max-[640px]:items-start";
+    "sort-control inline-flex min-w-0 items-center gap-kb-8 whitespace-nowrap max-[820px]:justify-self-start";
   const listErrorClass =
-    "list-error flex min-h-kb-44 items-center gap-kb-10 rounded-[8px] border border-[oklch(0.62_0.2_25_/_0.32)] bg-[oklch(0.95_0.04_25)] px-kb-12 py-kb-10 text-[12px] text-[oklch(0.42_0.15_25)]";
+    "list-error flex min-h-kb-44 items-center gap-kb-10 rounded-lg border border-[var(--danger-border)] bg-danger-surface px-kb-12 py-kb-10 text-kb-12 text-danger-ink";
   const cardGridClass =
-    "card-grid grid min-w-0 grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-kb-14 aria-busy:opacity-[0.62] max-[640px]:grid-cols-[minmax(0,1fr)]";
+    "card-grid grid min-w-0 grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-kb-16 p-kb-24 max-[640px]:grid-cols-[minmax(0,1fr)] max-[640px]:p-kb-12";
   const emptyPanelClass =
-    "empty-panel grid min-h-[260px] place-items-center content-center gap-kb-10 rounded-[8px] border border-dashed border-line-2 bg-[color-mix(in_oklch,var(--surface)_64%,transparent)] font-mono text-[12px] text-ink-3";
+    "empty-panel grid min-h-[260px] place-items-center content-center gap-kb-10 rounded-lg border border-dashed border-line-2 bg-surface font-mono text-kb-12 text-ink-3";
   const reportBackdropClass =
     "report-backdrop fixed inset-0 z-40 grid place-items-center bg-[rgba(20,18,16,0.48)] p-kb-18 backdrop-blur-[8px]";
   const reportModalClass =
-    "report-modal grid w-[min(420px,calc(100vw-36px))] gap-kb-14 rounded-[10px] border border-line-2 bg-surface p-kb-16 shadow-modal";
+    "report-modal grid w-[min(420px,calc(100vw-36px))] gap-kb-14 rounded-lg border border-line-2 bg-surface p-kb-16 shadow-modal";
   const reportHeaderClass =
     "grid grid-cols-[minmax(0,1fr)_32px] items-start gap-kb-10";
   const reportLabelTextClass = "font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase";
   const reportCloseButtonClass =
-    "grid size-[32px] place-items-center rounded-[8px] !border !border-line !bg-paper-2 !text-ink-2";
+    "size-[var(--control-height)] border-line bg-surface text-ink-2";
   const reportFieldClass = "grid gap-kb-6";
   const reportFieldControlClass =
-    "w-full min-w-0 rounded-[8px] border border-line bg-paper-2 text-[13px] text-ink";
+    "w-full min-w-0 rounded-md border border-line bg-surface text-kb-13 text-ink";
   const reportErrorClass =
-    "report-error m-0 rounded-[8px] border border-[oklch(0.62_0.2_25_/_0.26)] bg-[oklch(0.95_0.04_25)] px-kb-10 py-kb-8 text-[12px] text-[oklch(0.42_0.15_25)]";
+    "report-error m-0 rounded-lg border border-[var(--danger-border)] bg-danger-surface px-kb-10 py-kb-8 text-kb-12 text-danger-ink";
   const reportActionsClass = "report-actions flex justify-end gap-kb-8";
 
   const initialCards = untrack(() => data.initialCards);
@@ -127,11 +135,7 @@
     return input;
   });
   const listKey = $derived(JSON.stringify(listInput));
-  const resultCopy = $derived(
-    loading
-      ? "Loading community maps"
-      : `${cards.length} ${cards.length === 1 ? "map" : "maps"}`,
-  );
+  const resultCopy = $derived(`${cards.length} ${cards.length === 1 ? "map" : "maps"}`);
 
   let lastListKey = $state(JSON.stringify({ sort: "likes", limit: 24 }));
 
@@ -141,23 +145,44 @@
     void refreshList(listInput, listKey);
   });
 
-  async function refreshList(input: CommunityKeymapListInput, requestKey: string) {
+  function remoteEffect<A>(operation: string, request: () => PromiseLike<A>) {
+    return Effect.tryPromise({
+      try: request,
+      catch: (cause) => platformError(operation, cause),
+    });
+  }
+
+  function refreshListEffect(input: CommunityKeymapListInput, requestKey: string) {
     loading = true;
     listError = null;
-    try {
-      const next = await listCommunityKeymaps(input);
+    return remoteEffect("community.list", () => listCommunityKeymaps(input)).pipe(
+      Effect.tap((next) =>
+        Effect.sync(() => {
       if (lastListKey !== requestKey) return;
       cards = next;
       tagBank = uniqueTags([...cards, ...tagBank.map(tagToSyntheticCard)]);
-    } catch (error) {
-      if (lastListKey !== requestKey) return;
-      listError = error instanceof Error ? error.message : "Community catalog could not be loaded.";
-    } finally {
-      if (lastListKey === requestKey) loading = false;
-    }
+        }),
+      ),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (lastListKey !== requestKey) return;
+          listError =
+            error instanceof Error ? error.message : "Community catalog could not be loaded.";
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (lastListKey === requestKey) loading = false;
+        }),
+      ),
+    );
   }
 
-  async function openPreview(id: string) {
+  function refreshList(input: CommunityKeymapListInput, requestKey: string) {
+    void runApp("community.refresh-list", refreshListEffect(input, requestKey));
+  }
+
+  function openPreview(id: string) {
     selectedId = id;
     selectedDetail = null;
     detailError = null;
@@ -165,20 +190,33 @@
     actionNotice = null;
     detailLoading = true;
 
-    try {
-      const detail = await getCommunityKeymap(id);
-      if (selectedId !== id) return;
-      if (!detail) {
-        detailError = "This community keymap is no longer available.";
-        return;
-      }
-      selectedDetail = detail;
-    } catch (error) {
-      if (selectedId !== id) return;
-      detailError = error instanceof Error ? error.message : "Community preview could not be loaded.";
-    } finally {
-      if (selectedId === id) detailLoading = false;
-    }
+    void runApp(
+      "community.open-preview",
+      remoteEffect("community.get-keymap", () => getCommunityKeymap(id)).pipe(
+        Effect.tap((detail) =>
+          Effect.sync(() => {
+            if (selectedId !== id) return;
+            if (!detail) {
+              detailError = "This community keymap is no longer available.";
+              return;
+            }
+            selectedDetail = detail;
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (selectedId !== id) return;
+            detailError =
+              error instanceof Error ? error.message : "Community preview could not be loaded.";
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (selectedId === id) detailLoading = false;
+          }),
+        ),
+      ),
+    );
   }
 
   function closePreview() {
@@ -190,7 +228,7 @@
     detailLoading = false;
   }
 
-  async function toggleLike(detail: CommunityKeymapDetail) {
+  function toggleLike(detail: CommunityKeymapDetail) {
     if (!signedIn) {
       promptSignIn();
       return;
@@ -206,26 +244,30 @@
       likesCount: wasLiked ? Math.max(0, detail.likesCount - 1) : detail.likesCount + 1,
     });
 
-    try {
-      if (wasLiked) {
-        await unlikeCommunityKeymap(detail.id);
-      } else {
-        await likeCommunityKeymap(detail.id);
-      }
-      await refreshSelectedDetail(detail.id);
-      await refreshList(listInput, listKey);
-    } catch (error) {
-      applyCardPatch(detail.id, {
-        likedByViewer: wasLiked,
-        likesCount: detail.likesCount,
-      });
-      actionError = messageFor(error, "Could not update like.");
-    } finally {
-      likeBusyId = null;
-    }
+    void runApp(
+      "community.toggle-like",
+      Effect.gen(function* () {
+        yield* remoteEffect("community.toggle-like", () =>
+          wasLiked ? unlikeCommunityKeymap(detail.id) : likeCommunityKeymap(detail.id),
+        );
+        yield* refreshSelectedDetailEffect(detail.id);
+        yield* refreshListEffect(listInput, listKey);
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            applyCardPatch(detail.id, {
+              likedByViewer: wasLiked,
+              likesCount: detail.likesCount,
+            });
+            actionError = messageFor(error, "Could not update like.");
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => (likeBusyId = null))),
+      ),
+    );
   }
 
-  async function adoptAsVariant(detail: CommunityKeymapDetail) {
+  function adoptAsVariant(detail: CommunityKeymapDetail) {
     if (!signedIn) {
       promptSignIn();
       return;
@@ -237,25 +279,36 @@
     actionError = null;
     actionNotice = null;
 
-    try {
-      const adopted = await adoptCommunityKeymap({ keymapId: detail.id, localForkId });
-      const profile = decodeDeviceProfileFromStorage(adopted.profile);
-      const adoptedAt = new Date().toISOString();
-      await workbench.adoptCommunityVariant({
-        detail: adopted,
-        profile,
-        localForkId,
-        savePointId: `sp-${newId()}`,
-        adoptedAt,
-      });
-      replaceCardFromDetail(adopted);
-      closePreview();
-      await goto("/editor");
-    } catch (error) {
-      actionError = messageFor(error, "Could not adopt this keymap.");
-    } finally {
-      adoptBusyId = null;
-    }
+    void runApp(
+      "community.adopt-variant",
+      Effect.gen(function* () {
+        const adopted = yield* remoteEffect("community.adopt", () =>
+          adoptCommunityKeymap({ keymapId: detail.id, localForkId }),
+        );
+        const profile = yield* Effect.try({
+          try: () => decodeDeviceProfileFromStorage(adopted.profile),
+          catch: (cause) => platformError("community.decode-adopted-profile", cause),
+        });
+        const adoptedAt = new Date().toISOString();
+        yield* remoteEffect("community.persist-adopted-variant", () =>
+          workbench.adoptCommunityVariant({
+            detail: adopted,
+            profile,
+            localForkId,
+            savePointId: `sp-${newId()}`,
+            adoptedAt,
+          }),
+        );
+        replaceCardFromDetail(adopted);
+        closePreview();
+        yield* remoteEffect("community.navigate-editor", () => goto("/editor"));
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => (actionError = messageFor(error, "Could not adopt this keymap."))),
+        ),
+        Effect.ensuring(Effect.sync(() => (adoptBusyId = null))),
+      ),
+    );
   }
 
   function openReport(detail: CommunityKeymapDetail) {
@@ -278,7 +331,7 @@
     reportDetail = "";
   }
 
-  async function submitReport() {
+  function submitReport() {
     if (!reportTarget || reportBusyId) return;
 
     reportBusyId = reportTarget.id;
@@ -286,21 +339,28 @@
     actionError = null;
     actionNotice = null;
 
-    try {
-      await reportCommunityKeymap({
-        keymapId: reportTarget.id,
-        reason: reportReason,
-        detail: reportDetail.trim() || undefined,
-      });
-      actionNotice = "Report sent for moderation review.";
-      await refreshSelectedDetail(reportTarget.id);
-      await refreshList(listInput, listKey);
-      closeReport();
-    } catch (error) {
-      reportError = messageFor(error, "Could not send report.");
-    } finally {
-      reportBusyId = null;
-    }
+    const targetId = reportTarget.id;
+    void runApp(
+      "community.report",
+      Effect.gen(function* () {
+        yield* remoteEffect("community.report", () =>
+          reportCommunityKeymap({
+            keymapId: targetId,
+            reason: reportReason,
+            detail: reportDetail.trim() || undefined,
+          }),
+        );
+        actionNotice = "Report sent for moderation review.";
+        yield* refreshSelectedDetailEffect(targetId);
+        yield* refreshListEffect(listInput, listKey);
+        closeReport();
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => (reportError = messageFor(error, "Could not send report."))),
+        ),
+        Effect.ensuring(Effect.sync(() => (reportBusyId = null))),
+      ),
+    );
   }
 
   function promptSignIn() {
@@ -308,16 +368,21 @@
     shell.profileOpen = true;
   }
 
-  async function refreshSelectedDetail(id: string) {
-    if (selectedId !== id) return;
-    const detail = await getCommunityKeymap(id);
-    if (!detail) {
-      detailError = "This community keymap is no longer available.";
-      selectedDetail = null;
-      return;
-    }
-    selectedDetail = detail;
-    replaceCardFromDetail(detail);
+  function refreshSelectedDetailEffect(id: string) {
+    if (selectedId !== id) return Effect.void;
+    return remoteEffect("community.refresh-selected", () => getCommunityKeymap(id)).pipe(
+      Effect.tap((detail) =>
+        Effect.sync(() => {
+          if (!detail) {
+            detailError = "This community keymap is no longer available.";
+            selectedDetail = null;
+            return;
+          }
+          selectedDetail = detail;
+          replaceCardFromDetail(detail);
+        }),
+      ),
+    );
   }
 
   function applyCardPatch(id: string, patch: Partial<CommunityKeymapCardDto>) {
@@ -365,18 +430,13 @@
 
 </script>
 
-<section class={browseRouteClass}>
+<section class={browseRouteClass} data-community-store={data.communityStore}>
   <div class={browseShellClass}>
     <header class={browseHeaderClass}>
-      <div class={headlineClass}>
-        <span class={eyebrowClass}>Community</span>
-        <h2 class="m-0 text-kb-30">Browse keymaps</h2>
-      </div>
-
       <div class={searchBoxClass}>
         <span class="search-icon grid place-items-center text-ink-3" aria-hidden="true"><Search size={15} /></span>
-        <input
-          class="min-w-0 border-0 bg-transparent !text-[13px] text-ink outline-0 placeholder:text-ink-3"
+        <Input
+          class="h-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[13px] text-ink shadow-none placeholder:text-ink-3 focus-visible:border-transparent focus-visible:ring-0"
           type="search"
           placeholder="Search title, author, board, tag"
           bind:value={search}
@@ -386,53 +446,73 @@
     </header>
 
     <section class={filterPanelClass} aria-label="Browse filters">
-      <div class={cn("tag-strip", filterGroupClass)} aria-label="Tag filters">
-        <button
-          type="button"
-          class={cn(filterButtonClass, !activeTag && activeFilterButtonClass)}
-          aria-pressed={!activeTag}
-          onclick={() => setTag(undefined)}
-        >
-          All
-        </button>
-        {#each tagBank as tag (tag)}
-          <button
+      <div class={filterBandClass}>
+        <span class={filterBandLabelClass}>Tags</span>
+        <div class={cn("tag-strip", filterGroupClass)} aria-label="Tag filters">
+          <Button
             type="button"
-            class={cn(filterButtonClass, activeTag === tag && activeFilterButtonClass)}
-            aria-pressed={activeTag === tag}
-            onclick={() => setTag(activeTag === tag ? undefined : tag)}
+            variant="ghost"
+            size="sm"
+            class={cn(filterButtonClass, !activeTag && activeFilterButtonClass)}
+            aria-pressed={!activeTag}
+            onclick={() => setTag(undefined)}
           >
-            #{tag}
-          </button>
-        {/each}
+            All
+          </Button>
+          {#each tagBank as tag (tag)}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class={cn(filterButtonClass, activeTag === tag && activeFilterButtonClass)}
+              aria-pressed={activeTag === tag}
+              onclick={() => setTag(activeTag === tag ? undefined : tag)}
+            >
+              #{tag}
+            </Button>
+          {/each}
+        </div>
       </div>
 
-      <div class={filterRowClass}>
-        <label class={toggleFilterClass}>
-          <Switch bind:checked={compatibleOnly} size="sm" aria-label="Compatible with my board" />
-          <span>Compatible with {currentBoardName}</span>
-        </label>
+      <div class={filterBandClass}>
+        <span class={filterBandLabelClass}>Scope</span>
+        <div class={scopeGridClass}>
+          <div class={scopeFiltersClass}>
+            <label class={toggleFilterClass}>
+              <Switch bind:checked={compatibleOnly} size="sm" aria-label="Compatible with my board" />
+              <span>Compatible with {currentBoardName}</span>
+            </label>
 
-        <button
-          type="button"
-          class={cn("official-filter", filterButtonClass, officialOnly && activeFilterButtonClass)}
-          aria-pressed={officialOnly}
-          onclick={() => (officialOnly = !officialOnly)}
-        >
-          Official only
-        </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class={cn("official-filter", filterButtonClass, officialOnly && activeFilterButtonClass)}
+              aria-pressed={officialOnly}
+              onclick={() => (officialOnly = !officialOnly)}
+            >
+              Official only
+            </Button>
+          </div>
 
-        <div class={sortControlClass}>
-          <span class={eyebrowClass}>Sort</span>
-          <SegmentedNav
-            items={sortItems}
-            value={sort}
-            onselect={(next) => (sort = next)}
-            ariaLabel="Community keymap sort"
-          />
+          <div class={sortControlClass}>
+            <span class={eyebrowClass}>Sort</span>
+            <SegmentedNav
+              items={sortItems}
+              value={sort}
+              onselect={(next) => (sort = next)}
+              ariaLabel="Community keymap sort"
+            />
+          </div>
+
+          <Chip
+            class="result-count min-w-[62px] justify-self-end max-[820px]:justify-self-start"
+            title={loading ? "Updating community keymaps" : "Current result count"}
+          >{resultCopy}</Chip>
+          <span class="sr-only" aria-live="polite">
+            {loading ? "Updating community keymaps" : `${resultCopy} shown`}
+          </span>
         </div>
-
-        <Chip title="Current result count">{resultCopy}</Chip>
       </div>
     </section>
 
@@ -446,7 +526,7 @@
 
     {#if cards.length === 0 && !loading}
       <div class={emptyPanelClass}>
-        <span class="material-symbols-outlined !text-[28px]" aria-hidden="true">explore_off</span>
+        <span class="material-symbols-outlined text-[28px]" aria-hidden="true">explore_off</span>
         <strong>No matching keymaps</strong>
         <Button variant="ghost" size="sm" onclick={clearFilters}>Clear filters</Button>
       </div>
@@ -502,9 +582,16 @@
             <span class={reportLabelTextClass}>Report keymap</span>
             <h3 class="m-0 mt-kb-4 overflow-hidden text-ellipsis whitespace-nowrap text-kb-16">{reportTarget.title}</h3>
           </div>
-          <button class={reportCloseButtonClass} type="button" aria-label="Close report dialog" onclick={closeReport}>
+          <Button
+            class={reportCloseButtonClass}
+            variant="outline"
+            size="icon"
+            type="button"
+            aria-label="Close report dialog"
+            onclick={closeReport}
+          >
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
-          </button>
+          </Button>
         </header>
 
         <label class={reportFieldClass}>

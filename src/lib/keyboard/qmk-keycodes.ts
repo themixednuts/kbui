@@ -63,7 +63,7 @@ export const qmkDirectKeycodes: Record<number, QmkKeycodeInfo> = {
   0x002e: { key: "KC_EQUAL", label: "=", aliases: ["KC_EQL"], group: "basic" },
   0x002f: { key: "KC_LEFT_BRACKET", label: "[", aliases: ["KC_LBRC"], group: "basic" },
   0x0030: { key: "KC_RIGHT_BRACKET", label: "]", aliases: ["KC_RBRC"], group: "basic" },
-  0x0031: { key: "KC_BACKSLASH", label: "\\\\", aliases: ["KC_BSLS"], group: "basic" },
+  0x0031: { key: "KC_BACKSLASH", label: "\\", aliases: ["KC_BSLS"], group: "basic" },
   0x0032: { key: "KC_NONUS_HASH", label: "#", aliases: ["KC_NUHS"], group: "basic" },
   0x0033: { key: "KC_SEMICOLON", label: ";", aliases: ["KC_SCLN"], group: "basic" },
   0x0034: { key: "KC_QUOTE", label: "'", aliases: ["KC_QUOT"], group: "basic" },
@@ -363,7 +363,7 @@ export const qmkDirectKeycodes: Record<number, QmkKeycodeInfo> = {
     aliases: ["!reset!", "MS_ACL2"],
     group: "mouse",
   },
-  0x00e0: { key: "KC_LEFT_CTRL", label: "Left Control", aliases: ["KC_LCTL"], group: "modifiers" },
+  0x00e0: { key: "KC_LEFT_CTRL", label: "Left Ctrl", aliases: ["KC_LCTL"], group: "modifiers" },
   0x00e1: { key: "KC_LEFT_SHIFT", label: "Left Shift", aliases: ["KC_LSFT"], group: "modifiers" },
   0x00e2: {
     key: "KC_LEFT_ALT",
@@ -379,7 +379,7 @@ export const qmkDirectKeycodes: Record<number, QmkKeycodeInfo> = {
   },
   0x00e4: {
     key: "KC_RIGHT_CTRL",
-    label: "Right Control",
+    label: "Right Ctrl",
     aliases: ["KC_RCTL"],
     group: "modifiers",
   },

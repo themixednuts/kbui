@@ -15,6 +15,7 @@ export const load: LayoutServerLoad = ({ locals }) => ({
           name: locals.user.name,
           email: locals.user.email,
           image: locals.user.image,
+          githubLogin: locals.user.githubLogin,
         }
       : null,
   },

@@ -106,7 +106,7 @@ async function pairFromCode(code: string, baseUrlInput: string | undefined): Pro
       code,
       installId,
       extensionVersion: version,
-      label: "kbgui Monkeytype Tagger",
+      label: "kbui Monkeytype Tagger",
       pairedAt: new Date().toISOString()
     },
     version,

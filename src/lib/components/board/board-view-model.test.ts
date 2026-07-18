@@ -47,6 +47,19 @@ describe("board view model", () => {
     expect(space.sourceLabel).toBe("Base");
   });
 
+  it("renders the backslash key as one glyph", () => {
+    const model = createBoardViewModel({
+      profile: sampleKeyboard,
+      activeLayer: "base",
+      lens: "keys",
+    });
+
+    expect(key(model.keys, "k1-13")).toMatchObject({
+      display: "\\",
+      label: "\\",
+    });
+  });
+
   it("keeps transparent keys visually empty when fall-through display is disabled", () => {
     const model = createBoardViewModel({
       profile: sampleKeyboard,
@@ -73,15 +86,34 @@ describe("board view model", () => {
 
     expect(key(model.keys, "k1-1")).toMatchObject({
       selected: true,
-      comboMarker: { text: "C" },
+      comboMarker: { text: "Esc" },
     });
     expect(key(model.keys, "k1-2")).toMatchObject({
       marked: true,
-      comboMarker: { text: "C" },
+      comboMarker: { text: "Esc" },
     });
     expect(model.comboConnectors).toHaveLength(1);
     expect(model.comboConnectors[0].title).toContain("QW Escape");
-    expect(key(model.keys, "k4-4").layerMarker).toMatchObject({ text: "L1" });
+    expect(key(model.keys, "k4-4")).toMatchObject({
+      label: "MO",
+      sublabel: null,
+      layerMarker: { text: "L1" },
+    });
+  });
+
+  it("suppresses physical legends that merely repeat the rendered key label", () => {
+    const model = createBoardViewModel({ profile: sampleKeyboard, activeLayer: "base" });
+
+    expect(key(model.keys, "k0-1")).toMatchObject({
+      legend: "1",
+      label: "1",
+      cornerLegend: null,
+    });
+    expect(key(model.keys, "k4-4")).toMatchObject({
+      legend: "Fn",
+      label: "MO",
+      cornerLegend: "Fn",
+    });
   });
 
   it("converts engine lighting to OKLCH display colors and treats zero brightness as off", () => {
@@ -125,7 +157,13 @@ describe("board view model", () => {
   it("computes a responsive unit range compatible with the handoff renderer", () => {
     const model = createBoardViewModel({ profile: sampleKeyboard, activeLayer: "base" });
 
-    expect(computeBoardUnit(model, 360)).toBe(28);
+    const narrowUnit = computeBoardUnit(model, 360);
+    expect(narrowUnit).toBeGreaterThanOrEqual(12);
+    expect(narrowUnit * model.bounds.width).toBeLessThanOrEqual(360 - 80);
     expect(computeBoardUnit(model, 1200)).toBe(58);
+
+    const heightConstrained = computeBoardUnit(model, 1200, 300);
+    expect(heightConstrained).toBeLessThan(58);
+    expect(heightConstrained * model.bounds.height).toBeLessThanOrEqual(300 - 72);
   });
 });

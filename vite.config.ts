@@ -4,7 +4,12 @@ import agents from "agents/vite";
 import sqlocal from "sqlocal/vite";
 import { defineConfig } from "vite-plus";
 
-const externalArtifactPatterns = ["resources/**", "docs/redesign/**", "extension/**"];
+const externalArtifactPatterns = [
+  "resources/**",
+  "docs/redesign/**",
+  "extension/**",
+  "src/cloudflare.d.ts",
+];
 
 export default defineConfig({
   fmt: { ignorePatterns: externalArtifactPatterns },
@@ -18,7 +23,17 @@ export default defineConfig({
   run: {
     tasks: {
       "dev:worker": {
-        command: "vp build && vp exec wrangler dev --ip 127.0.0.1 --port 8787",
+        command:
+          "node scripts/dev-worker.mjs --check-only && vp build && node scripts/dev-worker.mjs",
+        cache: false,
+      },
+      "dev:worker:test": {
+        command:
+          "node scripts/dev-worker.mjs --check-only && vp build && node scripts/dev-worker.mjs -- --persist-to .wrangler/worker-test-state",
+        cache: false,
+      },
+      "dev:webhook": {
+        command: "node scripts/dev-webhook-tunnel.mjs",
         cache: false,
       },
       "playwright:install": {
@@ -27,6 +42,10 @@ export default defineConfig({
       },
       "test:e2e": {
         command: "playwright test",
+        cache: false,
+      },
+      "test:worker": {
+        command: "playwright test --config playwright.worker.config.ts",
         cache: false,
       },
       capture: {
@@ -59,8 +78,7 @@ export default defineConfig({
         cache: false,
       },
       "types:cf": {
-        command:
-          "wrangler types src/cloudflare.d.ts --include-runtime false && node scripts/patch-cloudflare-types.mjs",
+        command: "wrangler types src/cloudflare.d.ts && node scripts/patch-cloudflare-types.mjs",
         cache: false,
       },
       "worker:patch": {
@@ -71,20 +89,6 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
-    // Cross-origin isolation for the dev server. Required by SAB / OPFS
-    // (sqlocal) and any future threaded WASM features. The matching prod
-    // rules live in `_headers` at the repo root so the deployed worker
-    // ships them too.
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
-  },
-  preview: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
   },
   plugins: [tailwindcss(), agents(), sqlocal(), sveltekit()],
 });

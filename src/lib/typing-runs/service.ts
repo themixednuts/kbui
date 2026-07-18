@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import {
   normalizeIngestRunRequest,
   normalizePairDeviceRequest,
@@ -18,91 +22,170 @@ import {
 export const TYPING_RUNS_REQUIRES_WORKER =
   "Typing run extension features require the worker dev server and a signed-in GitHub session. Run `vp run dev:worker`, sign in, then retry.";
 
-export async function createPairingTokenFromEnvironment(
+export function createPairingTokenFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
   meta: CreatePairingTokenMeta = {},
 ): Promise<CreatePairingTokenResponse> {
-  return typingRunsAgent(env).createPairingToken(userId, meta);
+  return runTypingEffect(
+    "create-pairing-token",
+    agentCallEffect("create-pairing-token", () =>
+      typingRunsAgent(env).createPairingToken(userId, meta),
+    ),
+  );
 }
 
-export async function pairExtensionDeviceFromEnvironment(
+export function pairExtensionDeviceFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawInput: unknown,
 ): Promise<PairDeviceResponse | null> {
-  const input = normalizePairDeviceRequest(rawInput);
-  return typingRunsAgent(env).pairDevice(input.code, input);
+  return runTypingEffect(
+    "pair-device",
+    Effect.flatMap(
+      normalizeEffect("pair-device", () => normalizePairDeviceRequest(rawInput)),
+      (input) =>
+        agentCallEffect("pair-device", () => typingRunsAgent(env).pairDevice(input.code, input)),
+    ),
+  );
 }
 
-export async function resolveExtensionDeviceTokenFromEnvironment(
+export function resolveExtensionDeviceTokenFromEnvironment(
   env: Cloudflare.Env | undefined,
   token: string,
 ): Promise<string | null> {
   const trimmed = token.trim();
-  if (!trimmed) return null;
-  return typingRunsAgent(env).resolveDeviceToken(trimmed);
+  if (!trimmed) return runTypingEffect("resolve-empty-device-token", Effect.succeed(null));
+  return runTypingEffect(
+    "resolve-device-token",
+    agentCallEffect("resolve-device-token", () => typingRunsAgent(env).resolveDeviceToken(trimmed)),
+  );
 }
 
-export async function listExtensionDevicesFromEnvironment(
+export function listExtensionDevicesFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
 ): Promise<ExtensionDeviceDto[]> {
-  return typingRunsAgent(env).listDevices(userId);
+  return runTypingEffect(
+    "list-devices",
+    agentCallEffect("list-devices", () => typingRunsAgent(env).listDevices(userId)),
+  );
 }
 
-export async function revokeExtensionDeviceFromEnvironment(
+export function revokeExtensionDeviceFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
   id: unknown,
 ): Promise<void> {
-  if (typeof id !== "string" || !id.trim()) throw new Error("Extension device id is required.");
-  return typingRunsAgent(env).revokeDevice(userId, id.trim());
+  return runTypingEffect(
+    "revoke-device",
+    Effect.flatMap(
+      normalizeEffect("device-id", () => {
+        if (typeof id !== "string" || !id.trim()) {
+          throw new Error("Extension device id is required.");
+        }
+        return id.trim();
+      }),
+      (deviceId) =>
+        agentCallEffect("revoke-device", () => typingRunsAgent(env).revokeDevice(userId, deviceId)),
+    ),
+  );
 }
 
-export async function setKeyboardChoicesFromEnvironment(
+export function setKeyboardChoicesFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
   rawChoices: unknown,
 ): Promise<void> {
-  const choices = normalizeSetKeyboardChoicesRequest(rawChoices);
-  return typingRunsAgent(env).setKeyboardChoices(userId, choices);
+  return runTypingEffect(
+    "set-keyboard-choices",
+    Effect.flatMap(
+      normalizeEffect("keyboard-choices", () => normalizeSetKeyboardChoicesRequest(rawChoices)),
+      (choices) =>
+        agentCallEffect("set-keyboard-choices", () =>
+          typingRunsAgent(env).setKeyboardChoices(userId, choices),
+        ),
+    ),
+  );
 }
 
-export async function getKeyboardChoicesFromEnvironment(
+export function getKeyboardChoicesFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
 ): Promise<KeyboardChoicesResponse> {
-  return typingRunsAgent(env).getKeyboardChoices(userId);
+  return runTypingEffect(
+    "get-keyboard-choices",
+    agentCallEffect("get-keyboard-choices", () => typingRunsAgent(env).getKeyboardChoices(userId)),
+  );
 }
 
-export async function ingestTypingRunFromEnvironment(
+export function ingestTypingRunFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
   rawInput: unknown,
 ): Promise<IngestRunResponse> {
-  const input = normalizeIngestRunRequest(rawInput);
-  return typingRunsAgent(env).ingestRun(userId, {
-    ...input.capture,
-    idempotencyKey: input.idempotencyKey,
-  });
+  return runTypingEffect(
+    "ingest-run",
+    Effect.flatMap(
+      normalizeEffect("ingest-run", () => normalizeIngestRunRequest(rawInput)),
+      (input) =>
+        agentCallEffect("ingest-run", () =>
+          typingRunsAgent(env).ingestRun(userId, {
+            ...input.capture,
+            idempotencyKey: input.idempotencyKey,
+          }),
+        ),
+    ),
+  );
 }
 
-export async function listTaggedRunsFromEnvironment(
+export function listTaggedRunsFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
   rawFilter: unknown,
 ): Promise<TaggedRun[]> {
-  const filter = normalizeTaggedRunsFilter(rawFilter);
-  return typingRunsAgent(env).listTaggedRuns(userId, filter);
+  return runTypingEffect(
+    "list-tagged-runs",
+    Effect.flatMap(
+      normalizeEffect("tagged-runs-filter", () => normalizeTaggedRunsFilter(rawFilter)),
+      (filter) =>
+        agentCallEffect("list-tagged-runs", () =>
+          typingRunsAgent(env).listTaggedRuns(userId, filter),
+        ),
+    ),
+  );
 }
 
-export async function getTypingRunStatsFromEnvironment(
+export function getTypingRunStatsFromEnvironment(
   env: Cloudflare.Env | undefined,
   userId: string,
   rawGroupBy: unknown,
 ): Promise<TypingRunStatsGroup[]> {
-  const groupBy = normalizeTypingRunStatsGroupBy(rawGroupBy);
-  return typingRunsAgent(env).getStats(userId, groupBy);
+  return runTypingEffect(
+    "get-stats",
+    Effect.flatMap(
+      normalizeEffect("stats-group", () => normalizeTypingRunStatsGroupBy(rawGroupBy)),
+      (groupBy) =>
+        agentCallEffect("get-stats", () => typingRunsAgent(env).getStats(userId, groupBy)),
+    ),
+  );
+}
+
+function normalizeEffect<A>(operation: string, normalize: () => A) {
+  return Effect.try({
+    try: normalize,
+    catch: (cause) => platformError(`typing-runs.${operation}`, cause),
+  });
+}
+
+function agentCallEffect<A>(operation: string, call: () => PromiseLike<A>) {
+  return Effect.tryPromise({
+    try: call,
+    catch: (cause) => platformError(`typing-runs.agent.${operation}`, cause),
+  });
+}
+
+function runTypingEffect<A, E>(operation: string, effect: Effect.Effect<A, E>) {
+  return runWorkerEffect(`typing-runs.service.${operation}`, effect);
 }
 
 function typingRunsAgent(env: Cloudflare.Env | undefined) {

@@ -103,7 +103,7 @@
             tone={statusTone}
             dot={status.state === "connected" ? "var(--color-mint)" : undefined}
             title={status.title ?? status.label}
-            class="flex-[0_1_168px] min-w-[28px] max-w-[clamp(28px,14vw,200px)] max-[1180px]:!min-w-[28px] max-[1180px]:!max-w-[28px] max-[1180px]:!w-[28px] max-[1180px]:!justify-center"
+            class="flex-[0_1_168px] min-w-[28px] max-w-[clamp(28px,14vw,200px)] max-[1180px]:w-[28px] max-[1180px]:min-w-[28px] max-[1180px]:max-w-[28px] max-[1180px]:justify-center"
           >
             <Activity size={13} />
             <span

@@ -1,19 +1,33 @@
 <script lang="ts">
   import { browser, dev } from "$app/environment";
-  import { goto } from "$app/navigation";
+  import { afterNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { Accent, runApp } from "$lib/app";
+  import {
+    BookOpen,
+    BookmarkPlus,
+    Cable,
+    Compass,
+    Gauge,
+    GitBranch,
+    History,
+    Keyboard,
+    Settings2,
+  } from "@lucide/svelte";
+  import { Effect } from "effect";
+  import { Accent, runApp, Theme } from "$lib/app";
+  import { activateViaConnectionAndProfile } from "$lib/app/connect-flow";
   import { authClient } from "$lib/auth-client";
   import { cn } from "$lib/utils.js";
-  import { onDestroy, untrack } from "svelte";
-  import AvatarButton from "$lib/components/ui/AvatarButton.svelte";
+  import { platformError } from "$lib/effect/errors";
+  import { onDestroy, onMount, untrack } from "svelte";
   import Brand from "$lib/components/ui/Brand.svelte";
   import Button from "$lib/components/ui/Button.svelte";
-  import Chip from "$lib/components/ui/Chip.svelte";
+  import * as Popover from "$lib/components/ui/popover/index.js";
   import {
     setShellContext,
     routeTitleFromPath,
     ShellStore,
+    type AppRouteId,
     type ShellSessionUser,
   } from "$lib/app/shell-store.svelte";
   import {
@@ -21,10 +35,23 @@
     setWorkbenchContext,
     WorkbenchStore,
   } from "$lib/app/workbench-store.svelte";
+  import { createViaCatalogResolver } from "$lib/app/via-catalog-resolver";
+  import {
+    FirmwareBuildEventsStore,
+    setFirmwareBuildEventsContext,
+  } from "$lib/app/firmware-build-events.svelte";
+  import { WorkbenchCloudSyncStore } from "$lib/app/workbench-cloud-sync.svelte";
   import { KeyboardLiveSyncEngine } from "$lib/app/live-sync-coordinator.svelte";
   import {
     setViaLiveSyncContext,
   } from "$lib/app/via-live-sync.svelte";
+  import { detectGrantedKeyboard } from "$lib/keyboard/transport";
+  import { sampleBoardIdFromParam } from "$lib/keyboard/sample-boards";
+  import {
+    getViaKeyboardDetail,
+    getViaKeyboardIndex,
+    resolveKeyboardIdentity,
+  } from "../keyboards.remote";
 
   type AuthSessionData = {
     user?: ShellSessionUser | null;
@@ -41,19 +68,31 @@
   let { children, data } = $props();
 
   const shell = new ShellStore();
-  const workbench = new WorkbenchStore();
+  const initialBoardId = untrack(() => sampleBoardIdFromParam(page.url.searchParams.get("board")));
+  const workbench = new WorkbenchStore({ boardId: initialBoardId });
   const liveSync = new KeyboardLiveSyncEngine({ editor: workbench, shell });
+  const firmwareBuildEvents = new FirmwareBuildEventsStore();
+  const workbenchCloudSync = new WorkbenchCloudSyncStore();
+  const viaCatalog = createViaCatalogResolver({
+    getViaKeyboardDetail,
+    getViaKeyboardIndex,
+    resolveKeyboardIdentity,
+    workbench,
+  });
   setShellContext(shell);
   setWorkbenchContext(workbench);
   setViaLiveSyncContext(liveSync);
+  setFirmwareBuildEventsContext(firmwareBuildEvents);
   const initialAuthUser = untrack(() => data.auth?.user ?? null);
   shell.setSessionUser(initialAuthUser);
   const pathname = $derived(page.url.pathname);
   const routeTitle = $derived(routeTitleFromPath(pathname));
+  const showAppbar = $derived(!pathname.startsWith("/connect"));
+  const editorAppbar = $derived(pathname.startsWith("/editor"));
   const activeBoardName = $derived(workbench.profile.name);
   const activeBoardTitle = $derived(
     workbench.profile.origin === "starter"
-      ? "Starter board template"
+      ? "Local profile"
       : shell.connected
         ? "Connected board"
         : workbench.profile.origin === "draft"
@@ -61,19 +100,28 @@
           : "Active board profile",
   );
   const accountAvatar = $derived(shell.account.image ?? null);
+  const accountId = $derived(
+    shell.account.status === "signed-in" ? (shell.account.id ?? null) : null,
+  );
+  const navIcons: Record<AppRouteId, typeof Cable> = {
+    browse: Compass,
+    connect: Cable,
+    editor: Keyboard,
+    library: BookOpen,
+    settings: Settings2,
+    versions: History,
+  };
   const monkeytypeProfileUrl = $derived(
     shell.monkeytype.username
       ? `https://monkeytype.com/profile/${encodeURIComponent(shell.monkeytype.username)}`
       : null,
   );
 
-  let authRequested = $state(false);
-  let accentRequested = $state(false);
-  let previousPathname = $state("");
   let lastSsrUserKey = $state(sessionUserKey(initialAuthUser));
   let authBusy = $state(false);
   let monkeytypeRequestedFor = $state<string | null>(null);
   let monkeytypeBusy = $state(false);
+  let autoReconnectRequested = $state(false);
 
   $effect(() => {
     const user = data.auth?.user ?? null;
@@ -83,16 +131,14 @@
     shell.setSessionUser(user);
   });
 
-  $effect(() => {
-    if (pathname === previousPathname) return;
-    previousPathname = pathname;
+  afterNavigate(() => {
     shell.closeProfile();
   });
 
-  $effect(() => {
-    if (!browser || authRequested) return;
-    authRequested = true;
+  onMount(() => {
     void refreshSession();
+    void runApp("Load accent", Accent.loadAndApply);
+    void runApp("Load theme", Theme.loadAndApply);
   });
 
   $effect(() => {
@@ -108,22 +154,26 @@
   });
 
   $effect(() => {
-    if (!browser || accentRequested) return;
-    accentRequested = true;
-    void runApp("Load accent", Accent.loadAndApply);
-  });
-
-  $effect(() => {
-    shell.setDirty(workbench.dirty);
-    shell.updateConnectedBoard({
-      board: workbench.profile.name,
-      protocol: protocolLabel(workbench.profile.protocol),
-    });
-    shell.setCurrentVariant({
+    const dirty = workbench.dirty;
+    const board = workbench.profile.name;
+    const protocol = protocolLabel(workbench.profile.protocol);
+    const variant = {
       id: workbench.activeVariant.id,
       name: workbench.activeVariant.name,
       color: workbench.activeVariant.color,
+    };
+    untrack(() => {
+      shell.setDirty(dirty);
+      shell.updateConnectedBoard({ board, protocol });
+      shell.setCurrentVariant(variant);
     });
+  });
+
+  $effect(() => {
+    if (!browser || autoReconnectRequested || !workbench.hydrated) return;
+    if (shell.device.status === "connected" || shell.device.status === "connecting") return;
+    autoReconnectRequested = true;
+    void reconnectGrantedKeyboard();
   });
 
   $effect(() => {
@@ -132,12 +182,26 @@
 
   onDestroy(() => {
     liveSync.destroy();
-    void workbench.flushPersistence();
+    void runApp(
+      "workbench.flush-on-destroy",
+      hostEffect("workbench.flush-on-destroy", () => workbench.flushPersistence()),
+    );
   });
 
-  async function refreshSession() {
-    try {
-      const result = await authClient.getSession();
+  function hostEffect<A>(operation: string, task: () => PromiseLike<A>) {
+    return Effect.tryPromise({
+      try: task,
+      catch: (cause) => platformError(operation, cause),
+    });
+  }
+
+  function refreshSessionEffect() {
+    if (dev) {
+      return Effect.sync(() => shell.setAuthError(workerAuthHint));
+    }
+
+    return Effect.gen(function* () {
+      const result = yield* hostEffect("auth.get-session", () => authClient.getSession());
       const error = result.error as AuthClientError | null | undefined;
       if (error) {
         shell.setAuthError(authMessage(error, "Auth unavailable"));
@@ -146,111 +210,183 @@
 
       const session = result.data as AuthSessionData;
       shell.setSessionUser(session?.user);
-    } catch (error) {
-      shell.setAuthError(authMessage(error, "Auth unavailable"));
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => shell.setAuthError(authMessage(error, "Auth unavailable"))),
+      ),
+    );
   }
 
-  async function loadMonkeytypeStatus() {
-    try {
-      const result = await authClient.monkeytype.status();
+  function refreshSession() {
+    void runApp("auth.refresh-session", refreshSessionEffect());
+  }
+
+  function monkeytypeStatusEffect(
+    operation: string,
+    fallback: string,
+    request: () => PromiseLike<Awaited<ReturnType<typeof authClient.monkeytype.status>>>,
+  ) {
+    return Effect.gen(function* () {
+      const result = yield* hostEffect(operation, request);
       const error = result.error as AuthClientError | null | undefined;
       if (error) {
-        shell.setMonkeytypeError(errorMessage(error, "Monkeytype unavailable"));
+        shell.setMonkeytypeError(errorMessage(error, fallback));
         return;
       }
       shell.setMonkeytypeStatus(result.data);
-    } catch (error) {
-      shell.setMonkeytypeError(errorMessage(error, "Monkeytype unavailable"));
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => shell.setMonkeytypeError(errorMessage(error, fallback))),
+      ),
+    );
   }
 
-  async function refreshMonkeytype() {
+  function loadMonkeytypeStatus() {
+    void runApp(
+      "monkeytype.load-status",
+      monkeytypeStatusEffect("monkeytype.status", "Monkeytype unavailable", () =>
+        authClient.monkeytype.status(),
+      ),
+    );
+  }
+
+  function refreshMonkeytype() {
     if (monkeytypeBusy) return;
     monkeytypeBusy = true;
-    try {
-      const result = await authClient.monkeytype.refresh({ force: true });
-      const error = result.error as AuthClientError | null | undefined;
-      if (error) {
-        shell.setMonkeytypeError(errorMessage(error, "Monkeytype refresh failed"));
-        return;
-      }
-      shell.setMonkeytypeStatus(result.data);
-    } catch (error) {
-      shell.setMonkeytypeError(errorMessage(error, "Monkeytype refresh failed"));
-    } finally {
-      monkeytypeBusy = false;
-    }
+    void runApp(
+      "monkeytype.refresh",
+      monkeytypeStatusEffect("monkeytype.refresh", "Monkeytype refresh failed", () =>
+        authClient.monkeytype.refresh({ force: true }),
+      ).pipe(Effect.ensuring(Effect.sync(() => (monkeytypeBusy = false)))),
+    );
   }
 
-  async function disconnectMonkeytype() {
+  function disconnectMonkeytype() {
     if (monkeytypeBusy) return;
     monkeytypeBusy = true;
-    try {
-      const result = await authClient.monkeytype.disconnect();
-      const error = result.error as AuthClientError | null | undefined;
-      if (error) {
-        shell.setMonkeytypeError(errorMessage(error, "Monkeytype disconnect failed"));
-        return;
-      }
-      shell.setMonkeytypeStatus(result.data);
-    } catch (error) {
-      shell.setMonkeytypeError(errorMessage(error, "Monkeytype disconnect failed"));
-    } finally {
-      monkeytypeBusy = false;
-    }
+    void runApp(
+      "monkeytype.disconnect",
+      monkeytypeStatusEffect("monkeytype.disconnect", "Monkeytype disconnect failed", () =>
+        authClient.monkeytype.disconnect(),
+      ).pipe(Effect.ensuring(Effect.sync(() => (monkeytypeBusy = false)))),
+    );
   }
 
-  async function signInGithub() {
+  function signInGithub() {
+    if (authBusy) return;
+    if (dev) {
+      shell.setAuthError(workerAuthHint);
+      return;
+    }
+
+    authBusy = true;
+
+    void runApp(
+      "auth.sign-in-github",
+      Effect.gen(function* () {
+        const result = yield* hostEffect("auth.sign-in-github", () =>
+          authClient.signIn.social({
+            provider: "github",
+            callbackURL: "/",
+            disableRedirect: true,
+          }),
+        );
+
+        const error = result.error as AuthClientError | null | undefined;
+        if (error) {
+          shell.setAuthError(authMessage(error, "GitHub sign-in failed"));
+          return;
+        }
+
+        const signInData = result.data as { url?: string } | null;
+        if (!signInData?.url) {
+          shell.setAuthError("GitHub sign-in did not return an authorize URL.");
+          return;
+        }
+
+        globalThis.location.assign(signInData.url);
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => shell.setAuthError(authMessage(error, "GitHub sign-in failed"))),
+        ),
+        Effect.ensuring(Effect.sync(() => (authBusy = false))),
+      ),
+    );
+  }
+
+  function signOut() {
     if (authBusy) return;
     authBusy = true;
 
-    try {
-      const result = await authClient.signIn.social({
-        provider: "github",
-        callbackURL: "/",
-        disableRedirect: true,
-      });
+    void runApp(
+      "auth.sign-out",
+      Effect.gen(function* () {
+        const result = yield* hostEffect("auth.sign-out", () => authClient.signOut());
+        const error = result.error as AuthClientError | null | undefined;
+        if (error) {
+          shell.setAuthError(authMessage(error, "Sign out failed"));
+          return;
+        }
 
-      const error = result.error as AuthClientError | null | undefined;
-      if (error) {
-        shell.setAuthError(authMessage(error, "GitHub sign-in failed"));
-        return;
-      }
-
-      const signInData = result.data as { url?: string } | null;
-      if (!signInData?.url) {
-        shell.setAuthError("GitHub sign-in did not return an authorize URL.");
-        return;
-      }
-
-      globalThis.location.assign(signInData.url);
-    } catch (error) {
-      shell.setAuthError(authMessage(error, "GitHub sign-in failed"));
-    } finally {
-      authBusy = false;
-    }
+        shell.setSignedOut();
+        yield* refreshSessionEffect();
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => shell.setAuthError(authMessage(error, "Sign out failed"))),
+        ),
+        Effect.ensuring(Effect.sync(() => (authBusy = false))),
+      ),
+    );
   }
 
-  async function signOut() {
-    if (authBusy) return;
-    authBusy = true;
+  function reconnectGrantedKeyboard() {
+    void runApp(
+      "keyboard.reconnect-granted",
+      Effect.gen(function* () {
+        const connection = yield* hostEffect("keyboard.detect-granted", () =>
+          detectGrantedKeyboard({ resolveMatrixHint: viaCatalog.matrixHintFor }),
+        );
+      if (!connection) return;
 
-    try {
-      const result = await authClient.signOut();
-      const error = result.error as AuthClientError | null | undefined;
-      if (error) {
-        shell.setAuthError(authMessage(error, "Sign out failed"));
+      const transport = connection.transport === "webusb" ? "WebUSB" : "WebHID";
+      if (connection.status !== "connected") {
+        if (connection.status === "error") shell.setConnectionError(connection.message, transport);
         return;
       }
 
-      shell.setSignedOut();
-      await refreshSession();
-    } catch (error) {
-      shell.setAuthError(authMessage(error, "Sign out failed"));
-    } finally {
-      authBusy = false;
-    }
+        yield* hostEffect("keyboard.activate-granted", () =>
+          activateViaConnectionAndProfile({
+            connection,
+            displayTransport: transport,
+            resolveBaseProfile: viaCatalog.baseProfileForConnection,
+            shell,
+            workbench,
+          }),
+        );
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (!shell.connected) {
+              shell.setConnectionError(
+                error instanceof Error
+                  ? error.message
+                  : "Could not reconnect the previous keyboard.",
+                "WebHID",
+              );
+            }
+          }),
+        ),
+      ),
+    );
+  }
+
+  function openMonkeytypeSettings(event: MouseEvent) {
+    event.preventDefault();
+    shell.closeProfile();
+    void runApp(
+      "navigation.monkeytype-settings",
+      hostEffect("navigation.monkeytype-settings", () => goto("/settings")),
+    );
   }
 
   function sessionUserKey(user: ShellSessionUser | null | undefined) {
@@ -293,44 +429,34 @@
     });
   }
 
-  function handlePrimaryAction() {
-    if (!shell.connected) {
-      void goto("/connect");
-    }
-  }
-
-  function openVersionsForSavePoint() {
-    void goto("/versions");
-  }
-
   const appShellClass =
-    "new-app-shell grid min-h-screen grid-cols-[208px_minmax(0,1fr)] overflow-hidden bg-[radial-gradient(ellipse_95%_75%_at_100%_0%,color-mix(in_oklch,var(--teal)_9%,transparent),transparent_58%),var(--paper)] text-ink max-[900px]:grid-cols-[72px_minmax(0,1fr)] max-[560px]:grid-cols-[58px_minmax(0,1fr)]";
+    "new-app-shell grid h-dvh min-h-0 grid-cols-[62px_minmax(0,1fr)] overflow-hidden bg-paper text-ink max-[560px]:grid-cols-[54px_minmax(0,1fr)]";
   const leftRailClass =
-    "left-rail relative z-[2] flex min-h-screen min-w-0 flex-col gap-[18px] border-r border-line bg-[color-mix(in_oklch,var(--surface)_78%,var(--paper))] max-[900px]:gap-[12px]";
+    "left-rail relative z-[2] flex min-h-0 min-w-0 flex-col items-center gap-kb-4 border-r border-line bg-surface px-0 pt-kb-14 pb-kb-12";
   const railBrandClass =
-    "rail-brand flex min-h-[58px] items-center border-b border-line px-[16px] max-[900px]:justify-center max-[900px]:px-0";
-  const railNavClass =
-    "rail-nav grid gap-[5px] px-[12px] py-[8px] max-[900px]:px-[10px] max-[560px]:px-[7px]";
+    "rail-brand flex items-center justify-center px-0 pb-kb-12";
+  const railNavClass = "rail-nav grid gap-kb-4 px-0 py-0";
   const railNavItemClass =
-    "rail-nav-item grid min-h-[38px] grid-cols-[22px_minmax(0,1fr)_16px] items-center gap-[10px] rounded-[8px] border border-transparent px-[10px] text-[13px] text-ink-2 no-underline transition-[border-color,background,color] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:border-line hover:bg-[color-mix(in_oklch,var(--surface)_72%,transparent)] hover:text-ink max-[900px]:grid-cols-[1fr] max-[900px]:justify-items-center max-[900px]:gap-0 max-[900px]:px-0";
+    "rail-nav-item relative grid size-[42px] place-items-center rounded-[11px] border border-transparent text-ink-3 no-underline transition-[border-color,background,color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:bg-surface-2 hover:text-ink max-[560px]:size-[40px]";
   const railNavItemActiveClass =
-    "active border-ink bg-ink text-paper shadow-card hover:border-ink hover:bg-ink hover:text-paper";
-  const railIconClass = "material-symbols-outlined rail-icon !text-[19px] max-[560px]:!text-[20px]";
-  const railLabelClass = "rail-label overflow-hidden text-ellipsis whitespace-nowrap max-[900px]:hidden";
-  const railCheckClass = "material-symbols-outlined rail-check text-mint !text-[16px] max-[900px]:hidden";
-  const railFooterClass = "rail-footer relative mt-auto grid gap-[10px] px-[12px] pb-[14px] max-[900px]:px-[10px]";
+    "active border-line bg-card text-ink shadow-card before:absolute before:top-1/2 before:left-[-10px] before:h-[18px] before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-coral before:content-[''] hover:border-line hover:bg-card hover:text-ink max-[560px]:before:left-[-7px]";
+  const railIconClass = "rail-icon size-[20px]";
+  const railLabelClass = "rail-label sr-only";
+  const railFooterClass =
+    "rail-footer relative mt-auto grid justify-items-center px-0 pb-0";
   const profilePopoverClass =
-    "profile-popover absolute right-[12px] bottom-[114px] left-[12px] z-[5] overflow-hidden rounded-[12px] border border-line-2 bg-surface shadow-popover max-[900px]:right-auto max-[900px]:left-[60px] max-[900px]:w-[212px]";
-  const profileHeadClass = "profile-head grid grid-cols-[40px_minmax(0,1fr)] items-center gap-[10px] p-[12px]";
+    "profile-popover w-[320px] max-w-[calc(100vw-112px)] overflow-hidden rounded-lg border-line-2 bg-surface p-0 shadow-popover max-[560px]:w-[calc(100vw-76px)]";
+  const profileHeadClass =
+    "profile-head grid grid-cols-[40px_minmax(0,1fr)] items-center gap-kb-10 p-kb-12";
   const profileAvatarClass =
-    "profile-avatar grid size-[40px] place-items-center overflow-hidden rounded-[10px] border border-line-2 bg-paper-2 font-mono text-[12px] font-bold";
+    "profile-avatar grid size-kb-40 place-items-center overflow-hidden rounded-lg border border-line-2 bg-surface-2 font-mono text-kb-12 font-bold";
   const profileIdentityClass = "profile-identity min-w-0";
   const profileIdentityStrongClass = "block overflow-hidden text-ellipsis whitespace-nowrap text-[13px]";
   const profileIdentitySpanClass = "mt-[2px] block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-ink-3";
-  const profileDividerClass = "profile-divider mx-[12px] h-px bg-line";
-  const profileActionsClass = "profile-actions grid gap-[6px] px-[12px] py-[10px]";
+  const profileDividerClass = "profile-divider mx-kb-12 h-px bg-line";
+  const profileActionsClass = "profile-actions grid gap-kb-6 px-kb-12 py-kb-10";
   const profileLinkClass =
-    "profile-link inline-grid min-h-[28px] grid-cols-[16px_minmax(0,1fr)] items-center gap-[7px] rounded-[8px] border border-line bg-paper-2 px-[8px] text-[12px] font-semibold text-ink no-underline hover:border-line-2 hover:bg-[color-mix(in_oklch,var(--coral)_10%,var(--paper-2))]";
+    "profile-link inline-grid min-h-kb-28 grid-cols-[16px_minmax(0,1fr)] items-center gap-kb-8 rounded-md border border-line bg-surface px-kb-8 text-kb-12 font-semibold text-ink no-underline hover:border-line-2 hover:bg-surface-2";
   const authHintClass = "auth-hint mx-[12px] mb-[12px] mt-[-4px] text-[11px] leading-[1.35] text-ink-3";
   const monkeytypeBlockClass = "monkeytype-block grid gap-[8px] px-[12px] pt-[11px] pb-[12px]";
   const monkeytypeHeadClass =
@@ -344,80 +470,98 @@
   const monkeytypeStatStrongClass = "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px]";
   const monkeytypeStatSpanClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink-3";
   const monkeytypeActionsClass = "monkeytype-actions grid grid-cols-2 gap-[6px]";
-  const monkeytypeMessageClass = "m-0 rounded-[8px] px-[8px] py-[7px] text-[11px] leading-[1.35]";
+  const monkeytypeMessageClass = "m-0 rounded-md px-kb-8 py-kb-7 text-kb-11 leading-[1.35]";
   const monkeytypeErrorClass =
-    "monkeytype-error border border-[oklch(0.62_0.2_25_/_0.26)] bg-[oklch(0.95_0.04_25)] text-[oklch(0.42_0.15_25)]";
+    "monkeytype-error border border-[var(--danger-border)] bg-danger-surface text-danger-ink";
   const monkeytypeNoteClass =
-    "monkeytype-note border border-[color-mix(in_oklch,var(--mustard)_42%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_15%,var(--surface))] text-ink-2";
+    "monkeytype-note border border-[var(--warning-border)] bg-warning-surface text-warning-ink";
   const accountStripClass =
-    "account-strip grid grid-cols-[34px_minmax(0,1fr)_28px] items-center gap-[8px] rounded-[12px] border border-transparent p-[7px] hover:border-line hover:bg-[color-mix(in_oklch,var(--surface)_68%,transparent)] max-[900px]:flex max-[900px]:justify-center max-[900px]:px-0 max-[900px]:py-[6px]";
-  const accountStripOpenClass = "open border-line bg-[color-mix(in_oklch,var(--surface)_68%,transparent)]";
-  const accountCopyClass = "account-copy min-w-0 p-0 text-left max-[900px]:hidden";
+    "account-strip flex size-[42px] items-center justify-center rounded-[11px] border border-transparent p-0 text-left hover:border-line hover:bg-surface-2 data-[state=open]:border-line data-[state=open]:bg-surface-2 [&_.profile-avatar]:size-[34px] [&_.profile-avatar]:rounded-full";
+  const accountCopyClass = "account-copy hidden min-w-0 p-0 text-left";
   const accountNameClass = "block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-semibold";
   const accountLoginClass = "mt-[1px] block overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink-3";
   const accountCaretClass =
-    "account-caret grid size-[28px] place-items-center rounded-[8px] text-ink-3 hover:bg-paper-2 hover:text-ink max-[900px]:hidden";
-  const deviceStatusClass =
-    "device-status grid min-h-[48px] grid-cols-[10px_minmax(0,1fr)] items-center gap-[10px] rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--surface)_72%,transparent)] px-[10px] py-[9px] max-[900px]:min-h-[36px] max-[900px]:place-items-center max-[900px]:p-0";
-  const deviceDotClass = "device-dot size-[8px] rounded-pill bg-ink-3";
-  const deviceConnectedDotClass =
-    "bg-mint shadow-[0_0_0_3px_color-mix(in_oklch,var(--mint)_24%,transparent)]";
-  const deviceConnectingDotClass =
-    "bg-mustard shadow-[0_0_0_3px_color-mix(in_oklch,var(--mustard)_24%,transparent)]";
-  const deviceErrorDotClass =
-    "bg-removed shadow-[0_0_0_3px_color-mix(in_oklch,var(--removed)_18%,transparent)]";
-  const deviceStatusStrongClass =
-    "block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] font-semibold max-[900px]:hidden";
-  const deviceStatusSpanClass =
-    "mt-[2px] block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-ink-3 max-[900px]:hidden";
-  const shellMainClass = "shell-main flex min-h-screen min-w-0 flex-col overflow-hidden";
+    "account-caret hidden size-kb-28 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink";
+  const shellMainClass = "shell-main flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden";
   const appbarClass =
-    "appbar flex min-h-[58px] min-w-0 items-center gap-[8px] border-b border-line bg-[color-mix(in_oklch,var(--surface)_42%,var(--paper))] px-[20px] max-[900px]:min-h-[68px] max-[900px]:flex-wrap max-[900px]:content-center max-[900px]:px-[12px] max-[900px]:py-[8px]";
+    "appbar flex h-[56px] min-h-[56px] min-w-0 items-center gap-kb-14 border-b border-line bg-surface px-kb-20 max-[720px]:gap-kb-8 max-[720px]:px-kb-12";
   const appbarTitleClass =
-    "m-0 mr-[10px] flex-none text-[17px] font-bold tracking-[0] max-[900px]:w-full max-[900px]:mr-0 max-[900px]:text-[15px]";
-  const appbarChipClass = "max-[560px]:max-w-[145px]";
+    "m-0 flex-none font-mono text-[15px] font-normal leading-none tracking-[-0.01em] [text-box:trim-both_cap_alphabetic]";
+  const appbarContextClass =
+    "min-w-0 max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] text-ink-2 max-[720px]:max-w-[145px]";
+  const appbarMetadataClass =
+    "inline-flex min-h-[28px] min-w-0 items-center gap-kb-7 px-kb-2 text-[12px] text-ink-2";
+  const appbarStatusDotClass = "size-[7px] shrink-0 rounded-full";
+  const appbarVariantClass =
+    "max-[720px]:hidden inline-flex min-h-[28px] min-w-0 items-center gap-kb-6 border-l border-line pl-kb-12 font-mono text-[11px] text-ink-3";
+  const appbarMetricClass =
+    "max-[560px]:hidden inline-flex min-h-[28px] items-center gap-kb-6 font-mono text-[11px] text-ink-2";
   const appbarSpacerClass = "appbar-spacer min-w-[10px] flex-1 max-[900px]:hidden";
-  const chipIconClass = "material-symbols-outlined chip-icon !text-[14px]";
-  const starterBadgeClass =
-    "starter-badge inline-grid min-h-[17px] place-items-center rounded-pill border border-[color-mix(in_oklch,var(--mustard)_46%,var(--line-2))] bg-[color-mix(in_oklch,var(--mustard)_18%,var(--surface))] px-[6px] text-[9px] uppercase tracking-[0.08em] text-[oklch(0.39_0.11_90)]";
   const placementBannerHostClass = "placement-banner-host contents";
   const placementBannerClass =
     "placement-banner flex min-h-[38px] items-center gap-[8px] border-b border-[var(--place-banner-border)] bg-[var(--place-banner-bg)] px-[18px] text-[12px] text-ink";
   const placementBannerButtonClass =
-    "ml-auto grid size-[26px] place-items-center rounded-[7px] hover:bg-[color-mix(in_oklch,var(--coral)_16%,transparent)]";
+    "ml-auto grid size-kb-26 place-items-center rounded-md hover:bg-[color-mix(in_oklch,var(--coral)_16%,transparent)]";
   const placementBannerSmallClass = "ml-[6px] font-mono text-[10px] text-ink-3";
-  const shellContentClass = "shell-content min-h-0 min-w-0 flex-1 overflow-auto";
+  const shellContentClass = "shell-content min-h-0 min-w-0 flex-1 overflow-auto bg-paper";
   const overlayHostClass = "overlay-host pointer-events-none fixed inset-0 z-20 hidden";
   const flashOverlayHostClass = "flash-overlay-host pointer-events-none fixed inset-0 z-20 hidden";
 </script>
 
-<div class={appShellClass}>
+<svelte:head>
+  <title>{routeTitle} · Klakson</title>
+</svelte:head>
+
+<div
+  class={appShellClass}
+  {@attach firmwareBuildEvents.attach(accountId)}
+  {@attach workbenchCloudSync.attach(accountId, workbench)}
+>
   <nav class={leftRailClass} aria-label="Application navigation">
     <div class={railBrandClass}>
-      <Brand href="/editor" />
+      <Brand href="/editor" compact />
     </div>
 
     <div class={railNavClass}>
       {#each shell.navItems as item (item.id)}
         {@const active = isActive(item.href)}
+        {@const NavIcon = navIcons[item.id]}
         <a
           href={item.href}
           class={cn(railNavItemClass, active && railNavItemActiveClass)}
           aria-current={active ? "page" : undefined}
+          aria-label={item.label}
+          title={item.label}
           data-sveltekit-preload-data="hover"
         >
-          <span class={railIconClass} aria-hidden="true">{item.icon}</span>
+          <NavIcon class={railIconClass} aria-hidden="true" />
           <span class={railLabelClass}>{item.label}</span>
-          {#if item.id === "connect" && shell.connected}
-            <span class={railCheckClass} aria-hidden="true">check_circle</span>
-          {/if}
         </a>
       {/each}
     </div>
 
     <div class={railFooterClass}>
-      {#if shell.profileOpen}
-        <section class={profilePopoverClass} aria-label="Profile">
+      <Popover.Root bind:open={shell.profileOpen}>
+        <Popover.Trigger type="button" class={accountStripClass} title="Profile" aria-label="Open profile">
+          <span class={profileAvatarClass}>
+            {#if accountAvatar}
+              <img class="size-full object-cover" src={accountAvatar} alt="" />
+            {:else}
+              {shell.account.initials}
+            {/if}
+          </span>
+          <span class={accountCopyClass}>
+            <span class={accountNameClass}>{shell.account.name}</span>
+            <small class={accountLoginClass}>@{shell.account.login}</small>
+          </span>
+          <span class={accountCaretClass} aria-hidden="true">
+            <span class="material-symbols-outlined" aria-hidden="true">
+              {shell.profileOpen ? "expand_more" : "expand_less"}
+            </span>
+          </span>
+        </Popover.Trigger>
+
+        <Popover.Content class={profilePopoverClass} side="right" align="end" sideOffset={12} aria-label="Profile">
           {#if shell.account.status === "signed-in"}
             <div class={profileHeadClass}>
               <span class={profileAvatarClass}>
@@ -445,7 +589,7 @@
                 target="_blank"
                 rel="noreferrer"
               >
-                <span class="material-symbols-outlined !text-[15px]" aria-hidden="true">open_in_new</span>
+                <span class="material-symbols-outlined text-[15px]" aria-hidden="true">open_in_new</span>
                 View GitHub profile
               </a>
             </div>
@@ -454,12 +598,12 @@
 
             <section class={monkeytypeBlockClass} aria-label="Monkeytype">
               <div class={monkeytypeHeadClass}>
-                <span class="material-symbols-outlined !text-[15px]" aria-hidden="true">keyboard_alt</span>
+                <span class="material-symbols-outlined text-[15px]" aria-hidden="true">keyboard_alt</span>
                 <span>Monkeytype</span>
                 {#if shell.monkeytype.connected && monkeytypeProfileUrl}
                   <a class={monkeytypeOpenClass} href={monkeytypeProfileUrl} target="_blank" rel="noreferrer">
                     open
-                    <span class="material-symbols-outlined !text-[12px]" aria-hidden="true">open_in_new</span>
+                    <span class="material-symbols-outlined text-[12px]" aria-hidden="true">open_in_new</span>
                   </a>
                 {:else if shell.monkeytype.connected}
                   <span class={monkeytypeModeClass}>{shell.monkeytype.mode}/{shell.monkeytype.mode2}</span>
@@ -519,7 +663,7 @@
                   size="sm"
                   class="monkeytype-connect w-full justify-center"
                   href="/settings"
-                  onclick={() => shell.closeProfile()}
+                  onclick={openMonkeytypeSettings}
                 >
                   <span class="material-symbols-outlined" aria-hidden="true">link</span>
                   Connect Monkeytype
@@ -565,97 +709,63 @@
               <p class={authHintClass}>{shell.account.message}</p>
             {/if}
           {/if}
-        </section>
-      {/if}
+        </Popover.Content>
+      </Popover.Root>
 
-      <div class={cn(accountStripClass, shell.profileOpen && accountStripOpenClass)}>
-        <AvatarButton
-          image={accountAvatar}
-          initials={shell.account.initials}
-          ariaLabel="Open profile"
-          title="Profile"
-          onclick={() => shell.toggleProfile()}
-        />
-        <button type="button" class={accountCopyClass} onclick={() => shell.toggleProfile()}>
-          <span class={accountNameClass}>{shell.account.name}</span>
-          <small class={accountLoginClass}>@{shell.account.login}</small>
-        </button>
-        <button
-          type="button"
-          class={accountCaretClass}
-          aria-label={shell.profileOpen ? "Close profile" : "Open profile"}
-          onclick={() => shell.toggleProfile()}
-        >
-          <span class="material-symbols-outlined" aria-hidden="true">
-            {shell.profileOpen ? "expand_more" : "expand_less"}
-          </span>
-        </button>
-      </div>
-
-      <div class={deviceStatusClass} data-status={shell.device.status}>
-        <span
-          class={cn(
-            deviceDotClass,
-            shell.device.status === "connected" && deviceConnectedDotClass,
-            shell.device.status === "connecting" && deviceConnectingDotClass,
-            shell.device.status === "error" && deviceErrorDotClass,
-          )}
-          aria-hidden="true"
-        ></span>
-        <div>
-          <strong class={deviceStatusStrongClass}>{shell.connected ? shell.device.board : "No device"}</strong>
-          <span class={deviceStatusSpanClass}>{shell.connected ? `${shell.device.transport} · ${shell.device.protocol}` : shell.device.message}</span>
-        </div>
-      </div>
     </div>
   </nav>
 
   <div class={shellMainClass}>
-    <header class={appbarClass}>
-      <h1 class={appbarTitleClass}>{routeTitle}</h1>
+    {#if showAppbar}
+      <header class={appbarClass}>
+        <h1 class={appbarTitleClass}>{routeTitle}</h1>
 
-      <Chip
-        class={appbarChipClass}
-        dot={shell.connected ? "var(--teal)" : undefined}
-        tone={workbench.profile.origin === "starter" ? "warning" : "neutral"}
-        title={activeBoardTitle}
-      >
-        {activeBoardName}
-        {#if workbench.profile.origin === "starter"}
-          <span class={starterBadgeClass}>Starter</span>
+        {#if editorAppbar}
+          <div class={appbarMetadataClass} title={activeBoardTitle}>
+            <span
+              class={appbarStatusDotClass}
+              style:background={shell.connected ? "var(--mint)" : "var(--ink-3)"}
+              aria-hidden="true"
+            ></span>
+            <span class={appbarContextClass}>{activeBoardName}</span>
+          </div>
+          {#if workbench.activeVariantId !== "main"}
+            <div class={appbarVariantClass} title="Active firmware variant">
+              <GitBranch size={13} aria-hidden="true" />
+              <span class={appbarContextClass}>{workbench.activeVariant.name}</span>
+            </div>
+          {/if}
         {/if}
-      </Chip>
 
-      <Chip class={appbarChipClass} dot={liveSync.dot} title={liveSync.title}>{liveSync.label}</Chip>
+        <div class={appbarSpacerClass}></div>
 
-      <Chip class={appbarChipClass} dot={shell.currentVariant.color} title="Current variant">
-        <span class={chipIconClass} aria-hidden="true">account_tree</span>
-        {shell.currentVariant.name}
-      </Chip>
+        {#if editorAppbar}
+          {#if shell.activeMonkeytype}
+            <div class={appbarMetricClass} title="Monkeytype average">
+              <Gauge size={14} aria-hidden="true" />
+              {statValue(shell.activeMonkeytype.wpm)} wpm
+            </div>
+          {/if}
 
-      <div class={appbarSpacerClass}></div>
+          {#if shell.dirty > 0}
+            <Button variant="ghost" size="sm" class="max-[720px]:hidden" href="/versions?tab=changes">
+              <BookmarkPlus size={15} aria-hidden="true" />
+              Save point · {shell.dirty}
+            </Button>
+          {/if}
 
-      {#if shell.activeMonkeytype}
-        <Chip class={appbarChipClass} title="Monkeytype average">
-          <span class={chipIconClass} aria-hidden="true">speed</span>
-          {statValue(shell.activeMonkeytype.wpm)} wpm
-        </Chip>
-      {/if}
-
-      {#if shell.dirty > 0}
-        <Button variant="ghost" size="sm" onclick={openVersionsForSavePoint}>
-          <span class="material-symbols-outlined" aria-hidden="true">bookmark_add</span>
-          Save point · {shell.dirty}
-        </Button>
-      {/if}
-
-      <Button variant={shell.connected ? "coral" : "ghost"} onclick={handlePrimaryAction}>
-        <span class="material-symbols-outlined" aria-hidden="true">
-          {shell.connected ? "check_circle" : "cable"}
-        </span>
-        {shell.primaryActionLabel}
-      </Button>
-    </header>
+          <Button
+            variant="coral"
+            href="/connect"
+            disabled={shell.connecting}
+            title={shell.connected ? `${shell.device.board} · ${shell.device.transport}` : shell.device.message}
+          >
+            <Cable size={16} aria-hidden="true" />
+            {shell.primaryActionLabel}
+          </Button>
+        {/if}
+      </header>
+    {/if}
 
     <div class={placementBannerHostClass} data-shell-placement-banner>
       {#if pathname.startsWith("/editor") && shell.placeMode}
@@ -669,14 +779,16 @@
           {:else}
             <span>Placing <strong>{shell.placeMode.label}</strong> - click a key</span>
           {/if}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             class={placementBannerButtonClass}
             aria-label="Cancel placement"
             onclick={() => shell.clearPlacement()}
           >
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
-          </button>
+          </Button>
         </div>
       {/if}
     </div>

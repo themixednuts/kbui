@@ -1,5 +1,7 @@
 <script lang="ts" generics="TValue extends string">
+  import { Button as ShadcnButton } from "./button/index.js";
   import type { SegmentItem } from "./types";
+  import { cn } from "$lib/utils.js";
   type Props = {
     items: SegmentItem<TValue>[];
     value: TValue;
@@ -33,45 +35,30 @@
 </script>
 
 <nav
-  class="seg inline-flex items-center gap-[2px] p-[3px] rounded-pill bg-paper-2 flex-none {iconOnly} {extra}"
+  class="seg inline-flex flex-none items-center gap-kb-2 rounded-pill border border-line bg-surface-3 p-kb-3 {iconOnly} {extra}"
   aria-label={ariaLabel}
 >
   {#each items as item (item.value)}
     {@const Icon = item.icon}
     {@const active = item.value === value}
-    {#if item.href}
-      <a
-        href={item.href}
-        data-testid={item.testid}
-        data-sveltekit-preload-data="hover"
-        class="inline-flex items-center justify-center gap-[6px] h-[28px] px-[14px] rounded-pill font-mono text-xs tracking-[0.04em] whitespace-nowrap transition-colors no-underline"
-        class:active
-        class:text-ink={active}
-        class:bg-paper={active}
-        class:shadow-card={active}
-        class:text-ink-2={!active}
-        aria-current={active ? "page" : undefined}
-        title={item.title ?? item.label}
-      >
-        {#if Icon}<span class="contents pointer-events-none"><Icon size={14} /></span>{/if}
-        <span data-label class="pointer-events-none">{item.label}</span>
-      </a>
-    {:else}
-      <button
-        type="button"
-        data-testid={item.testid}
-        class="inline-flex items-center justify-center gap-[6px] h-[28px] px-[14px] rounded-pill font-mono text-xs tracking-[0.04em] whitespace-nowrap transition-colors"
-        class:active
-        class:text-ink={active}
-        class:bg-paper={active}
-        class:shadow-card={active}
-        class:text-ink-2={!active}
-        title={item.title ?? item.label}
-        onclick={() => onselect?.(item.value)}
-      >
-        {#if Icon}<span class="contents pointer-events-none"><Icon size={14} /></span>{/if}
-        <span data-label class="pointer-events-none">{item.label}</span>
-      </button>
-    {/if}
+    <ShadcnButton
+      href={item.href}
+      variant={active ? "segment-active" : "segment"}
+      size="sm"
+      type="button"
+      data-testid={item.testid}
+      data-sveltekit-preload-data={item.href ? "hover" : undefined}
+      class={cn(
+        "flex-none rounded-pill px-kb-14 font-mono text-[11px] tracking-[0.04em] no-underline",
+        active && "active",
+      )}
+      aria-current={item.href && active ? "page" : undefined}
+      aria-pressed={!item.href ? active : undefined}
+      title={item.title ?? item.label}
+      onclick={item.href ? undefined : () => onselect?.(item.value)}
+    >
+      {#if Icon}<span class="contents pointer-events-none"><Icon size={14} /></span>{/if}
+      <span data-label class="pointer-events-none">{item.label}</span>
+    </ShadcnButton>
   {/each}
 </nav>

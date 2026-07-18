@@ -1,0 +1,79 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kbui",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "account_id": "8ce8bd9cb4d667a578aee91aa8dc5edd",
+  "compatibility_date": "2026-07-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  // Agent workflow callbacks use constructor.name to route back to the
+  // originating Durable Object. Preserve class names through bundling.
+  "keep_names": true,
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare",
+  },
+  "flagship": [
+    {
+      "binding": "FLAGS",
+      "app_id": "2600a775-5b98-434c-ba8f-4f084cce7ed2",
+    },
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+    },
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "UserWorkbenchAgent", "class_name": "UserWorkbenchAgent" },
+      { "name": "AuthAgent", "class_name": "AuthAgent" },
+      { "name": "CommunityAgent", "class_name": "CommunityAgent" },
+      { "name": "TypingRunsAgent", "class_name": "TypingRunsAgent" },
+      { "name": "FirmwareBuildAgent", "class_name": "FirmwareBuildAgent" },
+    ],
+  },
+  "workflows": [
+    {
+      "name": "firmware-build-tracking",
+      "binding": "FirmwareBuildWorkflow",
+      "class_name": "FirmwareBuildWorkflow",
+    },
+    {
+      "name": "firmware-repository-maintenance",
+      "binding": "FirmwareMaintenanceWorkflow",
+      "class_name": "FirmwareMaintenanceWorkflow",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "GITHUB_FIRMWARE_EVENTS",
+        "queue": "kbui-github-firmware-events",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "kbui-github-firmware-events",
+        "max_batch_size": 10,
+        "max_batch_timeout": 1,
+        "max_concurrency": 4,
+        "max_retries": 100,
+        "retry_delay": 5,
+      },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["UserWorkbenchAgent"] },
+    { "tag": "v2", "new_sqlite_classes": ["AuthAgent"] },
+    { "tag": "v3", "new_sqlite_classes": ["CommunityAgent"] },
+    { "tag": "v4", "new_sqlite_classes": ["TypingRunsAgent"] },
+    { "tag": "v5", "new_sqlite_classes": ["FirmwareBuildAgent"] },
+  ],
+}

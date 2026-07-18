@@ -1,9 +1,14 @@
 import { dev } from "$app/environment";
+import { Effect } from "effect";
+
+import { platformError } from "$lib/effect/errors";
+import { selfHeal } from "$lib/effect/self-healing";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import type { RequestHandler } from "./$types";
 
 const authAgentName = "global-auth";
 
-const handleAuth: RequestHandler = async ({ request, platform }) => {
+const handleAuth: RequestHandler = ({ request, platform }) => {
   if (dev) {
     return Response.json(
       {
@@ -41,17 +46,16 @@ const handleAuth: RequestHandler = async ({ request, platform }) => {
     init.body = request.body;
   }
 
-  try {
-    return await agent.fetch(request.url, init);
-  } catch {
-    return Response.json(
-      {
-        error:
-          "AuthAgent is unavailable in this local dev server. Use `vp run dev:worker` for Wrangler-backed agent bindings.",
-      },
-      { status: 503 },
-    );
-  }
+  return runWorkerEffect(
+    "api.auth.agent",
+    selfHeal(
+      Effect.tryPromise({
+        try: () => agent.fetch(request.url, init),
+        catch: (cause) => platformError("auth-agent.fetch", cause),
+      }),
+      "500 millis",
+    ),
+  );
 };
 
 export const GET = handleAuth;

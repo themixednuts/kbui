@@ -1,5 +1,6 @@
 import { createAuthEndpoint, sessionMiddleware, APIError } from "better-auth/api";
 import type { BetterAuthPlugin } from "better-auth";
+import { Effect, Schema } from "effect";
 import * as z from "zod";
 
 import {
@@ -20,6 +21,7 @@ import {
 } from "$lib/server/monkeytype/crypto";
 import { MonkeytypeApiClient, MonkeytypeApiError } from "$lib/server/monkeytype/client";
 import { deriveMonkeytypeSummary } from "$lib/server/monkeytype/summary";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 interface AuthEndpointContext {
   body: unknown;
@@ -62,12 +64,6 @@ export interface MonkeytypePluginOptions {
   secretKey?: string;
   apiClient?: MonkeytypeApiClient;
   nowMs?: () => number;
-}
-
-interface SummaryFetchResult {
-  summary: MonkeytypeSummary;
-  rateLimitResetAt: Date | null;
-  lastSyncedAt: Date;
 }
 
 const connectBodySchema = z.object({
@@ -154,47 +150,52 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
           body: connectBodySchema,
           use: [sessionMiddleware],
         },
-        async (ctx) => {
-          const authCtx = asAuthEndpointContext(ctx);
-          const session = requireSession(authCtx);
-          const body = normalizeConnectInput(authCtx.body as MonkeytypeConnectInput);
-          const existing = await findConnection(authCtx, session.user.id);
-          const secretKey = assertValidMonkeytypeSecret(options.secretKey);
-          const apeKey = await resolveApeKey(body.apeKey, existing, secretKey);
-          const mode = body.mode ?? existing?.mode ?? DEFAULT_MONKEYTYPE_MODE;
-          const mode2 = body.mode2 ?? existing?.mode2 ?? DEFAULT_MONKEYTYPE_MODE2;
-          const username = body.username ?? existing?.username ?? null;
-          const previous = parseSummary(existing?.summaryJson);
+        (ctx) =>
+          runWorkerEffect(
+            "auth.monkeytype.connect",
+            Effect.gen(function* () {
+              const authCtx = asAuthEndpointContext(ctx);
+              const session = requireSession(authCtx);
+              const body = normalizeConnectInput(authCtx.body as MonkeytypeConnectInput);
+              const existing = yield* findConnectionEffect(authCtx, session.user.id);
+              const secretKey = monkeytypeSecretFor(options.secretKey);
+              const apeKey = yield* resolveApeKeyEffect(body.apeKey, existing, secretKey);
+              const mode = body.mode ?? existing?.mode ?? DEFAULT_MONKEYTYPE_MODE;
+              const mode2 = body.mode2 ?? existing?.mode2 ?? DEFAULT_MONKEYTYPE_MODE2;
+              const username = body.username ?? existing?.username ?? null;
+              const previous = parseSummary(existing?.summaryJson);
 
-          await validateUsername(apiClient, username);
-          const fetched = await fetchSummary({
-            apiClient,
-            apeKey,
-            mode,
-            mode2,
-            nowMs,
-            previous,
-            allowStaleOnRateLimit: false,
-          });
-          const encrypted = body.apeKey
-            ? await encryptApeKey(apeKey, secretKey)
-            : {
-                ciphertext: existing?.apeKeyCiphertext ?? "",
-                iv: existing?.apeKeyIv ?? "",
-              };
-          const updated = await upsertConnection(authCtx, session.user.id, {
-            apeKeyCiphertext: encrypted.ciphertext,
-            apeKeyIv: encrypted.iv,
-            username,
-            mode,
-            mode2,
-            summaryJson: JSON.stringify(fetched.summary),
-            lastSyncedAt: fetched.lastSyncedAt,
-            rateLimitResetAt: fetched.rateLimitResetAt,
-          });
+              yield* validateUsernameEffect(apiClient, username);
+              const fetched = yield* fetchSummaryEffect({
+                apiClient,
+                apeKey,
+                mode,
+                mode2,
+                nowMs,
+                previous,
+              });
+              const encrypted = body.apeKey
+                ? yield* promiseEffect("monkeytype.encrypt-ape-key", () =>
+                    encryptApeKey(apeKey, secretKey),
+                  )
+                : {
+                    ciphertext: existing?.apeKeyCiphertext ?? "",
+                    iv: existing?.apeKeyIv ?? "",
+                  };
+              const updated = yield* upsertConnectionEffect(authCtx, session.user.id, {
+                apeKeyCiphertext: encrypted.ciphertext,
+                apeKeyIv: encrypted.iv,
+                username,
+                mode,
+                mode2,
+                summaryJson: JSON.stringify(fetched.summary),
+                lastSyncedAt: fetched.lastSyncedAt,
+                rateLimitResetAt: fetched.rateLimitResetAt,
+              });
 
-          return ctx.json(connectionToDto(updated, nowMs()));
-        },
+              return ctx.json(connectionToDto(updated, nowMs()));
+            }),
+          ),
       ),
       monkeytypeDisconnect: createAuthEndpoint(
         "/monkeytype/disconnect",
@@ -202,15 +203,21 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
           method: "POST",
           use: [sessionMiddleware],
         },
-        async (ctx) => {
-          const authCtx = asAuthEndpointContext(ctx);
-          const session = requireSession(authCtx);
-          await adapterFor(authCtx).deleteMany({
-            model: "monkeytypeConnection",
-            where: [{ field: "userId", value: session.user.id }],
-          });
-          return ctx.json(disconnectedDto());
-        },
+        (ctx) =>
+          runWorkerEffect(
+            "auth.monkeytype.disconnect",
+            Effect.gen(function* () {
+              const authCtx = asAuthEndpointContext(ctx);
+              const session = requireSession(authCtx);
+              yield* promiseEffect("monkeytype.delete-connection", () =>
+                adapterFor(authCtx).deleteMany({
+                  model: "monkeytypeConnection",
+                  where: [{ field: "userId", value: session.user.id }],
+                }),
+              );
+              return ctx.json(disconnectedDto());
+            }),
+          ),
       ),
       monkeytypeStatus: createAuthEndpoint(
         "/monkeytype/status",
@@ -218,12 +225,16 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
           method: "GET",
           use: [sessionMiddleware],
         },
-        async (ctx) => {
-          const authCtx = asAuthEndpointContext(ctx);
-          const session = requireSession(authCtx);
-          const connection = await findConnection(authCtx, session.user.id);
-          return ctx.json(connectionToDto(connection, nowMs()));
-        },
+        (ctx) =>
+          runWorkerEffect(
+            "auth.monkeytype.status",
+            Effect.gen(function* () {
+              const authCtx = asAuthEndpointContext(ctx);
+              const session = requireSession(authCtx);
+              const connection = yield* findConnectionEffect(authCtx, session.user.id);
+              return ctx.json(connectionToDto(connection, nowMs()));
+            }),
+          ),
       ),
       monkeytypeRefresh: createAuthEndpoint(
         "/monkeytype/refresh",
@@ -232,71 +243,58 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
           body: refreshBodySchema,
           use: [sessionMiddleware],
         },
-        async (ctx) => {
-          const authCtx = asAuthEndpointContext(ctx);
-          const session = requireSession(authCtx);
-          const connection = await findConnection(authCtx, session.user.id);
-          if (!connection) return ctx.json(disconnectedDto());
+        (ctx) =>
+          runWorkerEffect(
+            "auth.monkeytype.refresh",
+            Effect.gen(function* () {
+              const authCtx = asAuthEndpointContext(ctx);
+              const session = requireSession(authCtx);
+              const connection = yield* findConnectionEffect(authCtx, session.user.id);
+              if (!connection) return ctx.json(disconnectedDto());
 
-          const current = nowMs();
-          const force = (authCtx.body as { force?: boolean }).force === true;
-          const status = connectionToDto(connection, current);
-          if (!force && !status.stale) return ctx.json(status);
+              const current = nowMs();
+              const force = (authCtx.body as { force?: boolean }).force === true;
+              const status = connectionToDto(connection, current);
+              if (!force && !status.stale) return ctx.json(status);
 
-          const resetMs = dateMs(connection.rateLimitResetAt);
-          if (!force && resetMs !== null && resetMs > current) {
-            return ctx.json(
-              withStatusError(status, {
-                code: "MONKEYTYPE_RATE_LIMIT_COOLDOWN",
-                message: "Monkeytype refresh is waiting for the current rate-limit window.",
-                retryAt: new Date(resetMs).toISOString(),
-              }),
-            );
-          }
+              const resetMs = dateMs(connection.rateLimitResetAt);
+              if (!force && resetMs !== null && resetMs > current) {
+                return yield* Effect.fail(
+                  APIError.from("TOO_MANY_REQUESTS", {
+                    code: "MONKEYTYPE_RATE_LIMIT_COOLDOWN",
+                    message: `Monkeytype refresh is rate limited until ${new Date(resetMs).toISOString()}.`,
+                  }),
+                );
+              }
 
-          const secretKey = assertValidMonkeytypeSecret(options.secretKey);
-          const apeKey = await decryptApeKey(
-            {
-              ciphertext: connection.apeKeyCiphertext,
-              iv: connection.apeKeyIv,
-            },
-            secretKey,
-          );
-          const previous = parseSummary(connection.summaryJson);
+              const secretKey = monkeytypeSecretFor(options.secretKey);
+              const apeKey = yield* promiseEffect("monkeytype.decrypt-ape-key", () =>
+                decryptApeKey(
+                  {
+                    ciphertext: connection.apeKeyCiphertext,
+                    iv: connection.apeKeyIv,
+                  },
+                  secretKey,
+                ),
+              );
+              const previous = parseSummary(connection.summaryJson);
 
-          try {
-            const fetched = await fetchSummary({
-              apiClient,
-              apeKey,
-              mode: connection.mode,
-              mode2: connection.mode2,
-              nowMs,
-              previous,
-              allowStaleOnRateLimit: true,
-            });
-            const updated = await updateConnection(authCtx, session.user.id, {
-              summaryJson: JSON.stringify(fetched.summary),
-              lastSyncedAt: fetched.lastSyncedAt,
-              rateLimitResetAt: fetched.rateLimitResetAt,
-            });
-            return ctx.json(connectionToDto(updated, current));
-          } catch (error) {
-            const statusError = toStatusError(error);
-            if (!statusError) throw error;
-            const stale = previous
-              ? {
-                  ...previous,
-                  stale: true,
-                  error: statusError,
-                }
-              : null;
-            const updated = await updateConnection(authCtx, session.user.id, {
-              summaryJson: stale ? JSON.stringify(stale) : connection.summaryJson,
-              rateLimitResetAt: retryDate(statusError),
-            });
-            return ctx.json(withStatusError(connectionToDto(updated, current), statusError));
-          }
-        },
+              const fetched = yield* fetchSummaryEffect({
+                apiClient,
+                apeKey,
+                mode: connection.mode,
+                mode2: connection.mode2,
+                nowMs,
+                previous,
+              });
+              const updated = yield* updateConnectionEffect(authCtx, session.user.id, {
+                summaryJson: JSON.stringify(fetched.summary),
+                lastSyncedAt: fetched.lastSyncedAt,
+                rateLimitResetAt: fetched.rateLimitResetAt,
+              });
+              return ctx.json(connectionToDto(updated, current));
+            }),
+          ),
       ),
     },
   };
@@ -321,97 +319,119 @@ function requireSession(ctx: AuthEndpointContext) {
   };
 }
 
-async function findConnection(ctx: AuthEndpointContext, userId: string) {
-  return (await adapterFor(ctx).findOne({
-    model: "monkeytypeConnection",
-    where: [{ field: "userId", value: userId }],
-  })) as MonkeytypeConnectionRow | null;
-}
-
-async function upsertConnection(
-  ctx: AuthEndpointContext,
-  userId: string,
-  data: Partial<MonkeytypeConnectionRow>,
-) {
-  const existing = await findConnection(ctx, userId);
-  const now = new Date();
-  if (existing) {
-    return updateConnection(ctx, userId, {
-      ...data,
-      updatedAt: now,
+function monkeytypeSecretFor(secretKey: string | null | undefined) {
+  try {
+    return assertValidMonkeytypeSecret(secretKey);
+  } catch {
+    throw APIError.from("SERVICE_UNAVAILABLE", {
+      code: "MONKEYTYPE_SECRET_NOT_CONFIGURED",
+      message:
+        "Monkeytype encryption is not configured. Set MONKEYTYPE_SECRET_KEY to a base64-encoded 32-byte key and restart the Worker.",
     });
   }
-
-  return (await adapterFor(ctx).create({
-    model: "monkeytypeConnection",
-    data: {
-      userId,
-      mode: DEFAULT_MONKEYTYPE_MODE,
-      mode2: DEFAULT_MONKEYTYPE_MODE2,
-      ...data,
-      createdAt: now,
-      updatedAt: now,
-    },
-  })) as MonkeytypeConnectionRow;
 }
 
-async function updateConnection(
+function findConnectionEffect(ctx: AuthEndpointContext, userId: string) {
+  return promiseEffect("monkeytype.find-connection", () =>
+    adapterFor(ctx).findOne({
+      model: "monkeytypeConnection",
+      where: [{ field: "userId", value: userId }],
+    }),
+  ).pipe(Effect.map((row) => row as MonkeytypeConnectionRow | null));
+}
+
+function upsertConnectionEffect(
   ctx: AuthEndpointContext,
   userId: string,
   data: Partial<MonkeytypeConnectionRow>,
 ) {
-  return (await adapterFor(ctx).update({
-    model: "monkeytypeConnection",
-    where: [{ field: "userId", value: userId }],
-    update: {
-      ...data,
-      updatedAt: data.updatedAt ?? new Date(),
-    },
-  })) as MonkeytypeConnectionRow;
+  return Effect.gen(function* () {
+    const existing = yield* findConnectionEffect(ctx, userId);
+    const now = new Date();
+    if (existing) {
+      return yield* updateConnectionEffect(ctx, userId, {
+        ...data,
+        updatedAt: now,
+      });
+    }
+
+    return yield* promiseEffect("monkeytype.create-connection", () =>
+      adapterFor(ctx).create({
+        model: "monkeytypeConnection",
+        data: {
+          userId,
+          mode: DEFAULT_MONKEYTYPE_MODE,
+          mode2: DEFAULT_MONKEYTYPE_MODE2,
+          ...data,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    ).pipe(Effect.map((row) => row as MonkeytypeConnectionRow));
+  });
+}
+
+function updateConnectionEffect(
+  ctx: AuthEndpointContext,
+  userId: string,
+  data: Partial<MonkeytypeConnectionRow>,
+) {
+  return promiseEffect("monkeytype.update-connection", () =>
+    adapterFor(ctx).update({
+      model: "monkeytypeConnection",
+      where: [{ field: "userId", value: userId }],
+      update: {
+        ...data,
+        updatedAt: data.updatedAt ?? new Date(),
+      },
+    }),
+  ).pipe(Effect.map((row) => row as MonkeytypeConnectionRow));
 }
 
 function adapterFor(ctx: AuthEndpointContext) {
   return ctx.context.adapter as BetterAuthAdapter;
 }
 
-async function resolveApeKey(
+function resolveApeKeyEffect(
   apeKey: string | undefined,
   existing: MonkeytypeConnectionRow | null,
   secretKey: string,
 ) {
-  if (apeKey) return apeKey;
+  if (apeKey) return Effect.succeed(apeKey);
   if (!existing) {
-    throw APIError.from("BAD_REQUEST", {
-      code: "MONKEYTYPE_APE_KEY_REQUIRED",
-      message: "Enter a Monkeytype ApeKey to connect this data source.",
-    });
+    return Effect.fail(
+      APIError.from("BAD_REQUEST", {
+        code: "MONKEYTYPE_APE_KEY_REQUIRED",
+        message: "Enter a Monkeytype ApeKey to connect this data source.",
+      }),
+    );
   }
-  return decryptApeKey(
-    {
-      ciphertext: existing.apeKeyCiphertext,
-      iv: existing.apeKeyIv,
-    },
-    secretKey,
+  return promiseEffect("monkeytype.resolve-ape-key", () =>
+    decryptApeKey(
+      {
+        ciphertext: existing.apeKeyCiphertext,
+        iv: existing.apeKeyIv,
+      },
+      secretKey,
+    ),
   );
 }
 
-async function validateUsername(apiClient: MonkeytypeApiClient, username: string | null) {
-  if (!username) return;
-  try {
-    await apiClient.publicProfile(username);
-  } catch (error) {
-    throwApiError(error);
-  }
+function validateUsernameEffect(apiClient: MonkeytypeApiClient, username: string | null) {
+  if (!username) return Effect.void;
+  return Effect.tryPromise({
+    try: () => apiClient.publicProfile(username),
+    catch: (error) => apiErrorFrom(error),
+  }).pipe(Effect.asVoid);
 }
 
-async function fetchSummary({
+function fetchSummaryEffect({
   apiClient,
   apeKey,
   mode,
   mode2,
   nowMs,
   previous,
-  allowStaleOnRateLimit,
 }: {
   apiClient: MonkeytypeApiClient;
   apeKey: string;
@@ -419,73 +439,70 @@ async function fetchSummary({
   mode2: string;
   nowMs: () => number;
   previous: MonkeytypeSummary | null;
-  allowStaleOnRateLimit: boolean;
-}): Promise<SummaryFetchResult> {
-  const generatedAt = new Date(nowMs()).toISOString();
-  const stats = await apiClient.stats(apeKey).catch((error: unknown) => {
-    if (allowStaleOnRateLimit && previous && isRateLimited(error)) return null;
-    throwApiError(error);
-  });
-  const personalBests = await apiClient
-    .personalBests(apeKey, mode, mode2)
-    .catch((error: unknown) => {
-      if (allowStaleOnRateLimit && previous && isRateLimited(error)) return null;
-      throwApiError(error);
-    });
-
-  let results: Awaited<ReturnType<MonkeytypeApiClient["results"]>> | null = null;
-  let resultError: MonkeytypeStatusError | null = null;
-  try {
-    results = await apiClient.results(apeKey, MONKEYTYPE_RESULTS_LIMIT);
-  } catch (error) {
-    if (!isRateLimited(error)) throwApiError(error);
-    resultError = toStatusError(error);
-  }
-
-  if ((!stats || !personalBests) && previous) {
-    const rateLimitError =
-      resultError ??
-      ({
-        code: "MONKEYTYPE_APE_KEY_RATE_LIMITED",
-        message: "Monkeytype ApeKey quota is temporarily exhausted.",
-      } satisfies MonkeytypeStatusError);
-    return {
-      summary: {
-        ...previous,
-        stale: true,
-        error: rateLimitError,
+}) {
+  return Effect.gen(function* () {
+    const generatedAt = new Date(nowMs()).toISOString();
+    const [stats, personalBests, results] = yield* Effect.all(
+      [
+        monkeytypeRequestEffect(() => apiClient.stats(apeKey)),
+        monkeytypeRequestEffect(() => apiClient.personalBests(apeKey, mode, mode2)),
+        monkeytypeRequestEffect(() => apiClient.results(apeKey, MONKEYTYPE_RESULTS_LIMIT)),
+      ],
+      { concurrency: 3 },
+    );
+    const summary = deriveMonkeytypeSummary(
+      {
+        stats: stats.data,
+        personalBests: personalBests.data,
+        results: results.data,
       },
-      rateLimitResetAt: latestRateLimitReset([results?.rateLimit, rateLimitError.rateLimit]),
+      {
+        mode,
+        mode2,
+        generatedAt,
+        previous,
+        stale: false,
+        error: null,
+      },
+    );
+    return {
+      summary,
+      rateLimitResetAt: latestRateLimitReset([
+        stats.rateLimit,
+        personalBests.rateLimit,
+        results.rateLimit,
+      ]),
       lastSyncedAt: new Date(nowMs()),
     };
+  });
+}
+
+function promiseEffect<A>(operation: string, run: () => PromiseLike<A>) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (error) => error,
+  }).pipe(Effect.withSpan(operation));
+}
+
+function monkeytypeRequestEffect<A>(request: () => PromiseLike<A>) {
+  return Effect.tryPromise({
+    try: request,
+    catch: (error) => apiErrorFrom(error),
+  });
+}
+
+function apiErrorFrom(error: unknown) {
+  const statusError = toStatusError(error);
+  if (!statusError) {
+    return APIError.from("BAD_GATEWAY", {
+      code: "MONKEYTYPE_REQUEST_FAILED",
+      message: "Monkeytype request failed.",
+    });
   }
-
-  const summary = deriveMonkeytypeSummary(
-    {
-      stats: stats?.data,
-      personalBests: personalBests?.data,
-      results: results?.data,
-    },
-    {
-      mode,
-      mode2,
-      generatedAt,
-      previous,
-      stale: resultError !== null,
-      error: resultError,
-    },
-  );
-
-  return {
-    summary,
-    rateLimitResetAt: latestRateLimitReset([
-      stats?.rateLimit,
-      personalBests?.rateLimit,
-      results?.rateLimit,
-      resultError?.rateLimit,
-    ]),
-    lastSyncedAt: new Date(nowMs()),
-  };
+  return APIError.from(statusForError(statusError), {
+    code: statusError.code,
+    message: statusError.message,
+  });
 }
 
 function normalizeConnectInput(
@@ -548,44 +565,9 @@ function disconnectedDto(): MonkeytypeConnectionStatus {
   };
 }
 
-function withStatusError(status: MonkeytypeConnectionStatus, error: MonkeytypeStatusError) {
-  return {
-    ...status,
-    stale: status.connected,
-    error,
-    summary: status.summary
-      ? {
-          ...status.summary,
-          stale: true,
-          error,
-        }
-      : status.summary,
-  };
-}
-
 function parseSummary(summaryJson: string | null | undefined): MonkeytypeSummary | null {
   if (!summaryJson) return null;
-  try {
-    return JSON.parse(summaryJson) as MonkeytypeSummary;
-  } catch {
-    return null;
-  }
-}
-
-function throwApiError(error: unknown): never {
-  const statusError = toStatusError(error);
-  if (!statusError) {
-    throw APIError.from("BAD_GATEWAY", {
-      code: "MONKEYTYPE_REQUEST_FAILED",
-      message: "Monkeytype request failed.",
-    });
-  }
-
-  const status = statusForError(statusError);
-  throw APIError.from(status, {
-    code: statusError.code,
-    message: statusError.message,
-  });
+  return Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(summaryJson) as MonkeytypeSummary;
 }
 
 function toStatusError(error: unknown): MonkeytypeStatusError | null {
@@ -607,21 +589,12 @@ function statusForError(error: MonkeytypeStatusError) {
   return "BAD_REQUEST";
 }
 
-function isRateLimited(error: unknown) {
-  return error instanceof MonkeytypeApiError && error.code === "MONKEYTYPE_APE_KEY_RATE_LIMITED";
-}
-
 function latestRateLimitReset(limits: Array<MonkeytypeRateLimit | null | undefined>) {
   const resetTimes = limits
     .map((limit) => dateMs(limit?.resetAt))
     .filter((value): value is number => value !== null);
   if (resetTimes.length === 0) return null;
   return new Date(Math.max(...resetTimes));
-}
-
-function retryDate(error: MonkeytypeStatusError) {
-  const retryMs = dateMs(error.retryAt);
-  return retryMs === null ? null : new Date(retryMs);
 }
 
 function dateMs(value: Date | string | null | undefined) {

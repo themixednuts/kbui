@@ -1,4 +1,4 @@
-# kbgui Monkeytype Tagger Extension
+# kbui Monkeytype Tagger Extension
 
 This directory is a standalone WXT package. It intentionally has its own `package.json`,
 lockfile, and `node_modules` so WXT resolves real Vite instead of the root app's Vite+

@@ -37,7 +37,7 @@ TOTAL: 72
 
 - `vp check`: pass, all 178 files formatted; 0 warnings/lint/type errors across 246 files.
 - `vp run svelte:check`: pass, 0 errors, 0 warnings.
-- `vp build`: pass. It still emits the existing Tailwind optimizer warning for `bg-[var(...)]` utilities outside this Settings migration.
+- `vp build`: pass. It still emits the existing Tailwind optimizer warning for arbitrary variable background utilities outside this Settings migration.
 - `vp test`: pass, 37 test files and 194 tests.
 - `vp run capture`: pass, 9/9 screenshots captured.
 - `node scripts/fidelity-diff.mjs "<baseline>"`: pass, `settings.png` at 9 px with no size change.

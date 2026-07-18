@@ -59,8 +59,8 @@ Generated manifest was verified after build:
 - permissions: `["storage"]`
 - host permissions:
   - `https://monkeytype.com/*`
-  - `http://localhost:8787/*`
-  - `http://127.0.0.1:8787/*`
+  - `http://localhost/*`
+  - `http://127.0.0.1/*`
   - `https://kbgui.example.com/*`
 - background: `{ "type": "module", "service_worker": "background.js" }`
 - content script: `https://monkeytype.com/*`, `document_idle`
@@ -107,7 +107,7 @@ The panel:
 - Saves the selected keyboard/layout in `chrome.storage.local`.
 - Shows queue count and retry control.
 - Shows post-run WPM/accuracy/mode confirmation with the selected keyboard/layout.
-- Lets the user set the kbgui base URL, defaulting to `http://127.0.0.1:8787`.
+- Lets the user set the kbgui base URL, defaulting to the extension build-time `KBGUI_BASE_URL`/`BETTER_AUTH_URL`.
 - Lets the user enter a Settings-generated pairing code; the background posts to
   `/api/extension/pair` and stores the returned device token.
 

@@ -23,13 +23,14 @@ import {
 
 export const COMMUNITY_AGENT_NAME = "global-community";
 export const COMMUNITY_SEED_ID = "prototype-community-keymaps";
-export const COMMUNITY_SEED_VERSION = "wave-4a-demock-1d-2026-07-04";
+export const COMMUNITY_SEED_VERSION = "wave-4a-demock-1f-2026-07-14";
 export const COMMUNITY_SEED_APPLIED_AT = "2026-07-04T00:00:00.000Z";
 
 type SeedBoardId = "65" | "3x5+2";
 const OFFICIAL_SEED_AUTHOR: CommunityAuthor = {
-  id: "official:kbgui",
-  displayName: "kbgui Official",
+  id: "official:kbui",
+  handle: "kbui",
+  displayName: "kbui",
 };
 
 export interface CommunitySeedKeymap {
@@ -78,7 +79,7 @@ const prototypeCommunityMaps = [
     board: "3x5+2",
     tags: ["ergo", "homerow-mods"],
     layersCount: 5,
-    note: "Layer-per-thumb, GACS home row. Curated as a compact ergonomic starter.",
+    note: "Layer-per-thumb, GACS home row. Curated as a compact ergonomic baseline.",
     highlights: {
       "1,3": "var(--teal)",
       "1,6": "var(--teal)",
@@ -88,7 +89,7 @@ const prototypeCommunityMaps = [
   },
   {
     id: "cm2",
-    title: "Workbench Programmer",
+    title: "Programmer 65",
     board: "65",
     tags: ["programmer", "symbols"],
     layersCount: 4,
@@ -115,7 +116,7 @@ const prototypeCommunityMaps = [
   },
   {
     id: "cm4",
-    title: "Corney Colemak-DH",
+    title: "Compact Colemak-DH",
     board: "3x5+2",
     tags: ["colemak", "ergo"],
     layersCount: 4,
@@ -142,7 +143,7 @@ const prototypeCommunityMaps = [
   },
   {
     id: "cm6",
-    title: "Minimal starter 34",
+    title: "Minimal split 34",
     board: "3x5+2",
     tags: ["beginner"],
     layersCount: 3,

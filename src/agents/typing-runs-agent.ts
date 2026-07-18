@@ -1,6 +1,7 @@
 import { Agent, type AgentContext } from "agents";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import { Effect, Schema } from "effect";
 
 import {
   idempotencyKeyForCapture,
@@ -31,6 +32,8 @@ import {
   type NewTypingRunTag,
   type TypingRunTag,
 } from "$lib/typing-runs/schema";
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 interface TypingRunsState {
   bootedAt: string;
@@ -54,40 +57,58 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
     this.#db = drizzle(this.#agentCtx.storage, { logger: true });
   }
 
-  onStart() {
-    console.log("[TypingRunsAgent] onStart - ensuring extension ingest tables");
-    this.ensureTables();
-    this.setState({ bootedAt: new Date().toISOString() });
+  onStart(): Promise<void> {
+    return runWorkerEffect(
+      "typing-runs.start",
+      Effect.sync(() => {
+        this.ensureTables();
+        this.setState({ bootedAt: new Date().toISOString() });
+      }),
+    );
   }
 
-  async createPairingToken(
+  createPairingToken(
     userId: string,
     meta: CreatePairingTokenMeta = {},
   ): Promise<CreatePairingTokenResponse> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const createdAt = dateFromOptionalIso(meta.createdAt);
-    const expiresAt = new Date(createdAt.getTime() + PAIRING_TOKEN_TTL_SECONDS * 1000);
-    const code = randomPairingCode();
-    const tokenHash = await sha256Hex(normalizePairingCode(code));
-
-    await this.#db.insert(extensionPairingToken).values({
-      tokenHash,
-      userId: user,
-      createdAt,
-      expiresAt,
-      consumedAt: null,
-      deviceId: null,
-    });
-
-    return {
-      code,
-      expiresAt: expiresAt.toISOString(),
-      ttlSeconds: PAIRING_TOKEN_TTL_SECONDS,
-    };
+    return runWorkerEffect(
+      "typing-runs.create-pairing-token",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const { code, createdAt, expiresAt, user } = yield* Effect.try({
+          try: () => {
+            const user = normalizeUserId(userId);
+            const createdAt = dateFromOptionalIso(meta.createdAt);
+            return {
+              user,
+              createdAt,
+              expiresAt: new Date(createdAt.getTime() + PAIRING_TOKEN_TTL_SECONDS * 1000),
+              code: randomPairingCode(),
+            };
+          },
+          catch: (cause) => platformError("typing-runs.create-pairing-token-input", cause),
+        });
+        const tokenHash = yield* sha256HexEffect(normalizePairingCode(code));
+        yield* this.databaseEffect("create-pairing-token", () =>
+          this.#db.insert(extensionPairingToken).values({
+            tokenHash,
+            userId: user,
+            createdAt,
+            expiresAt,
+            consumedAt: null,
+            deviceId: null,
+          }),
+        );
+        return {
+          code,
+          expiresAt: expiresAt.toISOString(),
+          ttlSeconds: PAIRING_TOKEN_TTL_SECONDS,
+        };
+      }),
+    );
   }
 
-  async pairDevice(
+  pairDevice(
     code: string,
     install: {
       installId: string;
@@ -96,263 +117,353 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
       pairedAt?: string;
     },
   ): Promise<{ deviceToken: string; userId: string; device: ExtensionDeviceDto } | null> {
-    await this.ensureReady();
-    const tokenHash = await sha256Hex(normalizePairingCode(code));
-    const now = dateFromOptionalIso(install.pairedAt);
-    const deviceToken = randomDeviceToken();
-    const deviceTokenHash = await sha256Hex(deviceToken);
-    const deviceId = `extdev_${randomBase64Url(18)}`;
-    const label = install.label?.trim() || "Monkeytype tagger";
-    let result: { deviceToken: string; userId: string; device: ExtensionDeviceDto } | null = null;
+    return runWorkerEffect(
+      "typing-runs.pair-device",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const normalized = yield* Effect.try({
+          try: () => ({
+            code: normalizePairingCode(code),
+            now: dateFromOptionalIso(install.pairedAt),
+            deviceToken: randomDeviceToken(),
+            deviceId: `extdev_${randomBase64Url(18)}`,
+            label: install.label?.trim() || "Monkeytype tagger",
+          }),
+          catch: (cause) => platformError("typing-runs.pair-device-input", cause),
+        });
+        const [tokenHash, deviceTokenHash] = yield* Effect.all(
+          [sha256HexEffect(normalized.code), sha256HexEffect(normalized.deviceToken)],
+          { concurrency: 2 },
+        );
+        let result: { deviceToken: string; userId: string; device: ExtensionDeviceDto } | null =
+          null;
+        yield* Effect.try({
+          try: () =>
+            this.#db.transaction((tx) => {
+              const [pairing] = tx
+                .select()
+                .from(extensionPairingToken)
+                .where(eq(extensionPairingToken.tokenHash, tokenHash))
+                .limit(1)
+                .all();
 
-    this.#db.transaction((tx) => {
-      const [pairing] = tx
-        .select()
-        .from(extensionPairingToken)
-        .where(eq(extensionPairingToken.tokenHash, tokenHash))
-        .limit(1)
-        .all();
+              if (!pairing) return;
+              if (pairing.consumedAt) return;
+              if (dateFromDb(pairing.expiresAt).getTime() <= normalized.now.getTime()) return;
 
-      if (!pairing) return;
-      if (pairing.consumedAt) return;
-      if (dateFromDb(pairing.expiresAt).getTime() <= now.getTime()) return;
+              const device: NewExtensionDevice = {
+                id: normalized.deviceId,
+                userId: pairing.userId,
+                tokenHash: deviceTokenHash,
+                label: normalized.label,
+                installId: install.installId.trim(),
+                extensionVersion: install.extensionVersion.trim(),
+                createdAt: normalized.now,
+                lastSeenAt: normalized.now,
+                revokedAt: null,
+              };
 
-      const device: NewExtensionDevice = {
-        id: deviceId,
-        userId: pairing.userId,
-        tokenHash: deviceTokenHash,
-        label,
-        installId: install.installId.trim(),
-        extensionVersion: install.extensionVersion.trim(),
-        createdAt: now,
-        lastSeenAt: now,
-        revokedAt: null,
-      };
+              tx.insert(extensionDevice).values(device).run();
+              tx.update(extensionPairingToken)
+                .set({
+                  consumedAt: normalized.now,
+                  deviceId: normalized.deviceId,
+                })
+                .where(eq(extensionPairingToken.tokenHash, tokenHash))
+                .run();
 
-      tx.insert(extensionDevice).values(device).run();
-      tx.update(extensionPairingToken)
-        .set({
-          consumedAt: now,
-          deviceId,
-        })
-        .where(eq(extensionPairingToken.tokenHash, tokenHash))
-        .run();
-
-      result = {
-        deviceToken,
-        userId: pairing.userId,
-        device: deviceToDto(device),
-      };
-    });
-
-    return result;
-  }
-
-  async resolveDeviceToken(token: string): Promise<string | null> {
-    await this.ensureReady();
-    const tokenHash = await sha256Hex(token.trim());
-    const [device] = await this.#db
-      .select()
-      .from(extensionDevice)
-      .where(and(eq(extensionDevice.tokenHash, tokenHash), isNull(extensionDevice.revokedAt)))
-      .limit(1);
-
-    if (!device) return null;
-
-    await this.#db
-      .update(extensionDevice)
-      .set({ lastSeenAt: new Date() })
-      .where(eq(extensionDevice.id, device.id));
-
-    return device.userId;
-  }
-
-  async listDevices(userId: string): Promise<ExtensionDeviceDto[]> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const rows = await this.#db
-      .select()
-      .from(extensionDevice)
-      .where(eq(extensionDevice.userId, user))
-      .orderBy(desc(extensionDevice.createdAt));
-
-    return rows.map(deviceToDto);
-  }
-
-  async revokeDevice(userId: string, id: string): Promise<void> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const deviceId = nonEmpty(id, "Extension device id");
-    await this.#db
-      .update(extensionDevice)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(extensionDevice.userId, user), eq(extensionDevice.id, deviceId)));
-  }
-
-  async setKeyboardChoices(userId: string, rawChoices: unknown): Promise<void> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const choices = normalizeSetKeyboardChoicesRequest(rawChoices);
-    const now = new Date();
-
-    await this.#db
-      .insert(typingRunChoiceSync)
-      .values({
-        userId: user,
-        keyboardsJson: choices.keyboards,
-        layoutsJson: choices.layouts,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: typingRunChoiceSync.userId,
-        set: {
-          keyboardsJson: choices.keyboards,
-          layoutsJson: choices.layouts,
-          updatedAt: now,
-        },
-      });
-  }
-
-  async getKeyboardChoices(userId: string): Promise<KeyboardChoicesResponse> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const [row] = await this.#db
-      .select()
-      .from(typingRunChoiceSync)
-      .where(eq(typingRunChoiceSync.userId, user))
-      .limit(1);
-
-    return {
-      keyboards: parseChoiceArray(row?.keyboardsJson, normalizeKeyboardChoiceFallback),
-      layouts: parseChoiceArray(row?.layoutsJson, normalizeLayoutChoiceFallback),
-    };
-  }
-
-  async ingestRun(userId: string, rawCapture: IngestibleCapture): Promise<IngestRunResponse> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const capture = normalizeMonkeytypeRunCapture(rawCapture);
-    const idempotencyKey = normalizeIdempotencyKey(
-      rawCapture.idempotencyKey ?? idempotencyKeyForCapture(capture),
+              result = {
+                deviceToken: normalized.deviceToken,
+                userId: pairing.userId,
+                device: deviceToDto(device),
+              };
+            }),
+          catch: (cause) => platformError("typing-runs.pair-device-transaction", cause),
+        });
+        return result;
+      }),
     );
-
-    const [existing] = await this.#db
-      .select({
-        correlationState: typingRunTag.correlationState,
-      })
-      .from(typingRunTag)
-      .where(and(eq(typingRunTag.userId, user), eq(typingRunTag.idempotencyKey, idempotencyKey)))
-      .limit(1);
-
-    if (existing) {
-      return {
-        status: "duplicate",
-        correlationState: existing.correlationState,
-      };
-    }
-
-    const now = new Date();
-    const capturedAt = dateFromIso(capture.capturedAt, "capturedAt");
-    const extensionDeviceId = await this.findDeviceIdForInstall(user, capture.extension.installId);
-    const row: NewTypingRunTag = {
-      id: `run_${(await sha256Hex(`${user}:${idempotencyKey}`)).slice(0, 32)}`,
-      userId: user,
-      source: capture.source,
-      idempotencyKey,
-      monkeytypeResultId: capture.monkeytypeResultId ?? null,
-      monkeytypeTimestampMs: monkeytypeTimestampMs(capture.monkeytypeTimestamp),
-      capturedAt,
-      receivedAt: now,
-      wpm: capture.wpm,
-      rawWpm: capture.rawWpm ?? null,
-      acc: capture.acc,
-      consistency: capture.consistency ?? null,
-      testDuration: capture.testDuration ?? null,
-      mode: capture.mode ?? null,
-      mode2: capture.mode2 ?? null,
-      language: capture.language ?? null,
-      difficulty: capture.difficulty ?? null,
-      punctuation: capture.punctuation ?? null,
-      numbers: capture.numbers ?? null,
-      keyboardId: capture.keyboard.keyboardId,
-      keyboardProfileId: capture.keyboard.profileId ?? null,
-      keyboardForkId: capture.keyboard.forkId ?? null,
-      keyboardName: capture.keyboard.displayName,
-      catalogId: capture.keyboard.catalogId ?? null,
-      vendorId: capture.keyboard.vendorId ?? null,
-      productId: capture.keyboard.productId ?? null,
-      boardName: capture.keyboard.boardName ?? null,
-      layoutId: capture.layout.layoutId,
-      layoutVariantId: capture.layout.variantId ?? null,
-      layoutName: capture.layout.displayName,
-      layoutHash: capture.layout.layoutHash ?? null,
-      extensionDeviceId,
-      correlationState: "pending",
-      correlationConfidence: null,
-      rawCaptureJson: capture,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await this.#db.insert(typingRunTag).values(row);
-
-    return {
-      status: "stored",
-      correlationState: "pending",
-    };
   }
 
-  async listTaggedRuns(userId: string, rawFilter: unknown = {}): Promise<TaggedRun[]> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const filter = normalizeTaggedRunsFilter(rawFilter);
-    const conditions = [eq(typingRunTag.userId, user)];
-
-    if (filter.keyboardId) conditions.push(eq(typingRunTag.keyboardId, filter.keyboardId));
-    if (filter.layoutId) conditions.push(eq(typingRunTag.layoutId, filter.layoutId));
-    if (filter.mode) conditions.push(eq(typingRunTag.mode, filter.mode));
-
-    const rows = await this.#db
-      .select()
-      .from(typingRunTag)
-      .where(and(...conditions))
-      .orderBy(desc(typingRunTag.capturedAt))
-      .limit(filter.limit ?? 50);
-
-    return rows.map(runToDto);
+  resolveDeviceToken(token: string): Promise<string | null> {
+    return runWorkerEffect(
+      "typing-runs.resolve-device-token",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const tokenHash = yield* sha256HexEffect(token.trim());
+        const [device] = yield* this.databaseEffect("resolve-device-token", () =>
+          this.#db
+            .select()
+            .from(extensionDevice)
+            .where(and(eq(extensionDevice.tokenHash, tokenHash), isNull(extensionDevice.revokedAt)))
+            .limit(1),
+        );
+        if (!device) return null;
+        yield* this.databaseEffect("touch-device", () =>
+          this.#db
+            .update(extensionDevice)
+            .set({ lastSeenAt: new Date() })
+            .where(eq(extensionDevice.id, device.id)),
+        );
+        return device.userId;
+      }),
+    );
   }
 
-  async getStats(userId: string, rawGroupBy: unknown): Promise<TypingRunStatsGroup[]> {
-    await this.ensureReady();
-    const user = normalizeUserId(userId);
-    const groupBy = normalizeTypingRunStatsGroupBy(rawGroupBy);
-    const rows = await this.#db
-      .select()
-      .from(typingRunTag)
-      .where(eq(typingRunTag.userId, user))
-      .orderBy(desc(typingRunTag.capturedAt));
-
-    return aggregateStats(rows, groupBy);
+  listDevices(userId: string): Promise<ExtensionDeviceDto[]> {
+    return runWorkerEffect(
+      "typing-runs.list-devices",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const user = yield* normalizeEffect("user-id", () => normalizeUserId(userId));
+        const rows = yield* this.databaseEffect("list-devices", () =>
+          this.#db
+            .select()
+            .from(extensionDevice)
+            .where(eq(extensionDevice.userId, user))
+            .orderBy(desc(extensionDevice.createdAt)),
+        );
+        return rows.map(deviceToDto);
+      }),
+    );
   }
 
-  private async ensureReady() {
-    this.ensureTables();
+  revokeDevice(userId: string, id: string): Promise<void> {
+    return runWorkerEffect(
+      "typing-runs.revoke-device",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const [user, deviceId] = yield* Effect.all([
+          normalizeEffect("user-id", () => normalizeUserId(userId)),
+          normalizeEffect("device-id", () => nonEmpty(id, "Extension device id")),
+        ]);
+        yield* this.databaseEffect("revoke-device", () =>
+          this.#db
+            .update(extensionDevice)
+            .set({ revokedAt: new Date() })
+            .where(and(eq(extensionDevice.userId, user), eq(extensionDevice.id, deviceId))),
+        );
+      }),
+    );
   }
 
-  private async findDeviceIdForInstall(userId: string, installId: string): Promise<string | null> {
-    const [device] = await this.#db
-      .select({ id: extensionDevice.id })
-      .from(extensionDevice)
-      .where(
-        and(
-          eq(extensionDevice.userId, userId),
-          eq(extensionDevice.installId, installId),
-          isNull(extensionDevice.revokedAt),
-        ),
-      )
-      .limit(1);
+  setKeyboardChoices(userId: string, rawChoices: unknown): Promise<void> {
+    return runWorkerEffect(
+      "typing-runs.set-keyboard-choices",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const [user, choices] = yield* Effect.all([
+          normalizeEffect("user-id", () => normalizeUserId(userId)),
+          normalizeEffect("keyboard-choices", () => normalizeSetKeyboardChoicesRequest(rawChoices)),
+        ]);
+        const now = new Date();
+        yield* this.databaseEffect("set-keyboard-choices", () =>
+          this.#db
+            .insert(typingRunChoiceSync)
+            .values({
+              userId: user,
+              keyboardsJson: choices.keyboards,
+              layoutsJson: choices.layouts,
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: typingRunChoiceSync.userId,
+              set: {
+                keyboardsJson: choices.keyboards,
+                layoutsJson: choices.layouts,
+                updatedAt: now,
+              },
+            }),
+        );
+      }),
+    );
+  }
 
-    return device?.id ?? null;
+  getKeyboardChoices(userId: string): Promise<KeyboardChoicesResponse> {
+    return runWorkerEffect(
+      "typing-runs.get-keyboard-choices",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const user = yield* normalizeEffect("user-id", () => normalizeUserId(userId));
+        const [row] = yield* this.databaseEffect("get-keyboard-choices", () =>
+          this.#db
+            .select()
+            .from(typingRunChoiceSync)
+            .where(eq(typingRunChoiceSync.userId, user))
+            .limit(1),
+        );
+        const [keyboards, layouts] = yield* Effect.all([
+          parseChoiceArrayEffect(row?.keyboardsJson, normalizeKeyboardChoice),
+          parseChoiceArrayEffect(row?.layoutsJson, normalizeLayoutChoice),
+        ]);
+        return { keyboards, layouts };
+      }),
+    );
+  }
+
+  ingestRun(userId: string, rawCapture: IngestibleCapture): Promise<IngestRunResponse> {
+    return runWorkerEffect(
+      "typing-runs.ingest-run",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const { capturedAt, capture, idempotencyKey, user } = yield* normalizeEffect(
+          "ingest-run",
+          () => {
+            const user = normalizeUserId(userId);
+            const capture = normalizeMonkeytypeRunCapture(rawCapture);
+            return {
+              user,
+              capture,
+              idempotencyKey: normalizeIdempotencyKey(
+                rawCapture.idempotencyKey ?? idempotencyKeyForCapture(capture),
+              ),
+              capturedAt: dateFromIso(capture.capturedAt, "capturedAt"),
+            };
+          },
+        );
+        const [existing] = yield* this.databaseEffect("find-run", () =>
+          this.#db
+            .select({ correlationState: typingRunTag.correlationState })
+            .from(typingRunTag)
+            .where(
+              and(eq(typingRunTag.userId, user), eq(typingRunTag.idempotencyKey, idempotencyKey)),
+            )
+            .limit(1),
+        );
+        if (existing) {
+          return { status: "duplicate", correlationState: existing.correlationState } as const;
+        }
+
+        const now = new Date();
+        const [extensionDeviceId, runHash] = yield* Effect.all([
+          this.findDeviceIdForInstallEffect(user, capture.extension.installId),
+          sha256HexEffect(`${user}:${idempotencyKey}`),
+        ]);
+        const row: NewTypingRunTag = {
+          id: `run_${runHash.slice(0, 32)}`,
+          userId: user,
+          source: capture.source,
+          idempotencyKey,
+          monkeytypeResultId: capture.monkeytypeResultId ?? null,
+          monkeytypeTimestampMs: monkeytypeTimestampMs(capture.monkeytypeTimestamp),
+          capturedAt,
+          receivedAt: now,
+          wpm: capture.wpm,
+          rawWpm: capture.rawWpm ?? null,
+          acc: capture.acc,
+          consistency: capture.consistency ?? null,
+          testDuration: capture.testDuration ?? null,
+          mode: capture.mode ?? null,
+          mode2: capture.mode2 ?? null,
+          language: capture.language ?? null,
+          difficulty: capture.difficulty ?? null,
+          punctuation: capture.punctuation ?? null,
+          numbers: capture.numbers ?? null,
+          keyboardId: capture.keyboard.keyboardId,
+          keyboardProfileId: capture.keyboard.profileId ?? null,
+          keyboardForkId: capture.keyboard.forkId ?? null,
+          keyboardName: capture.keyboard.displayName,
+          catalogId: capture.keyboard.catalogId ?? null,
+          vendorId: capture.keyboard.vendorId ?? null,
+          productId: capture.keyboard.productId ?? null,
+          boardName: capture.keyboard.boardName ?? null,
+          layoutId: capture.layout.layoutId,
+          layoutVariantId: capture.layout.variantId ?? null,
+          layoutName: capture.layout.displayName,
+          layoutHash: capture.layout.layoutHash ?? null,
+          extensionDeviceId,
+          correlationState: "pending",
+          correlationConfidence: null,
+          rawCaptureJson: capture,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        yield* this.databaseEffect("insert-run", () => this.#db.insert(typingRunTag).values(row));
+        return { status: "stored", correlationState: "pending" } as const;
+      }),
+    );
+  }
+
+  listTaggedRuns(userId: string, rawFilter: unknown = {}): Promise<TaggedRun[]> {
+    return runWorkerEffect(
+      "typing-runs.list-tagged-runs",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const [user, filter] = yield* Effect.all([
+          normalizeEffect("user-id", () => normalizeUserId(userId)),
+          normalizeEffect("tagged-runs-filter", () => normalizeTaggedRunsFilter(rawFilter)),
+        ]);
+        const conditions = [eq(typingRunTag.userId, user)];
+
+        if (filter.keyboardId) conditions.push(eq(typingRunTag.keyboardId, filter.keyboardId));
+        if (filter.layoutId) conditions.push(eq(typingRunTag.layoutId, filter.layoutId));
+        if (filter.mode) conditions.push(eq(typingRunTag.mode, filter.mode));
+
+        const rows = yield* this.databaseEffect("list-tagged-runs", () =>
+          this.#db
+            .select()
+            .from(typingRunTag)
+            .where(and(...conditions))
+            .orderBy(desc(typingRunTag.capturedAt))
+            .limit(filter.limit ?? 50),
+        );
+        return rows.map(runToDto);
+      }),
+    );
+  }
+
+  getStats(userId: string, rawGroupBy: unknown): Promise<TypingRunStatsGroup[]> {
+    return runWorkerEffect(
+      "typing-runs.get-stats",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const [user, groupBy] = yield* Effect.all([
+          normalizeEffect("user-id", () => normalizeUserId(userId)),
+          normalizeEffect("stats-group", () => normalizeTypingRunStatsGroupBy(rawGroupBy)),
+        ]);
+        const rows = yield* this.databaseEffect("get-stats", () =>
+          this.#db
+            .select()
+            .from(typingRunTag)
+            .where(eq(typingRunTag.userId, user))
+            .orderBy(desc(typingRunTag.capturedAt)),
+        );
+        return aggregateStats(rows, groupBy);
+      }),
+    );
+  }
+
+  private ensureReadyEffect() {
+    return Effect.sync(() => this.ensureTables()).pipe(
+      Effect.withSpan("TypingRunsAgent.ensureReady"),
+    );
+  }
+
+  private findDeviceIdForInstallEffect(userId: string, installId: string) {
+    return Effect.map(
+      this.databaseEffect("find-device-for-install", () =>
+        this.#db
+          .select({ id: extensionDevice.id })
+          .from(extensionDevice)
+          .where(
+            and(
+              eq(extensionDevice.userId, userId),
+              eq(extensionDevice.installId, installId),
+              isNull(extensionDevice.revokedAt),
+            ),
+          )
+          .limit(1),
+      ),
+      ([device]) => device?.id ?? null,
+    );
+  }
+
+  private databaseEffect<A>(operation: string, task: () => PromiseLike<A>) {
+    return Effect.tryPromise({
+      try: () => task(),
+      catch: (cause) => platformError(`typing-runs.database.${operation}`, cause),
+    });
   }
 
   private ensureTables() {
@@ -604,36 +715,42 @@ function groupKey(
   };
 }
 
-function parseChoiceArray<T>(value: unknown, normalize: (value: unknown) => T | null): T[] {
-  const source = typeof value === "string" ? parseJson(value) : value;
-  if (!Array.isArray(source)) return [];
-  return source.map(normalize).filter((item): item is T => item !== null);
+function normalizeEffect<A>(operation: string, normalize: () => A) {
+  return Effect.try({
+    try: normalize,
+    catch: (cause) => platformError(`typing-runs.normalize.${operation}`, cause),
+  });
 }
 
-function normalizeKeyboardChoiceFallback(value: unknown): KeyboardChoice | null {
-  try {
-    const choices = normalizeSetKeyboardChoicesRequest({ keyboards: [value], layouts: [] });
-    return choices.keyboards[0] ?? null;
-  } catch {
-    return null;
-  }
+function parseChoiceArrayEffect<T>(value: unknown, normalize: (value: unknown) => T) {
+  return Effect.gen(function* () {
+    const source =
+      typeof value === "string"
+        ? yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(value)
+        : (value ?? []);
+    if (!Array.isArray(source)) {
+      return yield* Effect.fail(
+        platformError("typing-runs.decode-choice-array", "Stored choices are not an array."),
+      );
+    }
+    return yield* Effect.forEach(source, (item) =>
+      normalizeEffect("stored-choice", () => normalize(item)),
+    );
+  });
 }
 
-function normalizeLayoutChoiceFallback(value: unknown): LayoutChoice | null {
-  try {
-    const choices = normalizeSetKeyboardChoicesRequest({ keyboards: [], layouts: [value] });
-    return choices.layouts[0] ?? null;
-  } catch {
-    return null;
-  }
+function normalizeKeyboardChoice(value: unknown): KeyboardChoice {
+  const choices = normalizeSetKeyboardChoicesRequest({ keyboards: [value], layouts: [] });
+  const choice = choices.keyboards[0];
+  if (!choice) throw new Error("Stored keyboard choice is invalid.");
+  return choice;
 }
 
-function parseJson(value: string): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return undefined;
-  }
+function normalizeLayoutChoice(value: unknown): LayoutChoice {
+  const choices = normalizeSetKeyboardChoicesRequest({ keyboards: [], layouts: [value] });
+  const choice = choices.layouts[0];
+  if (!choice) throw new Error("Stored layout choice is invalid.");
+  return choice;
 }
 
 function normalizeUserId(userId: string): string {
@@ -670,9 +787,15 @@ function randomBase64Url(byteLength: number): string {
   return base64Url(bytes);
 }
 
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+function sha256HexEffect(value: string) {
+  return Effect.map(
+    Effect.tryPromise({
+      try: () => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+      catch: (cause) => platformError("typing-runs.sha256", cause),
+    }),
+    (digest) =>
+      [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+  );
 }
 
 function base64Url(bytes: Uint8Array): string {

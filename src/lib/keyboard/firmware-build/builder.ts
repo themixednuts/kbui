@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+
+import { runApp } from "$lib/app/runtime";
+import { platformError, type PlatformError } from "$lib/effect/errors";
 import {
   firmwareObjectBundleCacheKey,
   type FirmwareBuildCachePlan,
@@ -39,41 +43,50 @@ export class FirmwareBuildUnavailableError extends Error {
 export class WasmFirmwareBuilder implements FirmwareBuilder {
   constructor(private readonly environment = defaultBrowserFirmwareBuildEnvironment()) {}
 
-  async build(request: FirmwareBuildRequest): Promise<FirmwareBuildResult> {
+  build(request: FirmwareBuildRequest): Promise<FirmwareBuildResult> {
     const started = performanceNow();
     if (!isBrowserBuildAvailable(this.environment)) {
-      return unavailableResult(request, plannedCacheFor(request), elapsedSince(started));
+      return runApp(
+        "firmware.browser-build.unavailable",
+        Effect.succeed(unavailableResult(request, plannedCacheFor(request), elapsedSince(started))),
+      );
     }
 
     const WorkerCtor = this.environment.Worker;
     if (typeof WorkerCtor !== "function") {
-      return unavailableResult(request, plannedCacheFor(request), elapsedSince(started));
+      return runApp(
+        "firmware.browser-build.worker-unavailable",
+        Effect.succeed(unavailableResult(request, plannedCacheFor(request), elapsedSince(started))),
+      );
     }
 
-    try {
-      return await buildInWorker(WorkerCtor, request);
-    } catch (error) {
-      return {
-        cache: plannedCacheFor(request),
-        diagnostics: request.generatedSource.diagnostics,
-        error: {
-          code: "browser_build_unavailable",
-          message: error instanceof Error ? error.message : firmwareBuildUnavailableMessage,
-        },
-        log: [
-          {
-            message: "worker launch failed",
-            phase: "worker",
-          },
-        ],
-        manifest: request.manifest,
-        ok: false,
-        requestId: request.requestId,
-        timings: {
-          totalMs: elapsedSince(started),
-        },
-      };
-    }
+    return runApp(
+      "firmware.browser-build",
+      Effect.match(buildInWorkerEffect(WorkerCtor, request), {
+        onFailure: (error) =>
+          ({
+            cache: plannedCacheFor(request),
+            diagnostics: request.generatedSource.diagnostics,
+            error: {
+              code: "browser_build_unavailable",
+              message: error.message,
+            },
+            log: [
+              {
+                message: "worker launch failed",
+                phase: "worker",
+              },
+            ],
+            manifest: request.manifest,
+            ok: false,
+            requestId: request.requestId,
+            timings: {
+              totalMs: elapsedSince(started),
+            },
+          }) satisfies FirmwareBuildResult,
+        onSuccess: (result) => result,
+      }),
+    );
   }
 }
 
@@ -151,32 +164,32 @@ function unavailableResult(
   };
 }
 
-function buildInWorker(
+function buildInWorkerEffect(
   WorkerCtor: typeof Worker,
   request: FirmwareBuildRequest,
-): Promise<FirmwareBuildResult> {
-  return new Promise((resolve, reject) => {
-    const worker = new WorkerCtor(new URL("./firmware-build.worker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker.onmessage = (event: MessageEvent<FirmwareBuildWorkerResponse>) => {
-      if (event.data.type === "result") {
-        worker.terminate();
-        resolve(event.data.result);
-        return;
-      }
-      worker.terminate();
-      reject(new FirmwareBuildUnavailableError(event.data.message));
-    };
-    worker.onerror = (event) => {
-      worker.terminate();
-      reject(new Error(event.message));
-    };
-    worker.postMessage({
-      request,
-      type: "build",
-    });
-  });
+): Effect.Effect<FirmwareBuildResult, PlatformError> {
+  return Effect.acquireUseRelease(
+    Effect.try({
+      try: () =>
+        new WorkerCtor(new URL("./firmware-build.worker.ts", import.meta.url), { type: "module" }),
+      catch: (cause) => platformError("firmware.browser-build.create-worker", cause),
+    }),
+    (worker) =>
+      Effect.callback<FirmwareBuildResult, PlatformError>((resume) => {
+        worker.onmessage = (event: MessageEvent<FirmwareBuildWorkerResponse>) => {
+          if (event.data.type === "result") {
+            resume(Effect.succeed(event.data.result));
+            return;
+          }
+          resume(Effect.fail(platformError("firmware.browser-build", event.data.message)));
+        };
+        worker.onerror = (event) => {
+          resume(Effect.fail(platformError("firmware.browser-build", event.message)));
+        };
+        worker.postMessage({ request, type: "build" });
+      }),
+    (worker) => Effect.sync(() => worker.terminate()),
+  );
 }
 
 function performanceNow() {

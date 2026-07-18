@@ -30,7 +30,7 @@ TOTAL: 2090471
 - `src/lib/components/board/Keycap.svelte`
   - Replaced keycap legend/source/sub/marker `text-kb-*` utilities with arbitrary font sizes plus `leading-none` where the old CSS used font-size-only metrics.
   - Restored key glyph font family from UI to mono.
-  - Replaced keycap `bg-[var(...)]` and gradient/color-mix background utilities with exact `[background:...]` forms for base, transparent, modifier, accent, lighting, and LED-off states.
+  - Replaced keycap arbitrary variable backgrounds and gradient/color-mix utilities with exact `[background:...]` forms for base, transparent, modifier, accent, lighting, and LED-off states.
 
 - `src/lib/components/board/KeyboardBoard.svelte`
   - Restored split label `text-kb-10` to `text-[10px]` and made the cable glyph `!text-[14px]` to beat the global Material Symbols rule, matching the old scoped `.split-label .material-symbols-outlined` rule.

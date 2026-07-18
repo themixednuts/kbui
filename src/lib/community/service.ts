@@ -1,4 +1,5 @@
-import { getSeedCommunityKeymap, listSeedCommunityKeymaps } from "$lib/community/catalog";
+import { Effect } from "effect";
+
 import { COMMUNITY_AGENT_NAME } from "$lib/community/seed-maps";
 import {
   normalizeCommunityAdoptInput,
@@ -10,79 +11,140 @@ import {
   type CommunityKeymapDetail,
   type CommunityMutationUser,
 } from "$lib/community/types";
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 export const COMMUNITY_MUTATION_REQUIRES_WORKER =
   "Community mutations require the worker dev server and a signed-in GitHub session. Run `vp run dev:worker`, sign in, then retry.";
+export const COMMUNITY_REQUIRES_WORKER =
+  "Community browsing requires the Cloudflare worker runtime so every result comes from durable SQLite.";
 
-export async function listCommunityKeymapsFromEnvironment(
+export function listCommunityKeymapsFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawInput: unknown,
   viewerId?: string,
 ): Promise<CommunityKeymapCard[]> {
-  const input = normalizeCommunityListInput(rawInput);
-  if (!env?.CommunityAgent) return listSeedCommunityKeymaps(input);
-
-  const id = env.CommunityAgent.idFromName(COMMUNITY_AGENT_NAME);
-  const agent = env.CommunityAgent.get(id);
-  return agent.listKeymaps(input, viewerId);
+  return runCommunityEffect(
+    "list-keymaps",
+    Effect.flatMap(
+      normalizeEffect("list-input", () => normalizeCommunityListInput(rawInput)),
+      (input) =>
+        agentCallEffect("list-keymaps", () =>
+          communityAgent(env, COMMUNITY_REQUIRES_WORKER).listKeymaps(input, viewerId),
+        ),
+    ),
+  );
 }
 
-export async function getCommunityKeymapFromEnvironment(
+export function getCommunityKeymapFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawId: unknown,
   viewerId?: string,
 ): Promise<CommunityKeymapDetail | null> {
-  const id = normalizeCommunityKeymapId(rawId);
-  if (!env?.CommunityAgent) return getSeedCommunityKeymap(id);
-
-  const agentId = env.CommunityAgent.idFromName(COMMUNITY_AGENT_NAME);
-  const agent = env.CommunityAgent.get(agentId);
-  return agent.getKeymap(id, viewerId);
+  return runCommunityEffect(
+    "get-keymap",
+    Effect.flatMap(
+      normalizeEffect("keymap-id", () => normalizeCommunityKeymapId(rawId)),
+      (id) =>
+        agentCallEffect("get-keymap", () =>
+          communityAgent(env, COMMUNITY_REQUIRES_WORKER).getKeymap(id, viewerId),
+        ),
+    ),
+  );
 }
 
-export async function likeCommunityKeymapFromEnvironment(
+export function likeCommunityKeymapFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawId: unknown,
   rawUser: unknown,
 ): Promise<void> {
-  const id = normalizeCommunityKeymapId(rawId);
-  const user = normalizeCommunityMutationUser(rawUser);
-  return communityAgent(env).like(id, user);
+  return runCommunityEffect(
+    "like",
+    Effect.flatMap(
+      Effect.all([
+        normalizeEffect("keymap-id", () => normalizeCommunityKeymapId(rawId)),
+        normalizeEffect("user", () => normalizeCommunityMutationUser(rawUser)),
+      ]),
+      ([id, user]) => agentCallEffect("like", () => communityAgent(env).like(id, user)),
+    ),
+  );
 }
 
-export async function unlikeCommunityKeymapFromEnvironment(
+export function unlikeCommunityKeymapFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawId: unknown,
   rawUser: unknown,
 ): Promise<void> {
-  const id = normalizeCommunityKeymapId(rawId);
-  const user = normalizeCommunityMutationUser(rawUser);
-  return communityAgent(env).unlike(id, user);
+  return runCommunityEffect(
+    "unlike",
+    Effect.flatMap(
+      Effect.all([
+        normalizeEffect("keymap-id", () => normalizeCommunityKeymapId(rawId)),
+        normalizeEffect("user", () => normalizeCommunityMutationUser(rawUser)),
+      ]),
+      ([id, user]) => agentCallEffect("unlike", () => communityAgent(env).unlike(id, user)),
+    ),
+  );
 }
 
-export async function adoptCommunityKeymapFromEnvironment(
+export function adoptCommunityKeymapFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawInput: unknown,
   rawUser: unknown,
 ): Promise<CommunityKeymapDetail> {
-  const input = normalizeCommunityAdoptInput(rawInput);
-  const user = normalizeCommunityMutationUser(rawUser);
-  return communityAgent(env).adopt(input, user);
+  return runCommunityEffect(
+    "adopt",
+    Effect.flatMap(
+      Effect.all([
+        normalizeEffect("adopt-input", () => normalizeCommunityAdoptInput(rawInput)),
+        normalizeEffect("user", () => normalizeCommunityMutationUser(rawUser)),
+      ]),
+      ([input, user]) => agentCallEffect("adopt", () => communityAgent(env).adopt(input, user)),
+    ),
+  );
 }
 
-export async function reportCommunityKeymapFromEnvironment(
+export function reportCommunityKeymapFromEnvironment(
   env: Cloudflare.Env | undefined,
   rawInput: unknown,
   rawUser: unknown,
 ): Promise<void> {
-  const input = normalizeCommunityReportInput(rawInput);
-  const user = normalizeCommunityMutationUser(rawUser);
-  return communityAgent(env).report(input, user);
+  return runCommunityEffect(
+    "report",
+    Effect.flatMap(
+      Effect.all([
+        normalizeEffect("report-input", () => normalizeCommunityReportInput(rawInput)),
+        normalizeEffect("user", () => normalizeCommunityMutationUser(rawUser)),
+      ]),
+      ([input, user]) => agentCallEffect("report", () => communityAgent(env).report(input, user)),
+    ),
+  );
 }
 
-function communityAgent(env: Cloudflare.Env | undefined) {
+function normalizeEffect<A>(operation: string, normalize: () => A) {
+  return Effect.try({
+    try: normalize,
+    catch: (cause) => platformError(`community.${operation}`, cause),
+  });
+}
+
+function agentCallEffect<A>(operation: string, call: () => PromiseLike<A>) {
+  return Effect.tryPromise({
+    try: call,
+    catch: (cause) => platformError(`community.agent.${operation}`, cause),
+  });
+}
+
+function runCommunityEffect<A, E>(operation: string, effect: Effect.Effect<A, E>) {
+  return runWorkerEffect(`community.service.${operation}`, effect);
+}
+
+function communityAgent(
+  env: Cloudflare.Env | undefined,
+  missingBindingMessage = COMMUNITY_MUTATION_REQUIRES_WORKER,
+) {
   if (!env?.CommunityAgent) {
-    throw new Error(COMMUNITY_MUTATION_REQUIRES_WORKER);
+    throw new Error(missingBindingMessage);
   }
 
   const agentId = env.CommunityAgent.idFromName(COMMUNITY_AGENT_NAME);

@@ -10,7 +10,7 @@ import { defaultSampleKeyboard as sampleKeyboard } from "$lib/keyboard/sample-bo
 
 describe("community seed catalog", () => {
   it("shapes the six official starter maps as deterministic stored profiles", () => {
-    expect(COMMUNITY_SEED_VERSION).toBe("wave-4a-demock-1d-2026-07-04");
+    expect(COMMUNITY_SEED_VERSION).toBe("wave-4a-demock-1f-2026-07-14");
     expect(communitySeedKeymaps).toHaveLength(6);
     expect(communitySeedKeymaps.map((keymap) => keymap.id)).toEqual([
       "cm1",
@@ -24,8 +24,9 @@ describe("community seed catalog", () => {
     for (const keymap of communitySeedKeymaps) {
       expect(keymap.source).toBe("official");
       expect(keymap.author).toEqual({
-        id: "official:kbgui",
-        displayName: "kbgui Official",
+        id: "official:kbui",
+        handle: "kbui",
+        displayName: "kbui",
       });
       expect(keymap.likesCount).toBe(0);
       expect(keymap.adoptionsCount).toBe(0);
@@ -87,21 +88,16 @@ function hasCompileClaimField(record: object): boolean {
   return Object.keys(record).some((key) => key.toLowerCase().startsWith("compile"));
 }
 
-describe("community DO-absent fallback", () => {
-  it("returns seeded cards when the CommunityAgent binding is absent", async () => {
-    const cards = await listCommunityKeymapsFromEnvironment(undefined, { sort: "likes" });
-    expect(cards).toHaveLength(6);
-    expect(cards[0]).toMatchObject({
-      id: "cm4",
-      source: "official",
-      likesCount: 0,
-      adoptionsCount: 0,
-    });
+describe("community durable store requirement", () => {
+  it("blocks list reads when the CommunityAgent binding is absent", async () => {
+    await expect(listCommunityKeymapsFromEnvironment(undefined, { sort: "likes" })).rejects.toThrow(
+      "every result comes from durable SQLite",
+    );
   });
 
-  it("returns seeded detail when the CommunityAgent binding is absent", async () => {
-    const detail = await getCommunityKeymapFromEnvironment(undefined, "cm6");
-    expect(detail?.source).toBe("official");
-    expect(detail?.profile.name).toBe("Minimal starter 34");
+  it("blocks detail reads when the CommunityAgent binding is absent", async () => {
+    await expect(getCommunityKeymapFromEnvironment(undefined, "cm6")).rejects.toThrow(
+      "every result comes from durable SQLite",
+    );
   });
 });

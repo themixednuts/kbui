@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import type { ExtensionSafeUser } from "$lib/typing-runs/contracts";
 import {
   resolveExtensionDeviceTokenFromEnvironment,
@@ -55,40 +59,45 @@ export function extensionError(request: Request, error: unknown, fallback: strin
   return extensionJson(request, { error: fallback }, 400);
 }
 
-export async function readJsonBody(request: Request): Promise<unknown> {
-  try {
-    return await request.json();
-  } catch {
-    throw new ExtensionHttpError(400, "Request body must be valid JSON.");
-  }
+export function readJsonBody(request: Request): Promise<unknown> {
+  return runWorkerEffect(
+    "extension.read-json-body",
+    Effect.tryPromise({
+      try: () => request.json(),
+      catch: () => new ExtensionHttpError(400, "Request body must be valid JSON."),
+    }),
+  );
 }
 
-export async function requireExtensionPrincipal(
+export function requireExtensionPrincipal(
   event: ExtensionEndpointEvent,
 ): Promise<ExtensionPrincipal> {
-  const authorization = event.request.headers.get("authorization");
-  if (authorization) {
-    const token = bearerToken(authorization);
-    if (!token) throw new ExtensionHttpError(401, "Invalid Authorization header.");
-    const userId = await resolveExtensionDeviceTokenFromEnvironment(event.platform?.env, token);
-    if (!userId) throw new ExtensionHttpError(401, "Invalid extension device token.");
-    return {
-      kind: "device",
-      userId,
-      user: null,
-    };
-  }
+  return runWorkerEffect(
+    "extension.require-principal",
+    Effect.gen(function* () {
+      const authorization = event.request.headers.get("authorization");
+      if (authorization) {
+        const token = bearerToken(authorization);
+        if (!token) {
+          return yield* Effect.fail(new ExtensionHttpError(401, "Invalid Authorization header."));
+        }
+        const userId = yield* Effect.tryPromise({
+          try: () => resolveExtensionDeviceTokenFromEnvironment(event.platform?.env, token),
+          catch: (cause) => platformError("extension.resolve-device-token", cause),
+        });
+        if (!userId) {
+          return yield* Effect.fail(new ExtensionHttpError(401, "Invalid extension device token."));
+        }
+        return { kind: "device", userId, user: null } as const;
+      }
 
-  const user = sessionUser(event.locals.user);
-  if (user) {
-    return {
-      kind: "session",
-      userId: user.id,
-      user,
-    };
-  }
-
-  throw new ExtensionHttpError(401, "Extension request requires a paired device token or session.");
+      const user = sessionUser(event.locals.user);
+      if (user) return { kind: "session", userId: user.id, user } as const;
+      return yield* Effect.fail(
+        new ExtensionHttpError(401, "Extension request requires a paired device token or session."),
+      );
+    }),
+  );
 }
 
 export function sessionUser(user: App.Locals["user"]): ExtensionSafeUser | null {
@@ -123,12 +132,8 @@ function corsHeaders(request: Request): Headers {
 }
 
 function allowedCorsOrigin(origin: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(origin);
-  } catch {
-    return false;
-  }
+  if (!URL.canParse(origin)) return false;
+  const url = new URL(origin);
 
   if (url.protocol === "chrome-extension:" || url.protocol === "moz-extension:") return true;
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;

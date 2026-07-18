@@ -24,15 +24,15 @@ export function normalizeKbguiBaseUrl(raw: string | undefined | null): string {
   try {
     url = new URL(value);
   } catch {
-    throw new Error("kbgui URL must be a valid http(s) origin.");
+    throw new Error("kbui URL must be a valid http(s) origin.");
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("kbgui URL must use http or https.");
+    throw new Error("kbui URL must use http or https.");
   }
 
   if (url.protocol === "http:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
-    throw new Error("Non-local kbgui URLs must use https.");
+    throw new Error("Non-local kbui URLs must use https.");
   }
 
   return url.origin;
@@ -109,7 +109,7 @@ async function fetchJson<T>(
 
   const body = await readResponseBody(response);
   if (!response.ok) {
-    const message = responseMessage(body) ?? `kbgui request failed with HTTP ${response.status}.`;
+    const message = responseMessage(body) ?? `kbui request failed with HTTP ${response.status}.`;
     throw new KbguiApiError(response.status, message);
   }
 

@@ -6,7 +6,7 @@ import type {
 } from "./contracts";
 import type { ParsedMonkeytypeResult } from "./monkeytype/capture";
 
-export const DEFAULT_KBGUI_BASE_URL = "http://127.0.0.1:8787";
+export const DEFAULT_KBGUI_BASE_URL = __KBGUI_BASE_URL__;
 
 export interface PendingRunUpload {
   idempotencyKey: string;

@@ -4,15 +4,20 @@ import path from "node:path";
 
 const agentExports = [
   'export { AuthAgent } from "../../src/agents/auth-agent";',
+  'export { FirmwareBuildAgent } from "../../src/agents/firmware-build-agent";',
+  'export { FirmwareBuildWorkflow } from "../../src/agents/firmware-build-workflow";',
+  'export { FirmwareMaintenanceWorkflow } from "../../src/agents/firmware-maintenance-workflow";',
   'export { CommunityAgent } from "../../src/agents/community-agent";',
   'export { TypingRunsAgent } from "../../src/agents/typing-runs-agent";',
   'export { UserWorkbenchAgent } from "../../src/agents/user-workbench";',
 ];
+const queueImport = 'import { processGitHubWebhookQueue } from "../../src/worker-queue";';
+const workerDefaultMarker = "var worker_default = {";
 const usePlatformProxy = process.argv.slice(2).some((arg) => arg === "dev");
 const adapterOptions = usePlatformProxy
   ? {
       platformProxy: {
-        configPath: "wrangler.toml",
+        configPath: "wrangler.jsonc",
       },
     }
   : {};
@@ -26,12 +31,21 @@ function adapterWithAgentExports(options) {
       await cloudflare.adapt(builder);
 
       const workerPath = path.join(builder.getBuildDirectory("cloudflare"), "_worker.js");
-      const worker = await readFile(workerPath, "utf8");
+      let worker = await readFile(workerPath, "utf8");
+      if (!worker.includes("queue: processGitHubWebhookQueue")) {
+        if (!worker.includes(workerDefaultMarker)) {
+          throw new Error(
+            "Cloudflare adapter worker entry no longer exposes the expected default handler marker.",
+          );
+        }
+        worker = `${queueImport}\n${worker.replace(
+          workerDefaultMarker,
+          `${workerDefaultMarker}\n  queue: processGitHubWebhookQueue,`,
+        )}`;
+      }
       const missingExports = agentExports.filter((exportLine) => !worker.includes(exportLine));
 
-      if (missingExports.length > 0) {
-        await writeFile(workerPath, `${worker}\n${missingExports.join("\n")}\n`);
-      }
+      await writeFile(workerPath, `${worker}\n${missingExports.join("\n")}\n`);
     },
   };
 

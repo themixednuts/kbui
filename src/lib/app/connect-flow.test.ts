@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  activateViaConnectionAndProfile,
   connectZmkStudioAndActivate,
   connectViaAndActivate,
   continueWithoutDevice,
   importViaJsonAndActivate,
+  profileFromViaJson,
 } from "$lib/app/connect-flow";
 import { ShellStore, type ShellConnectionStatus } from "$lib/app/shell-store.svelte";
 import { WorkbenchStore } from "$lib/app/workbench-store.svelte";
@@ -204,14 +206,14 @@ describe("connect flow", () => {
 
     expect(result.source).toBe("local");
     expect(result.profile.origin).toBe("starter");
-    expect(workbench.profile.id).toBe("local:keeb-workbench-devboard");
+    expect(workbench.profile.id).toBe("local:local-keyboard-profile");
     expect(workbench.profile.origin).toBe("starter");
     expect(workbench.profile.identity).toBeUndefined();
     expect(workbench.profile.detectionNotes).toContain(
-      "Created a starter local-only profile without a connected keyboard.",
+      "Created a local-only profile without a connected keyboard.",
     );
     expect(shell.device.status).toBe("disconnected");
-    expect(shell.device.message).toBe("Editing Workbench 65 starter without a connected device.");
+    expect(shell.device.message).toBe("Editing Local keyboard without a connected device.");
     expect(shell.transitions).toEqual(["connecting", "disconnected"]);
   });
 
@@ -224,12 +226,35 @@ describe("connect flow", () => {
         transport: unknownRealViaTransport(),
         workbench,
       }),
-    ).rejects.toThrow(/Load VIA JSON/);
+    ).rejects.toThrow(/No device changes were made/);
 
-    expect(workbench.profile.name).toBe("Workbench 65");
+    expect(workbench.profile.name).toBe("Local keyboard");
     expect(workbench.profile.origin).toBe("starter");
     expect(shell.device.status).toBe("error");
-    expect(shell.device.message).toContain("Load VIA JSON");
+    expect(shell.device.message).toContain("No device changes were made");
     expect(shell.transitions).toEqual(["connecting", "error"]);
+  });
+
+  it("activates an already granted VIA connection without prompting again", async () => {
+    const { shell, workbench } = createStores();
+    const baseProfile = profileFromViaJson("test-pad.json", tinyViaDefinition());
+
+    const result = await activateViaConnectionAndProfile({
+      connection: unknownViaConnection(),
+      displayTransport: "WebHID",
+      resolveBaseProfile: () => baseProfile,
+      shell,
+      workbench,
+    });
+
+    expect(result.source).toBe("device");
+    expect(result.profile.name).toBe("Mystery Pad");
+    expect(workbench.profile.origin).toBe("device");
+    expect(shell.device).toMatchObject({
+      board: "Mystery Pad",
+      protocol: "VIA v3",
+      status: "connected",
+      transport: "WebHID",
+    });
   });
 });

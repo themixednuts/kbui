@@ -1,6 +1,34 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
+import { decodeDeviceProfileFromStorageEffect } from "$lib/keyboard/schema";
 import type { RequestHandler } from "./$types";
+
+const snapshotBodySchema = Schema.Struct({
+  profile: Schema.Unknown,
+  changes: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        after: Schema.String,
+        before: Schema.String,
+        id: Schema.String,
+        kind: Schema.Literals([
+          "binding",
+          "macro",
+          "combo",
+          "tapDance",
+          "setting",
+          "lighting",
+          "metadata",
+        ]),
+        path: Schema.String,
+        scope: Schema.String,
+        staged: Schema.Boolean,
+      }),
+    ),
+  ),
+});
 
 function normalizeAgentName(input: string) {
   return (
@@ -12,13 +40,10 @@ function normalizeAgentName(input: string) {
   );
 }
 
-// Lock writes to the authenticated user's namespace. The DO name is
-// derived from `locals.user.id` (set by hooks.server.ts via the AuthAgent
-// session lookup) — that's the only thing the client trusts; a `userId`
-// in the request body is ignored to prevent cross-account writes.
 export const POST: RequestHandler = ({ request, platform, locals }) =>
-  Effect.runPromise(
-    Effect.tryPromise(async () => {
+  runWorkerEffect(
+    "api.agent.snapshot.save",
+    Effect.gen(function* () {
       if (!locals.user) {
         return Response.json(
           { synced: false, reason: "Sign in to sync workbench state." },
@@ -27,7 +52,34 @@ export const POST: RequestHandler = ({ request, platform, locals }) =>
       }
 
       const userId = normalizeAgentName(locals.user.id);
-      const body = await request.json();
+      const rawBody = yield* Effect.tryPromise({
+        try: () => request.json(),
+        catch: (cause) => platformError("snapshot.read-request-json", cause),
+      }).pipe(Effect.result);
+      if (rawBody._tag === "Failure") {
+        return Response.json(
+          { synced: false, reason: "Invalid workbench snapshot." },
+          { status: 400 },
+        );
+      }
+      const body = yield* Schema.decodeUnknownEffect(snapshotBodySchema)(rawBody.success).pipe(
+        Effect.result,
+      );
+      if (body._tag === "Failure") {
+        return Response.json(
+          { synced: false, reason: "Invalid workbench snapshot." },
+          { status: 400 },
+        );
+      }
+      const profile = yield* decodeDeviceProfileFromStorageEffect(body.success.profile).pipe(
+        Effect.result,
+      );
+      if (profile._tag === "Failure") {
+        return Response.json(
+          { synced: false, reason: "Invalid keyboard profile." },
+          { status: 400 },
+        );
+      }
 
       if (!platform?.env.UserWorkbenchAgent) {
         return Response.json(
@@ -36,50 +88,45 @@ export const POST: RequestHandler = ({ request, platform, locals }) =>
             agentName: userId,
             reason: "UserWorkbenchAgent binding is only available through Wrangler/Cloudflare.",
           },
-          { status: 202 },
+          { status: 503 },
         );
       }
 
-      const agentId = platform.env.UserWorkbenchAgent.idFromName(userId);
-      const agent = platform.env.UserWorkbenchAgent.get(agentId);
-
-      const snapshot = await agent.saveSnapshot({
-        userId,
-        profile: body.profile,
-        changes: body.changes ?? [],
+      const agent = platform.env.UserWorkbenchAgent.getByName(userId);
+      const snapshot = yield* Effect.tryPromise({
+        try: () =>
+          agent.saveSnapshot({
+            userId,
+            profile: profile.success,
+            changes: [...(body.success.changes ?? [])],
+          }),
+        catch: (cause) => platformError("snapshot.save-agent-state", cause),
       });
 
-      return Response.json({
-        synced: true,
-        agentName: userId,
-        snapshot,
-      });
+      return Response.json({ synced: true, agentName: userId, snapshot });
     }),
   );
 
-// Restore the latest snapshot for the signed-in user. Returns `null`
-// when nothing has been saved yet so the client can fall back to its
-// local default.
 export const GET: RequestHandler = ({ platform, locals }) =>
-  Effect.runPromise(
-    Effect.tryPromise(async () => {
+  runWorkerEffect(
+    "api.agent.snapshot.load",
+    Effect.gen(function* () {
       if (!locals.user) {
         return Response.json({ error: "Sign in to load workbench state." }, { status: 401 });
       }
 
       const userId = normalizeAgentName(locals.user.id);
-
       if (!platform?.env.UserWorkbenchAgent) {
         return Response.json(
           { agentName: userId, snapshot: null, reason: "Binding unavailable." },
-          { status: 202 },
+          { status: 503 },
         );
       }
 
-      const agentId = platform.env.UserWorkbenchAgent.idFromName(userId);
-      const agent = platform.env.UserWorkbenchAgent.get(agentId);
-      const snapshot = await agent.getSnapshot();
-
+      const snapshot = yield* Effect.tryPromise({
+        try: () => platform.env.UserWorkbenchAgent.getByName(userId).getSnapshot(),
+        catch: (cause) => platformError("snapshot.load-agent-state", cause),
+      });
       return Response.json({ agentName: userId, snapshot });
     }),
   );

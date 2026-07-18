@@ -8,37 +8,50 @@ export interface EncryptedApeKey {
 
 type CryptoProvider = Pick<Crypto, "getRandomValues" | "subtle">;
 
-export async function encryptApeKey(
+export function encryptApeKey(
   apeKey: string,
   secretKeyBase64: string,
   cryptoProvider: CryptoProvider = globalThis.crypto,
 ): Promise<EncryptedApeKey> {
-  const key = await importSecretKey(secretKeyBase64, cryptoProvider);
-  const iv = cryptoProvider.getRandomValues(new Uint8Array(12));
-  const encrypted = await cryptoProvider.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    textEncoder.encode(apeKey),
+  return runWorkerEffect(
+    "monkeytype.encrypt-apekey",
+    Effect.gen(function* () {
+      const key = yield* importSecretKeyEffect(secretKeyBase64, cryptoProvider);
+      const iv = cryptoProvider.getRandomValues(new Uint8Array(12));
+      const encrypted = yield* Effect.tryPromise({
+        try: () =>
+          cryptoProvider.subtle.encrypt({ name: "AES-GCM", iv }, key, textEncoder.encode(apeKey)),
+        catch: (cause) => platformError("monkeytype.encrypt-apekey", cause),
+      });
+      return {
+        ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+        iv: bytesToBase64(iv),
+      };
+    }),
   );
-
-  return {
-    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
-    iv: bytesToBase64(iv),
-  };
 }
 
-export async function decryptApeKey(
+export function decryptApeKey(
   encrypted: EncryptedApeKey,
   secretKeyBase64: string,
   cryptoProvider: CryptoProvider = globalThis.crypto,
 ): Promise<string> {
-  const key = await importSecretKey(secretKeyBase64, cryptoProvider);
-  const decrypted = await cryptoProvider.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToBytes(encrypted.iv) },
-    key,
-    base64ToBytes(encrypted.ciphertext),
+  return runWorkerEffect(
+    "monkeytype.decrypt-apekey",
+    Effect.gen(function* () {
+      const key = yield* importSecretKeyEffect(secretKeyBase64, cryptoProvider);
+      const decrypted = yield* Effect.tryPromise({
+        try: () =>
+          cryptoProvider.subtle.decrypt(
+            { name: "AES-GCM", iv: base64ToBytes(encrypted.iv) },
+            key,
+            base64ToBytes(encrypted.ciphertext),
+          ),
+        catch: (cause) => platformError("monkeytype.decrypt-apekey", cause),
+      });
+      return textDecoder.decode(decrypted);
+    }),
   );
-  return textDecoder.decode(decrypted);
 }
 
 export function assertValidMonkeytypeSecret(secretKeyBase64: string | null | undefined): string {
@@ -54,9 +67,22 @@ export function assertValidMonkeytypeSecret(secretKeyBase64: string | null | und
   return secretKeyBase64.trim();
 }
 
-async function importSecretKey(secretKeyBase64: string, cryptoProvider: CryptoProvider) {
-  const keyBytes = base64ToBytes(assertValidMonkeytypeSecret(secretKeyBase64));
-  return cryptoProvider.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+function importSecretKeyEffect(secretKeyBase64: string, cryptoProvider: CryptoProvider) {
+  return Effect.flatMap(
+    Effect.try({
+      try: () => base64ToBytes(assertValidMonkeytypeSecret(secretKeyBase64)),
+      catch: (cause) => platformError("monkeytype.validate-secret", cause),
+    }),
+    (keyBytes) =>
+      Effect.tryPromise({
+        try: () =>
+          cryptoProvider.subtle.importKey("raw", keyBytes, "AES-GCM", false, [
+            "encrypt",
+            "decrypt",
+          ]),
+        catch: (cause) => platformError("monkeytype.import-secret", cause),
+      }),
+  );
 }
 
 function base64ToBytes(value: string) {
@@ -79,3 +105,7 @@ function bytesToBase64(bytes: Uint8Array) {
   }
   return btoa(binary);
 }
+import { Effect } from "effect";
+
+import { platformError } from "$lib/effect/errors";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";

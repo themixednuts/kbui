@@ -1,5 +1,9 @@
+import { Effect, Semaphore } from "effect";
+
 import type { EditorStore } from "$lib/app/editor-store.svelte";
+import { forkApp, runApp } from "$lib/app/runtime";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
+import { platformError } from "$lib/effect/errors";
 import { summarizeLiveSyncLocalOnly } from "$lib/keyboard/live-sync-classification";
 import type { KeyBinding } from "$lib/keyboard/schema";
 import type { ConnectionState } from "$lib/keyboard/transport";
@@ -165,8 +169,8 @@ export class ZmkLiveSyncEngine {
   private readonly pendingWrites = new Map<string, PendingWrite>();
   private readonly readyWrites = new Map<string, PendingWrite>();
   private readonly failedSignatures = new Map<string, string>();
+  private readonly writeSemaphore = Semaphore.makeUnsafe(1);
   private lastConnectionRevision = 0;
-  private writeQueue: Promise<void> = Promise.resolve();
   private drainScheduled = false;
 
   constructor(options: ZmkLiveSyncOptions) {
@@ -184,7 +188,11 @@ export class ZmkLiveSyncEngine {
     const liveChanges = this.liveWritableChanges;
     this.pruneResolvedLanes(liveChanges);
 
-    if (!this.canWrite(connection) || this.paused) {
+    if (
+      this.editor.profile.firmwareEditIntent === "source" ||
+      !this.canWrite(connection) ||
+      this.paused
+    ) {
       this.clearTimers();
       return;
     }
@@ -234,9 +242,13 @@ export class ZmkLiveSyncEngine {
     this.readyWrites.clear();
   }
 
-  async flush() {
-    await new Promise((resolve) => setTimeout(resolve, this.debounceMs + 10));
-    await this.writeQueue;
+  flush() {
+    return runApp(
+      "zmk-live-sync.flush",
+      Effect.sleep(`${this.debounceMs + 10} millis`).pipe(
+        Effect.andThen(this.writeSemaphore.withPermit(Effect.void)),
+      ),
+    );
   }
 
   private computeStatus(): ZmkLiveSyncStatus {
@@ -299,116 +311,166 @@ export class ZmkLiveSyncEngine {
 
     if (this.drainScheduled) return;
     this.drainScheduled = true;
-    this.writeQueue = this.writeQueue.then(() => this.drainReadyWrites()).catch(() => undefined);
+    forkApp("zmk-live-sync.drain", this.writeSemaphore.withPermit(this.drainReadyWritesEffect()));
   }
 
-  private async drainReadyWrites() {
-    this.drainScheduled = false;
-    const batch = [...this.readyWrites.values()];
-    this.readyWrites.clear();
-    const successes: SuccessfulWrite[] = [];
+  private drainReadyWritesEffect() {
+    return Effect.gen({ self: this }, function* () {
+      this.drainScheduled = false;
+      const batch = [...this.readyWrites.values()];
+      this.readyWrites.clear();
+      const results = yield* Effect.forEach(batch, (pending) =>
+        Effect.result(this.writeOneEffect(pending)),
+      );
+      const successes: SuccessfulWrite[] = [];
 
-    for (const pending of batch) {
-      const success = await this.writeOne(pending).catch((error: unknown) => {
+      results.forEach((result, index) => {
+        const pending = batch[index];
+        if (!pending) return;
+        if (result._tag === "Success") {
+          if (result.success) successes.push(result.success);
+          return;
+        }
         const target = pending.change.liveWrite;
         if (target) {
           this.failedSignatures.set(target.laneKey, target.signature);
-          this.setLaneStatus(pending.change, "sync-failed", errorMessage(error));
+          this.setLaneStatus(pending.change, "sync-failed", errorMessage(result.failure));
         }
-        return undefined;
       });
-      if (success) successes.push(success);
-    }
 
-    if (successes.length === 0) return;
-
-    try {
-      const zmk = successes[0].connection.zmkStudio;
-      if (!zmk) throw new Error("ZMK Studio connection disappeared.");
-      const save = await zmk.call({ type: "save_changes" });
-      if (save.type !== "save_changes" || save.status !== "ok") {
-        throw new Error(
-          `ZMK save_changes failed: ${save.type === "save_changes" ? save.status : "bad response"}`,
-        );
+      if (successes.length === 0) return;
+      const saveResult = yield* Effect.result(this.saveBatchEffect(successes));
+      if (saveResult._tag === "Failure") {
+        for (const success of successes) {
+          this.failedSignatures.set(success.target.laneKey, success.target.signature);
+          this.setLaneStatus(success.change, "sync-failed", errorMessage(saveResult.failure));
+        }
+        return;
       }
-
-      for (const success of successes) await this.markSuccess(success);
-    } catch (error) {
-      for (const success of successes) {
-        this.failedSignatures.set(success.target.laneKey, success.target.signature);
-        this.setLaneStatus(success.change, "sync-failed", errorMessage(error));
-      }
-    }
+      yield* Effect.forEach(successes, (success) => this.markSuccessEffect(success), {
+        discard: true,
+      });
+    });
   }
 
-  private async writeOne(pending: PendingWrite): Promise<SuccessfulWrite | undefined> {
+  private writeOneEffect(pending: PendingWrite) {
     const target = pending.change.liveWrite;
-    if (!target) return undefined;
+    if (!target) return Effect.succeed(undefined);
 
     if (pending.connectionRevision !== this.shell.connectionRevision) {
       this.removeLaneStatus(target.laneKey);
-      return undefined;
+      return Effect.succeed(undefined);
     }
 
     if (!this.canWrite(pending.connection)) {
       this.removeLaneStatus(target.laneKey);
-      return undefined;
+      return Effect.succeed(undefined);
     }
 
     const binding = currentBinding(this.editor, target);
     if (zmkBindingSignature(binding) !== target.signature) {
       this.removeLaneStatus(target.laneKey);
-      return undefined;
+      return Effect.succeed(undefined);
     }
 
     const zmk = pending.connection.zmkStudio;
-    if (!zmk) throw new Error("ZMK Studio connection handle is unavailable.");
+    if (!zmk) {
+      return Effect.fail(platformError("zmk-live-sync.write", "Connection handle is unavailable."));
+    }
 
-    const response = await zmk.call({
-      type: "set_layer_binding",
-      layerId: target.studioLayerId,
-      keyPosition: target.keyPosition,
-      binding: target.encodedBinding,
-    });
-    if (response.type !== "set_layer_binding" || response.status !== "ok") {
-      throw new Error(
-        `ZMK set_layer_binding failed: ${response.type === "set_layer_binding" ? response.status : "bad response"}`,
+    return Effect.gen(function* () {
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          zmk.call({
+            type: "set_layer_binding",
+            layerId: target.studioLayerId,
+            keyPosition: target.keyPosition,
+            binding: target.encodedBinding,
+          }),
+        catch: (cause) => platformError("zmk-live-sync.set-binding", cause),
+      });
+      if (response.type !== "set_layer_binding" || response.status !== "ok") {
+        return yield* Effect.fail(
+          platformError(
+            "zmk-live-sync.set-binding",
+            `ZMK set_layer_binding failed: ${response.type === "set_layer_binding" ? response.status : "bad response"}`,
+          ),
+        );
+      }
+
+      const readback = yield* Effect.tryPromise({
+        try: () => zmk.call({ type: "get_keymap" }),
+        catch: (cause) => platformError("zmk-live-sync.readback", cause),
+      });
+      if (readback.type !== "get_keymap") {
+        return yield* Effect.fail(
+          platformError("zmk-live-sync.readback", "ZMK get_keymap response mismatch."),
+        );
+      }
+
+      const layer = readback.keymap.layers.find(
+        (candidate) => candidate.id === target.studioLayerId,
       );
-    }
+      const verified = layer?.bindings[target.keyPosition];
+      if (!verified || !zmkBindingsEqual(verified, target.encodedBinding)) {
+        return yield* Effect.fail(
+          platformError("zmk-live-sync.readback", "ZMK readback mismatch after write."),
+        );
+      }
 
-    const readback = await zmk.call({ type: "get_keymap" });
-    if (readback.type !== "get_keymap") throw new Error("ZMK get_keymap response mismatch.");
-
-    const layer = readback.keymap.layers.find((candidate) => candidate.id === target.studioLayerId);
-    const verified = layer?.bindings[target.keyPosition];
-    if (!verified || !zmkBindingsEqual(verified, target.encodedBinding)) {
-      throw new Error("ZMK readback mismatch after set_layer_binding.");
-    }
-
-    return {
-      change: pending.change,
-      connection: pending.connection,
-      keymap: readback.keymap,
-      target,
-    };
+      return {
+        change: pending.change,
+        connection: pending.connection,
+        keymap: readback.keymap,
+        target,
+      } satisfies SuccessfulWrite;
+    });
   }
 
-  private async markSuccess(success: SuccessfulWrite) {
-    this.patchConnectionKeymap(success.keymap);
-    this.failedSignatures.delete(success.target.laneKey);
-
-    const latestBinding = currentBinding(this.editor, success.target);
-    if (zmkBindingSignature(latestBinding) === success.target.signature) {
-      await this.editor.markBindingSyncedToBase(
-        success.target.profileLayerId,
-        success.target.keyId,
-        latestBinding,
-      );
-      this.setLaneStatus(success.change, "synced");
-    } else {
-      this.removeLaneStatus(success.target.laneKey);
-      this.processChanges();
+  private saveBatchEffect(successes: readonly SuccessfulWrite[]) {
+    const zmk = successes[0]?.connection.zmkStudio;
+    if (!zmk) {
+      return Effect.fail(platformError("zmk-live-sync.save", "Connection disappeared."));
     }
+    return Effect.flatMap(
+      Effect.tryPromise({
+        try: () => zmk.call({ type: "save_changes" }),
+        catch: (cause) => platformError("zmk-live-sync.save", cause),
+      }),
+      (save) =>
+        save.type === "save_changes" && save.status === "ok"
+          ? Effect.void
+          : Effect.fail(
+              platformError(
+                "zmk-live-sync.save",
+                `ZMK save_changes failed: ${save.type === "save_changes" ? save.status : "bad response"}`,
+              ),
+            ),
+    );
+  }
+
+  private markSuccessEffect(success: SuccessfulWrite) {
+    return Effect.gen({ self: this }, function* () {
+      this.patchConnectionKeymap(success.keymap);
+      this.failedSignatures.delete(success.target.laneKey);
+
+      const latestBinding = currentBinding(this.editor, success.target);
+      if (zmkBindingSignature(latestBinding) === success.target.signature) {
+        yield* Effect.tryPromise({
+          try: () =>
+            this.editor.markBindingSyncedToBase(
+              success.target.profileLayerId,
+              success.target.keyId,
+              latestBinding,
+            ),
+          catch: (cause) => platformError("zmk-live-sync.advance-base", cause),
+        });
+        this.setLaneStatus(success.change, "synced");
+      } else {
+        this.removeLaneStatus(success.target.laneKey);
+        this.processChanges();
+      }
+    });
   }
 
   private patchConnectionKeymap(keymap: ZmkStudioKeymap) {

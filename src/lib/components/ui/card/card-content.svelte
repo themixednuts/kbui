@@ -13,7 +13,7 @@
 <div
 	bind:this={ref}
 	data-slot="card-content"
-	class={cn("px-[18px] py-[18px]", className)}
+	class={cn("p-kb-16", className)}
 	{...restProps}
 >
 	{@render children?.()}

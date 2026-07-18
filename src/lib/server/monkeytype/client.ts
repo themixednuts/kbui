@@ -1,8 +1,15 @@
+import { Effect, Schema } from "effect";
+
+import { platformError } from "$lib/effect/errors";
+import { selfHeal } from "$lib/effect/self-healing";
+import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import type { MonkeytypeRateLimit, MonkeytypeStatusError } from "$lib/monkeytype/types";
 
 export const MONKEYTYPE_API_BASE_URL = "https://api.monkeytype.com";
 
 export type MonkeytypeFetch = typeof fetch;
+
+const defaultMonkeytypeFetch: MonkeytypeFetch = (input, init) => globalThis.fetch(input, init);
 
 export interface MonkeytypeResponse<T> {
   data: T;
@@ -43,7 +50,7 @@ export class MonkeytypeApiClient {
   readonly #nowMs: () => number;
 
   constructor(options: MonkeytypeApiClientOptions = {}) {
-    this.#fetchImpl = options.fetchImpl ?? fetch;
+    this.#fetchImpl = options.fetchImpl ?? defaultMonkeytypeFetch;
     this.#nowMs = options.nowMs ?? (() => new Date().getTime());
   }
 
@@ -66,30 +73,36 @@ export class MonkeytypeApiClient {
     return this.#request(`/users/${encodeURIComponent(username)}/profile?${params}`);
   }
 
-  async #request<T>(
+  #request<T>(
     path: string,
     options: {
       apeKey?: string;
     } = {},
   ): Promise<MonkeytypeResponse<T>> {
-    const headers = new Headers({ accept: "application/json" });
-    if (options.apeKey) headers.set("authorization", `ApeKey ${options.apeKey}`);
-
-    const response = await this.#fetchImpl(`${MONKEYTYPE_API_BASE_URL}${path}`, {
-      headers,
-      method: "GET",
-    });
-    const rateLimit = readMonkeytypeRateLimit(response.headers, this.#nowMs());
-    const body = await readResponseBody(response);
-
-    if (!response.ok) {
-      throw monkeytypeErrorFromResponse(response.status, body, rateLimit);
-    }
-
-    return {
-      data: unwrapMonkeytypeData<T>(body),
-      rateLimit,
-    };
+    return runWorkerEffect(
+      "monkeytype.request",
+      Effect.gen({ self: this }, function* () {
+        const headers = new Headers({ accept: "application/json" });
+        if (options.apeKey) headers.set("authorization", `ApeKey ${options.apeKey}`);
+        const response = yield* selfHeal(
+          Effect.tryPromise({
+            try: () =>
+              this.#fetchImpl(`${MONKEYTYPE_API_BASE_URL}${path}`, {
+                headers,
+                method: "GET",
+              }),
+            catch: (cause) => platformError("monkeytype.fetch", cause),
+          }),
+          "1 second",
+        );
+        const rateLimit = readMonkeytypeRateLimit(response.headers, this.#nowMs());
+        const body = yield* readResponseBodyEffect(response);
+        if (!response.ok) {
+          return yield* Effect.fail(monkeytypeErrorFromResponse(response.status, body, rateLimit));
+        }
+        return { data: unwrapMonkeytypeData<T>(body), rateLimit };
+      }),
+    );
   }
 }
 
@@ -150,14 +163,22 @@ function monkeytypeErrorCode(status: number, fallbackMessage: string) {
   }
 }
 
-async function readResponseBody(response: Response) {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
+function readResponseBodyEffect(response: Response) {
+  return Effect.gen(function* () {
+    const text = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: (cause) => platformError("monkeytype.read-response", cause),
+    });
+    if (!text) return null;
+    const decoded = yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(text).pipe(
+      Effect.result,
+    );
+    if (decoded._tag === "Success") return decoded.success;
+    if (!response.ok) return text;
+    return yield* Effect.fail(
+      platformError("monkeytype.decode-response", "Monkeytype returned malformed JSON."),
+    );
+  });
 }
 
 function unwrapMonkeytypeData<T>(body: unknown): T {

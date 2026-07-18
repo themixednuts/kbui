@@ -1,12 +1,13 @@
 /* QMK/ZMK GUI design system for Svelte. */
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@xyflow/svelte/dist/base.css";
 
 @font-face {
   font-family: "Inter";
   font-style: normal;
   font-weight: 100 900;
-  font-display: swap;
+  font-display: optional;
   src: url("/fonts/inter-latin-variable.woff2") format("woff2");
   unicode-range:
     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
@@ -17,7 +18,7 @@
   font-family: "Departure Mono";
   font-style: normal;
   font-weight: 400;
-  font-display: swap;
+  font-display: optional;
   src: url("/fonts/departure-mono.woff2") format("woff2");
 }
 
@@ -42,15 +43,19 @@
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
+  --color-stage: var(--stage);
+  --color-card-surface: var(--card-surface);
   --color-ink: var(--ink);
   --color-ink-1: var(--ink-1);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-line: var(--line);
   --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
   --color-coral: var(--coral);
   --color-coral-ink: var(--coral-ink);
   --color-coral-soft: var(--coral-soft);
+  --color-on-accent: var(--on-accent);
   --color-teal: var(--teal);
   --color-teal-ink: var(--teal-ink);
   --color-mint: var(--mint);
@@ -63,6 +68,15 @@
   --color-diff-right: var(--diff-right);
   --color-tag-added: var(--tag-added-bg);
   --color-tag-removed: var(--tag-removed-bg);
+  --color-success: var(--success);
+  --color-success-ink: var(--success-ink);
+  --color-success-surface: var(--success-surface);
+  --color-warning: var(--warning);
+  --color-warning-ink: var(--warning-ink);
+  --color-warning-surface: var(--warning-surface);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-surface: var(--danger-surface);
 
   --spacing-kb-2: var(--space-2);
   --spacing-kb-3: var(--space-3);
@@ -138,7 +152,7 @@
   --leading-key: 1.05;
   --leading-log: 1.7;
 
-  --radius: var(--r-3);
+  --radius: var(--r-2);
   --radius-sm: var(--r-1);
   --radius-md: var(--r-2);
   --radius-lg: var(--r-3);
@@ -153,10 +167,9 @@
   --radius-frame: var(--r-frame);
   --radius-pill: var(--r-pill);
 
-  --shadow-cap:
-    0 1px 0 rgba(0, 0, 0, 0.09), 0 2px 0 rgba(0, 0, 0, 0.16), 0 4px 7px rgba(27, 25, 23, 0.1);
+  --shadow-cap: var(--cap-shadow);
   --shadow-cap-press: 0 1px 0 rgba(0, 0, 0, 0.16), 0 1px 3px rgba(27, 25, 23, 0.12);
-  --shadow-card: 0 1px 0 rgba(27, 25, 23, 0.03), 0 10px 26px -14px rgba(27, 25, 23, 0.14);
+  --shadow-card: var(--shadow-panel);
   --shadow-keycap-selected:
     0 0 0 2px var(--coral), 0 2px 0 rgba(0, 0, 0, 0.16),
     0 8px 14px color-mix(in oklch, var(--coral) 32%, transparent);
@@ -184,7 +197,7 @@
 
   --color-background: var(--paper);
   --color-foreground: var(--ink);
-  --color-card: var(--surface);
+  --color-card: var(--card-surface);
   --color-card-foreground: var(--ink);
   --color-popover: var(--surface);
   --color-popover-foreground: var(--ink);
@@ -204,36 +217,63 @@
 }
 
 :root {
-  --paper: #f2ede3;
-  --surface: #fbf8f2;
-  --surface-2: #ece5d6;
-  --surface-3: #dcd3c1;
+  --paper: #e7e1d3;
+  --surface: #fbf8f1;
+  --surface-2: #f1eadd;
+  --surface-3: #e8e1d2;
+  --stage: #ede6d8;
+  --card-surface: #fdfbf6;
   --paper-2: var(--surface-2);
   --paper-3: var(--surface-3);
-  --ink: #1b1917;
+  --ink: #211e19;
   --ink-1: var(--ink);
-  --ink-2: #565149;
-  --ink-3: #8b8475;
-  --line: rgba(27, 25, 23, 0.1);
-  --line-2: rgba(27, 25, 23, 0.16);
+  --ink-2: #6a6357;
+  --ink-3: #9c9484;
+  --ink-4: #bdb5a3;
+  --line: rgba(33, 30, 25, 0.1);
+  --line-2: rgba(33, 30, 25, 0.17);
+  --line-3: rgba(33, 30, 25, 0.28);
 
-  --coral: oklch(0.72 0.17 32);
-  --coral-ink: oklch(from var(--coral) 0.46 0.15 h);
-  --coral-soft: oklch(from var(--coral) 0.82 0.14 h);
-  --teal: oklch(0.72 0.12 195);
+  --coral: oklch(0.66 0.17 32);
+  --coral-ink: oklch(from var(--coral) 0.46 0.14 h);
+  --coral-soft: oklch(from var(--coral) 0.92 0.05 h);
+  --on-accent: #fff8f2;
+  --teal: oklch(0.62 0.1 195);
   --teal-ink: oklch(0.44 0.11 195);
-  --mint: oklch(0.8 0.12 155);
-  --lilac: oklch(0.76 0.11 305);
-  --mustard: oklch(0.82 0.12 90);
+  --mint: oklch(0.66 0.12 155);
+  --lilac: oklch(0.62 0.12 305);
+  --mustard: oklch(0.7 0.11 90);
   --added: oklch(0.6 0.15 150);
   --removed: oklch(0.6 0.19 27);
+  --success: oklch(0.62 0.13 160);
+  --success-ink: oklch(0.39 0.1 160);
+  --success-surface: oklch(0.95 0.035 160);
+  --success-border: color-mix(in oklch, var(--success) 42%, transparent);
+  --warning: oklch(0.72 0.13 88);
+  --warning-ink: oklch(0.43 0.1 78);
+  --warning-surface: oklch(0.96 0.045 88);
+  --warning-border: color-mix(in oklch, var(--warning) 48%, transparent);
+  --danger: oklch(0.62 0.19 27);
+  --danger-ink: oklch(0.43 0.15 27);
+  --danger-surface: oklch(0.95 0.04 27);
+  --danger-border: color-mix(in oklch, var(--danger) 42%, transparent);
+  --focus-ring: color-mix(in oklch, var(--coral) 76%, transparent);
+  --control-height-sm: 28px;
+  --control-height: 34px;
+  --control-height-lg: 40px;
 
   --accent-solid-hover: oklch(from var(--coral) 0.68 0.18 h);
   --accent-outline-border: color-mix(in oklch, var(--coral) 55%, transparent);
   --accent-outline-hover: color-mix(in oklch, var(--coral) 12%, transparent);
   --danger-hover: oklch(0.93 0.06 27);
-  --keycap-base: linear-gradient(180deg, #fffdf7 0%, #ebe2ce 100%);
-  --keycap-modifier: linear-gradient(180deg, #2c2825 0%, #1b1917 100%);
+  --keycap-base: linear-gradient(180deg, #fffefa 0%, #efe8d8 100%);
+  --keycap-modifier: linear-gradient(180deg, #36322c 0%, #211e19 100%);
+  --mod-ink: #efeadd;
+  --mod-sub: #a49c8c;
+  --cap-edge: #d9d0bc;
+  --cap-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.1), 0 2px 0 rgba(0, 0, 0, 0.13), 0 5px 10px -3px rgba(33, 30, 25, 0.22);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 12px 32px -20px rgba(33, 30, 25, 0.28);
   --keycap-accent: linear-gradient(
     180deg,
     oklch(from var(--coral) 0.82 0.14 h) 0%,
@@ -296,14 +336,15 @@
   --space-420: 420px;
   --space-560: 560px;
 
-  --r-1: 6px;
-  --r-2: 9px;
-  --r-3: 13px;
-  --r-4: 20px;
-  --r-brand: 7px;
+  /* Shape taxonomy: token, control, panel, status. */
+  --r-1: 5px;
+  --r-2: 8px;
+  --r-3: 12px;
+  --r-4: 18px;
+  --r-brand: 9px;
   --r-keycap: 8px;
-  --r-big-cap: 9px;
-  --r-frame: 12px;
+  --r-big-cap: 10px;
+  --r-frame: 18px;
   --r-pill: 999px;
 
   --sans: "Inter", system-ui, sans-serif;
@@ -311,8 +352,145 @@
   color: var(--ink);
   background: var(--paper);
   font-family: var(--sans);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  font-variant-ligatures: common-ligatures contextual;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+/*
+ * Graphite — the dark, tool-like visual direction from the Klakson v2 redesign.
+ * Applied by stamping `data-theme="graphite"` (and `.dark`) on <html>. Only the
+ * colour / material tokens are overridden; spacing, radii and type carry across
+ * from :root. Accent (`--coral`) may be overridden inline by the Accent service
+ * and reads fine on either surface.
+ */
+:root[data-theme="graphite"] {
+  --paper: #131217;
+  --surface: #1e1d23;
+  --surface-2: #26252c;
+  --surface-3: #2c2b33;
+  --stage: #17161b;
+  --card-surface: #24232a;
+  --ink: #f3f0ea;
+  --ink-2: #a9a49c;
+  --ink-3: #74706b;
+  --ink-4: #4e4b50;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.16);
+
+  --coral: oklch(0.72 0.18 32);
+  --coral-ink: oklch(from var(--coral) 0.82 0.13 h);
+  --coral-soft: oklch(from var(--coral) 0.34 0.1 h);
+  --on-accent: #1b120e;
+  --teal: oklch(0.74 0.11 195);
+  --teal-ink: oklch(0.82 0.1 195);
+  --mint: oklch(0.76 0.12 155);
+  --lilac: oklch(0.74 0.11 305);
+  --mustard: oklch(0.8 0.11 90);
+  --added: oklch(0.74 0.14 150);
+  --removed: oklch(0.68 0.18 27);
+
+  --success: oklch(0.74 0.14 160);
+  --success-ink: oklch(0.86 0.11 160);
+  --success-surface: oklch(0.3 0.06 160);
+  --warning: oklch(0.8 0.12 88);
+  --warning-ink: oklch(0.88 0.1 88);
+  --warning-surface: oklch(0.32 0.06 80);
+  --danger: oklch(0.68 0.18 27);
+  --danger-ink: oklch(0.85 0.12 27);
+  --danger-surface: oklch(0.32 0.09 27);
+  --danger-hover: oklch(0.36 0.11 27);
+
+  --keycap-base: linear-gradient(180deg, #3b3941 0%, #29282f 100%);
+  --keycap-modifier: linear-gradient(180deg, #232228 0%, #1a191e 100%);
+  --mod-ink: #cfcbd6;
+  --mod-sub: #7c7883;
+  --cap-edge: #47454e;
+  --cap-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.4), 0 2px 0 rgba(0, 0, 0, 0.5), 0 6px 12px -3px rgba(0, 0, 0, 0.55);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -24px rgba(0, 0, 0, 0.7);
+  --keycap-transparent:
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px), #2c2b33;
+
+  --diff-left: oklch(0.3 0.06 27);
+  --diff-right: oklch(0.3 0.06 150);
+  --tag-added-bg: oklch(0.34 0.07 150);
+  --tag-removed-bg: oklch(0.34 0.07 27);
+
+  --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.3), 0 12px 30px -18px rgba(0, 0, 0, 0.6);
+  --shadow-cap:
+    0 1px 0 rgba(0, 0, 0, 0.4), 0 2px 0 rgba(0, 0, 0, 0.5), 0 5px 10px -3px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-theme="graphite"] ::-webkit-scrollbar-thumb {
+  border-color: var(--surface);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* The inline theme resolver owns this choice when JavaScript runs. With
+ * scripts disabled, CSS still honors the same system light/dark preference. */
+@media (prefers-color-scheme: dark) {
+  :root.no-js {
+    color-scheme: dark;
+    --paper: #131217;
+    --surface: #1e1d23;
+    --surface-2: #26252c;
+    --surface-3: #2c2b33;
+    --stage: #17161b;
+    --card-surface: #24232a;
+    --ink: #f3f0ea;
+    --ink-2: #a9a49c;
+    --ink-3: #74706b;
+    --ink-4: #4e4b50;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-2: rgba(255, 255, 255, 0.16);
+    --coral: oklch(0.72 0.18 32);
+    --coral-ink: oklch(from var(--coral) 0.82 0.13 h);
+    --coral-soft: oklch(from var(--coral) 0.34 0.1 h);
+    --on-accent: #1b120e;
+    --teal: oklch(0.74 0.11 195);
+    --teal-ink: oklch(0.82 0.1 195);
+    --mint: oklch(0.76 0.12 155);
+    --lilac: oklch(0.74 0.11 305);
+    --mustard: oklch(0.8 0.11 90);
+    --added: oklch(0.74 0.14 150);
+    --removed: oklch(0.68 0.18 27);
+    --success: oklch(0.74 0.14 160);
+    --success-ink: oklch(0.86 0.11 160);
+    --success-surface: oklch(0.3 0.06 160);
+    --warning: oklch(0.8 0.12 88);
+    --warning-ink: oklch(0.88 0.1 88);
+    --warning-surface: oklch(0.32 0.06 80);
+    --danger: oklch(0.68 0.18 27);
+    --danger-ink: oklch(0.85 0.12 27);
+    --danger-surface: oklch(0.32 0.09 27);
+    --danger-hover: oklch(0.36 0.11 27);
+    --keycap-base: linear-gradient(180deg, #3b3941 0%, #29282f 100%);
+    --keycap-modifier: linear-gradient(180deg, #232228 0%, #1a191e 100%);
+    --mod-ink: #cfcbd6;
+    --mod-sub: #7c7883;
+    --cap-edge: #47454e;
+    --cap-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.4), 0 2px 0 rgba(0, 0, 0, 0.5), 0 6px 12px -3px rgba(0, 0, 0, 0.55);
+    --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -24px rgba(0, 0, 0, 0.7);
+    --keycap-transparent:
+      repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px),
+      #2c2b33;
+    --diff-left: oklch(0.3 0.06 27);
+    --diff-right: oklch(0.3 0.06 150);
+    --tag-added-bg: oklch(0.34 0.07 150);
+    --tag-removed-bg: oklch(0.34 0.07 27);
+    --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.3), 0 12px 30px -18px rgba(0, 0, 0, 0.6);
+    --shadow-cap:
+      0 1px 0 rgba(0, 0, 0, 0.4), 0 2px 0 rgba(0, 0, 0, 0.5), 0 5px 10px -3px rgba(0, 0, 0, 0.55);
+  }
+
+  :root.no-js ::-webkit-scrollbar-thumb {
+    border-color: var(--surface);
+    background: rgba(255, 255, 255, 0.16);
+  }
 }
 
 * {
@@ -327,24 +505,73 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-size: 14px;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
 
-button,
-input {
-  font: inherit;
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    border: 0;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+
+  :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  :where(p, [data-slot="card-description"], [data-ui-prose]) {
+    text-wrap: pretty;
+  }
+
+  :where(h1, h2, h3, .kicker, .label, [data-slot="card-title"]) {
+    font-family: var(--mono);
+  }
+
+  .material-symbols-outlined {
+    display: inline-block;
+    direction: ltr;
+    font-family: "Material Symbols Outlined";
+    font-feature-settings: "liga";
+    font-size: 18px;
+    font-style: normal;
+    font-variation-settings:
+      "FILL" 0,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
+    font-weight: normal;
+    letter-spacing: normal;
+    line-height: 1;
+    text-transform: none;
+    user-select: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    -webkit-font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
-button {
-  border: 0;
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
-}
-
-button:disabled {
+/* Server-rendered controls that require a client runtime should read as inert.
+ * Real navigation is rendered as links, so it remains available without JS. */
+html.no-js button {
+  pointer-events: none;
   cursor: not-allowed;
-  opacity: 0.48;
+  opacity: 0.58;
 }
 
 ::-webkit-scrollbar {
@@ -362,155 +589,34 @@ button:disabled {
   background: rgba(24, 22, 20, 0.18);
 }
 
-/* Global focus ring — coral, follows border-radius. Components with their
- * own focus indicator can still override. */
-:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--coral) 80%, transparent);
-  outline-offset: 2px;
+/* Reserve the inline space used by classic Windows scrollbars before content
+ * overflows. The app shell owns route scrolling, while the remaining selectors
+ * cover native nested scrollers without affecting clipped layout surfaces. */
+html,
+:where(
+  .shell-content,
+  .key-inspector-body,
+  .source-block,
+  .modal-content,
+  [class~="overflow-auto"],
+  [class~="overflow-y-auto"]
+) {
+  scrollbar-gutter: stable;
 }
 
-.mono {
-  font-family: var(--mono);
-  letter-spacing: 0.02em;
+:where([data-slot="button"], [data-slot="badge"], [data-slot="label"]) {
+  text-box: trim-both cap alphabetic;
 }
 
-.muted {
-  color: var(--ink-3);
-}
-
-.material-symbols-outlined {
-  display: inline-block;
-  direction: ltr;
-  font-family: "Material Symbols Outlined";
-  font-feature-settings: "liga";
-  font-size: 18px;
-  font-style: normal;
-  font-variation-settings:
-    "FILL" 0,
-    "wght" 400,
-    "GRAD" 0,
-    "opsz" 24;
-  font-weight: normal;
-  letter-spacing: normal;
-  line-height: 1;
-  text-transform: none;
-  user-select: none;
-  white-space: nowrap;
-  word-wrap: normal;
-  -webkit-font-feature-settings: "liga";
-  -webkit-font-smoothing: antialiased;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.col {
-  display: flex;
-  flex-direction: column;
-}
-
-.spacer {
-  flex: 1;
-}
-
-.divider {
-  height: 1px;
-  margin: 14px 0;
-  background: var(--line);
-}
-
-.topbar {
-  display: grid;
-  grid-template-columns: minmax(172px, 0.58fr) minmax(360px, 1fr) max-content;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  height: 56px;
-  padding: 0 14px;
-  overflow: hidden;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
-}
-
-.app-topbar {
-  overflow: hidden;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-}
-
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: var(--coral);
-  color: #1c0a04;
-  font-family: var(--mono);
-  font-weight: 700;
-  box-shadow: var(--shadow-cap);
-}
-
-.seg {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  background: var(--paper-2);
-}
-
-.seg button,
-.seg a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 14px;
-  border-radius: 999px;
-  color: var(--ink-2);
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.seg button.active,
-.seg a.active {
-  color: var(--ink);
-  background: var(--paper);
-  box-shadow: var(--shadow-card);
-}
-
-.view-seg {
-  flex: none;
-  width: auto;
-  max-width: max-content;
-}
-
-.view-seg :is(a, button) {
-  flex: 0 0 auto;
+:where(.font-mono, code, kbd, samp, [data-numeric]) {
+  font-variant-ligatures: none;
+  font-variant-numeric: tabular-nums slashed-zero;
 }
 
 .app-toast {
   width: min(420px, calc(100vw - 28px)) !important;
   border: 1px solid var(--line-2) !important;
-  border-radius: 10px !important;
+  border-radius: var(--r-3) !important;
   background: var(--surface) !important;
   box-shadow: 0 14px 32px -18px rgba(24, 22, 20, 0.42) !important;
   color: var(--ink) !important;
@@ -524,19 +630,41 @@ button:disabled {
   line-height: 1.4 !important;
 }
 
+.app-toast-description {
+  color: var(--ink-2) !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+
 .app-toast-close {
   border-color: var(--line-2) !important;
   background: var(--paper) !important;
 }
 
+.app-toast-action {
+  min-height: var(--control-height-sm) !important;
+  border: 1px solid var(--coral) !important;
+  border-radius: var(--r-2) !important;
+  background: var(--coral) !important;
+  color: var(--on-accent) !important;
+  font-family: var(--mono) !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
 [data-sonner-toast][data-type="success"].app-toast {
-  border-color: oklch(0.62 0.16 150 / 0.32) !important;
-  background: oklch(0.94 0.05 150) !important;
+  border-color: var(--success-border) !important;
+  background: var(--success-surface) !important;
 }
 
 [data-sonner-toast][data-type="error"].app-toast {
-  border-color: oklch(0.62 0.2 25 / 0.32) !important;
-  background: oklch(0.95 0.04 25) !important;
+  border-color: var(--danger-border) !important;
+  background: var(--danger-surface) !important;
+}
+
+[data-sonner-toast][data-type="warning"].app-toast {
+  border-color: var(--warning-border) !important;
+  background: var(--warning-surface) !important;
 }
 
 [data-sonner-toast][data-type="info"].app-toast {
@@ -544,382 +672,17 @@ button:disabled {
   background: var(--surface) !important;
 }
 
-.field {
-  display: grid;
-  gap: 6px;
-}
-
-.field-label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--ink-3);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.input {
-  width: 100%;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  outline: 0;
-  color: var(--ink);
-  background: var(--surface);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.input:focus {
-  border-color: var(--ink);
-}
-
-.keymap-pane-group {
-  flex: 1;
-  min-height: 0;
-}
-
-.keymap-main-pane {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.key-inspector-pane {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.key-inspector-pane > .key-inspector {
-  flex: 1;
-  height: 100%;
-}
-
-.keymap-inspector-handle {
-  flex: none;
-  z-index: 3;
-  background: color-mix(in oklab, var(--line-2) 72%, transparent);
-  transition:
-    background 120ms ease,
-    box-shadow 120ms ease;
-}
-
-.keymap-inspector-handle[data-direction="horizontal"] {
-  width: 10px;
-  margin-inline: -5px;
-  cursor: col-resize;
-}
-
-.keymap-inspector-handle[data-direction="vertical"] {
-  height: 10px;
-  margin-block: -5px;
-  cursor: row-resize;
-}
-
-.keymap-inspector-handle::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-}
-
-.keymap-inspector-handle:hover,
-.keymap-inspector-handle[data-resize-handle-active] {
-  background: color-mix(in oklab, var(--teal) 38%, var(--line-2));
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--teal) 34%, transparent);
-}
-
-.keymap-inspector-handle > div {
-  width: 3px;
-  height: 28px;
-  background: color-mix(in oklab, var(--ink-3) 72%, transparent);
-}
-
-.keymap-inspector-handle[data-direction="vertical"] > div {
-  width: 28px;
-  height: 3px;
-}
-
-.inspector-expand-tab {
-  position: absolute;
-  top: 18px;
-  right: 0;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 34px;
-  padding: 0;
-  border: 1px solid var(--line-2);
-  border-right: 0;
-  border-radius: 8px 0 0 8px;
-  background: var(--surface);
-  color: var(--ink-2);
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
-  transform: translateX(0);
-  transition:
-    background var(--dur-med) var(--ease-out-soft),
-    color var(--dur-med) var(--ease-out-soft),
-    border-color var(--dur-med) var(--ease-out-soft),
-    transform var(--dur-med) var(--ease-out-soft);
-  animation: inspector-tab-slide var(--dur-slow) var(--ease-out-expo) both;
-}
-
-@keyframes inspector-tab-slide {
-  from {
-    opacity: 0;
-    transform: translateX(14px);
+/* The editor toolbar responds to its pane, not the viewport. This keeps the
+ * primary editing tools and secondary view/status tools in coherent rows when
+ * the resizable inspector narrows the board. */
+@container editor-main (max-width: 850px) {
+  .editor-toolbar {
+    grid-template-columns: minmax(0, 1fr);
   }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+
+  .editor-secondary-tools {
+    justify-content: flex-start;
   }
-}
-
-.inspector-expand-tab:hover {
-  color: var(--ink);
-  border-color: var(--ink-3);
-  background: var(--paper);
-  transform: translateX(-2px);
-}
-
-.inspector-chrome {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: -2px 0 2px;
-}
-
-.inspector-chrome-label {
-  flex: 1;
-  color: var(--ink-3);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.inspector-collapse-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--line-2);
-  border-radius: 6px;
-  background: var(--paper);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-
-.inspector-collapse-btn:hover {
-  color: var(--ink);
-  border-color: var(--ink-3);
-}
-
-.key-inspector-body {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 0;
-  overflow: auto;
-}
-
-.inspector-chrome {
-  position: relative;
-  z-index: 1;
-}
-
-.layer-stack {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.connect-view {
-  position: relative;
-  display: grid;
-  place-items: center;
-  padding: clamp(20px, 4vw, 42px) 24px;
-  overflow: hidden;
-}
-
-/* Faded workbench-rule lines behind the onboarding — reads as the
- * surface the keyboard will land on. Masked to fade at the edges. */
-.connect-view::before {
-  content: "";
-  position: absolute;
-  inset: -10% -5%;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(to right, oklch(0.13 0.005 60 / 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0.13 0.005 60 / 0.05) 1px, transparent 1px);
-  background-size: 48px 48px;
-  background-position: center;
-  -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, #000 30%, transparent 80%);
-  mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, #000 30%, transparent 80%);
-}
-
-.connect-onboarding {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(280px, 0.72fr) minmax(360px, 1fr);
-  gap: 18px;
-  align-items: center;
-  width: min(860px, 100%);
-  min-width: 0;
-}
-
-.connect-copy {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-
-/* Ghost keycap silhouette behind the hero — the keyboard that's about to
- * land on the workbench. Sits below the headline at a low z-index so the
- * text never collides with it. */
-.connect-copy::after {
-  content: "";
-  position: absolute;
-  top: -28px;
-  right: -64px;
-  z-index: -1;
-  width: 240px;
-  height: 240px;
-  border-radius: 32px;
-  background: linear-gradient(
-    180deg,
-    oklch(0.94 0.06 60 / 0.55) 0%,
-    oklch(0.82 0.09 50 / 0.42) 100%
-  );
-  box-shadow:
-    inset 0 -10px 0 oklch(0.76 0.1 40 / 0.22),
-    inset 0 0 0 1px oklch(0.13 0.005 60 / 0.05),
-    0 28px 56px -20px oklch(0.45 0.12 35 / 0.22);
-  pointer-events: none;
-  transform: rotate(-6deg);
-}
-
-.connect-copy h1 {
-  position: relative;
-  max-width: 11ch;
-  margin: 0;
-  font-family: var(--mono);
-  font-size: clamp(36px, 5vw, 64px);
-  font-weight: 700;
-  line-height: 0.92;
-  letter-spacing: -0.01em;
-  text-transform: uppercase;
-  text-wrap: balance;
-}
-
-/* Accent the verb in the headline so each connect state has a focal word. */
-.connect-copy h1 .accent-word {
-  position: relative;
-  color: var(--ink);
-  background: linear-gradient(180deg, oklch(0.45 0.18 35) 0%, oklch(0.55 0.2 35) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.connect-copy p {
-  max-width: 42ch;
-  margin: 0;
-  color: var(--ink-2);
-  line-height: 1.55;
-}
-
-.connect-card {
-  position: relative;
-  min-width: 0;
-  animation: connect-card-enter var(--dur-slow) var(--ease-out-expo) both;
-  animation-delay: 220ms;
-}
-
-/* Staggered entrance for the hero copy stack. */
-@keyframes connect-copy-enter {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes connect-card-enter {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.connect-copy > * {
-  animation: connect-copy-enter var(--dur-slow) var(--ease-out-expo) both;
-}
-.connect-copy > *:nth-child(1) {
-  animation-delay: 0ms;
-}
-.connect-copy > *:nth-child(2) {
-  animation-delay: 80ms;
-}
-.connect-copy > *:nth-child(3) {
-  animation-delay: 150ms;
-}
-
-@keyframes primary-cta-pulse {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 0 oklch(0.72 0.18 30 / 0),
-      var(--shadow-cap);
-  }
-  50% {
-    box-shadow:
-      0 0 0 5px oklch(0.72 0.18 30 / 0.14),
-      var(--shadow-cap);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .connect-copy > *,
-  .connect-card {
-    animation: none !important;
-  }
-}
-
-.hidden-file-input {
-  position: absolute;
-  width: 0;
-  height: 0;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .keycap {
@@ -979,26 +742,57 @@ button:disabled {
   }
 }
 
-.combo-connectors {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.combo-connector-hit,
 .combo-connector-line {
   fill: none;
   vector-effect: non-scaling-stroke;
 }
 
-.combo-connector-hit {
-  stroke: transparent;
-  stroke-width: 14;
+.keyboard-flow,
+.keyboard-flow .svelte-flow__renderer,
+.keyboard-flow .svelte-flow__pane,
+.keyboard-flow .svelte-flow__viewport {
+  overflow: visible;
+  background: transparent;
+}
+
+.keyboard-flow .svelte-flow__pane {
+  cursor: inherit;
+}
+
+.keyboard-flow .svelte-flow__node {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.keyboard-flow .svelte-flow__edge-interaction {
   pointer-events: stroke;
+}
+
+/* Departure Mono intentionally has tall glyph metrics. Modern Chrome can trim
+ * the text box to cap/alphabetic edges; the baseline declarations remain a
+ * stable fallback for engines that do not support text-box trimming yet. */
+.keycap-face {
+  font-size-adjust: from-font;
+  font-kerning: none;
+}
+
+.keycap-face :is(.cap-legend, .cap-src, .g-main, .g-sub, .marker-slot) {
+  line-height: 1;
+}
+
+.keycap-face .g-main {
+  overflow: clip;
+  overflow-clip-margin: 0.08em;
+  text-wrap: balance;
+}
+
+@supports (text-box-trim: trim-both) {
+  .keycap-face :is(.cap-legend, .cap-src, .g-main, .g-sub, .marker-slot) {
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+  }
 }
 
 .combo-connector-line {
@@ -1122,463 +916,22 @@ button:disabled {
   content: "";
 }
 
-.key-inspector {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
-  padding: 18px;
-  border-left: 1px solid var(--line-2);
-  background: linear-gradient(
-    180deg,
-    var(--surface) 0%,
-    color-mix(in oklab, var(--surface) 92%, var(--paper)) 100%
-  );
-}
-
-/* Subtle ambient at the top of the inspector so it reads as a distinct
- * workbench panel rather than a flat continuation of the keymap. */
-.key-inspector::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 80px;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse 60% 100% at 50% 0%,
-    oklch(0.86 0.06 35 / 0.12),
-    transparent 75%
-  );
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* OS chip — icon-only target-OS toggle (keymap layer row). Cycle on click. */
-.os-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--line-2);
-  border-radius: 6px;
-  background: var(--paper);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-
-.os-chip .os-logo {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
-.os-chip:hover {
-  border-color: var(--ink-3);
-  color: var(--ink);
-}
-
-.os-chip[data-os="mac"] {
-  border-color: color-mix(in oklab, var(--mint) 35%, var(--line-2));
-}
-
-.os-chip[data-os="win"] {
-  border-color: color-mix(in oklab, var(--teal) 30%, var(--line-2));
-}
-
-.os-chip[data-os="linux"] {
-  border-color: color-mix(in oklab, var(--mustard) 35%, var(--line-2));
-}
-
-.key-hero {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--paper-2);
-}
-
-.key-hero .big-cap {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  min-width: 56px;
-  overflow: hidden;
-  border: 1px solid rgba(24, 22, 20, 0.18);
-  border-radius: 8px;
-  background: linear-gradient(180deg, #fffcf5 0%, #ece3cf 100%);
-  box-shadow: var(--shadow-cap);
-  font-family: var(--mono);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.key-hero .col {
-  min-width: 0;
-}
-
-.key-hero .meta {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink-3);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.key-hero h2 {
-  margin: 4px 0 0;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  font-family: var(--mono);
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  line-height: 1.12;
-}
-
-.inspector-actions {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.source-block {
-  overflow: auto;
-  margin: 0;
-  padding: 14px;
-  border-radius: 10px;
-  color: var(--paper);
-  background: var(--ink);
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.source-block {
-  max-height: 190px;
-}
-
-.changes-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  align-self: start;
-}
-
-.changes-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  width: 100%;
-}
-
-.changes-panel-trigger {
-  display: block;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.changes-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.changes-panel-header h3 {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
-  color: var(--ink-2);
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.changes-panel-chevron {
-  flex: none;
-  color: var(--ink-3);
-  transition: transform 160ms ease;
-}
-
-.changes-panel[data-state="open"] .changes-panel-chevron {
-  transform: rotate(180deg);
-}
-
-.changes-panel-content {
-  overflow: hidden;
-}
-
-.changes-scroll {
-  height: calc(100vh - 56px - 48px - 52px);
-  max-height: calc(100vh - 56px - 48px - 52px);
-}
-
-.changes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
-}
-
-.changes-list .empty-state {
-  min-height: 96px;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.change-row {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-.change-row:hover {
-  background: var(--paper-2);
-}
-
-.change-kind {
-  color: var(--coral-ink);
-  font-weight: 700;
-}
-
-.change-row strong,
-.change-row small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.change-row small {
-  color: var(--ink-3);
-  margin-top: 2px;
-}
-
-.empty-state {
-  display: grid;
-  place-items: center;
-  gap: 8px;
-  min-height: 130px;
-  color: var(--ink-3);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-@media (max-width: 560px) {
-  .tap-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.seq-key {
-  display: inline-grid;
-  place-items: center;
-  max-width: 100%;
-  min-width: 22px;
-  min-height: 22px;
-  overflow: hidden;
-  padding: 0 6px;
-  border: 1px solid rgba(24, 22, 20, 0.18);
-  border-radius: 5px;
-  background: linear-gradient(180deg, #fffcf5 0%, #ece3cf 100%);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
-  font-family: var(--mono);
-  font-size: 10px;
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-  text-align: center;
-  word-break: break-word;
-}
-
-.added-key {
-  color: oklch(0.35 0.12 150);
-  background: oklch(0.92 0.06 150);
-}
-
-.lane {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 14px;
-  width: 2px;
-  background: var(--c, var(--ink));
-  opacity: 0.6;
-}
-
-.seq {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.seq-arrow {
-  color: var(--ink-3);
-  font-family: var(--mono);
-}
-
-.tap-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.flash-validation {
-  display: grid;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--paper-2);
-}
-
-.flash-validation {
-  border: 1px solid oklch(0.62 0.16 150 / 0.28);
-  background: oklch(0.95 0.04 150);
-}
-
-.flash-validation[data-blocked="true"] {
-  border-color: oklch(0.62 0.2 25 / 0.28);
-  background: oklch(0.95 0.04 25);
-}
-
-.flash-validation strong {
-  overflow-wrap: anywhere;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-@media (max-width: 1500px) {
-  .topbar {
-    grid-template-columns: minmax(150px, 0.5fr) minmax(300px, 1fr) max-content;
-    gap: 8px;
-    padding-inline: 12px;
-  }
-}
-
-@media (max-width: 1180px) {
-  .topbar {
-    grid-template-columns: minmax(122px, 0.4fr) minmax(250px, 1fr) max-content;
-  }
-
-  .view-seg button {
-    width: 34px;
-    padding: 0;
-  }
-
-  .view-seg [data-label] {
-    display: none;
-  }
-}
-
-@media (max-width: 1180px) {
-  .view-seg :is(a, button) {
-    width: 34px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .view-seg [data-label] {
-    display: none;
-  }
-}
-
-@media (max-width: 940px) {
-  .topbar {
-    grid-template-columns: minmax(96px, auto) minmax(0, 1fr) max-content;
-  }
-}
-
-@media (max-width: 720px) {
-  .topbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    height: 56px;
-    padding-inline: 10px;
-  }
-
-  .view-seg {
-    justify-self: center;
-  }
-
-  .view-seg button {
-    width: 34px;
-    padding: 0;
-  }
-
-  .view-seg [data-label] {
-    display: none;
-  }
+/* Svelte Flow renders its ARIA descriptions in the SSR document. Keep this
+ * first-paint invariant in the global sheet as well as the component chunk so
+ * a late or stale route stylesheet can never expose the help copy on-canvas. */
+.svelte-flow .a11y-hidden {
+  display: none;
 }
 
 @media (max-width: 1220px) {
   .connect-onboarding {
     grid-template-columns: minmax(0, 0.8fr) minmax(360px, 1fr);
-  }
-
-  .changes-card:has(.changes-panel[data-state="open"]) {
-    max-height: 212px;
-  }
-
-  .changes-scroll {
-    height: 160px;
-    max-height: 160px;
-  }
-
-  .inspector-actions {
-    flex-direction: row;
   }
 }
 
@@ -1587,14 +940,37 @@ button:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .inspector-expand-tab {
-    display: none;
+  /* MediaQuery cannot know the viewport during SSR. Mirror the narrow pane
+   * geometry in CSS until hydration switches the resizer to vertical mode. */
+  .keymap-pane-group[data-direction="horizontal"] {
+    flex-direction: column !important;
   }
 
-  .key-inspector {
-    max-height: none;
-    border-top: 1px solid var(--line-2);
-    border-left: 0;
+  .keymap-pane-group[data-direction="horizontal"] > .keymap-main-pane {
+    width: 100% !important;
+    height: auto !important;
+    flex: 72 1 0 !important;
+  }
+
+  .keymap-pane-group[data-direction="horizontal"] > .keymap-inspector-handle {
+    width: 100% !important;
+    height: 1px !important;
+    margin-block: 0;
+    margin-inline: 0;
+    cursor: row-resize;
+  }
+
+  .keymap-pane-group > .keymap-inspector-handle::after {
+    inset: -4px 0;
+    width: auto;
+    height: auto;
+    transform: none;
+  }
+
+  .keymap-pane-group[data-direction="horizontal"] > .key-inspector-pane {
+    width: 100% !important;
+    height: auto !important;
+    flex: 28 1 0 !important;
   }
 }
 

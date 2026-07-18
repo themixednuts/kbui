@@ -86,10 +86,10 @@ vp test: 17 files passed, 94 tests passed
 AuthAgent proof:
 
 - Built with `vp build`.
-- Started the Worker with `vp exec wrangler dev --ip 127.0.0.1 --port 8787`.
+- Started the Worker with `vp run dev:worker`, which resolves the bind host and port from `BETTER_AUTH_URL`.
 - Local `.dev.vars` had the required auth keys. For deterministic proof, the Wrangler process was started with dummy `--var` overrides:
   - `BETTER_AUTH_SECRET=kbgui-wave-3a-local-secret-1234567890`
-  - `BETTER_AUTH_URL=http://127.0.0.1:8787`
+  - `BETTER_AUTH_URL=<local worker origin>`
   - `GITHUB_CLIENT_ID=dummy-local-client`
   - `GITHUB_CLIENT_SECRET=dummy-local-secret`
 
@@ -118,7 +118,7 @@ For local end-to-end GitHub login, provide:
 
 ```txt
 BETTER_AUTH_SECRET="<32+ random chars>"
-BETTER_AUTH_URL="http://127.0.0.1:8787"
+BETTER_AUTH_URL="<local worker origin, for example http://127.0.0.1:8787>"
 GITHUB_CLIENT_ID="<GitHub OAuth app client id>"
 GITHUB_CLIENT_SECRET="<GitHub OAuth app client secret>"
 ```
@@ -126,8 +126,8 @@ GITHUB_CLIENT_SECRET="<GitHub OAuth app client secret>"
 Configure the GitHub OAuth App with:
 
 ```txt
-Homepage URL: http://127.0.0.1:8787
-Callback URL: http://127.0.0.1:8787/api/auth/callback/github
+Homepage URL: <BETTER_AUTH_URL>
+Callback URL: <BETTER_AUTH_URL>/api/auth/callback/github
 ```
 
 Run the app through the Worker-backed path:

@@ -1,5 +1,9 @@
+import { Effect } from "effect";
+
 import type { EditorStore } from "$lib/app/editor-store.svelte";
+import { runApp } from "$lib/app/runtime";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
+import { platformError } from "$lib/effect/errors";
 import type { ConnectionState } from "$lib/keyboard/transport";
 
 import { ViaLiveSyncEngine, type LiveSyncView } from "./via-live-sync.svelte";
@@ -69,7 +73,22 @@ export class KeyboardLiveSyncEngine implements LiveSyncView {
     this.zmk.destroy();
   }
 
-  async flush() {
-    await Promise.all([this.via.flush(), this.zmk.flush()]);
+  flush() {
+    return runApp(
+      "live-sync.flush",
+      Effect.all(
+        [
+          Effect.tryPromise({
+            try: () => this.via.flush(),
+            catch: (cause) => platformError("live-sync.flush-via", cause),
+          }),
+          Effect.tryPromise({
+            try: () => this.zmk.flush(),
+            catch: (cause) => platformError("live-sync.flush-zmk", cause),
+          }),
+        ],
+        { concurrency: 2, discard: true },
+      ),
+    );
   }
 }

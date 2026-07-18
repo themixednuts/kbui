@@ -1,11 +1,11 @@
-# Static response headers — copied verbatim by adapter-cloudflare into the
-# worker output, merged with SvelteKit's auto-generated immutable-asset
-# section. Edit here; rebuild to ship.
-#
-# Cross-origin isolation: COOP=same-origin + COEP=require-corp lets us use
-# SharedArrayBuffer / OPFS / threaded WASM in the browser (sqlocal, future
-# audio/perf features). Applied to every route — it's a page-level setting,
-# not API-specific — and harmless on routes that don't need it.
-/*
-  Cross-Origin-Opener-Policy: same-origin
+# Static response headers are merged with SvelteKit's generated immutable-asset
+# rules by adapter-cloudflare. Cross-origin isolation is deliberately applied
+# by hooks.server.ts to application responses only: COOP/COEP establish a
+# document policy and must not be attached to ordinary immutable JavaScript
+# modules. SQLocal's worker entry/chunks are the exception: that worker realm
+# must receive the same isolation policy to open its OPFS-backed database.
+
+/_app/immutable/workers/*
   Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin

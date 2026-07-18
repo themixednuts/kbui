@@ -26,8 +26,8 @@
   ];
 
   const catalogOptions = [
-    { id: "klakson/wb65", label: "Klakson Labs / Workbench 65" },
-    { id: "klakson/corney34", label: "Klakson Labs / Corney 34" },
+    { id: "local/ansi", label: "Local / ANSI profile" },
+    { id: "local/split", label: "Local / split profile" },
   ];
 
   const { Story } = defineMeta({
@@ -82,7 +82,7 @@
 <Story name="Idle (signed out)">
   {#snippet template()}
     <Topbar
-      deviceName="Workbench 65"
+      deviceName="Local keyboard"
       protocolLabel="VIA"
       status={{ state: "idle", label: "Ready" }}
       {catalog}

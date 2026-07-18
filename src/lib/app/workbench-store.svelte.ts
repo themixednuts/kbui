@@ -1,4 +1,5 @@
 import { browser } from "$app/environment";
+import { Deferred, Effect } from "effect";
 import { getContext, setContext } from "svelte";
 
 import {
@@ -11,13 +12,20 @@ import {
   type CreateCommunityAdoptionVersioningInput,
 } from "$lib/community/adoption";
 import {
-  createLocalSavePoint,
-  listLocalSavePointsByVariant,
   loadLocalDevice,
   loadLocalDraft,
-  loadForks,
-  saveForks,
+  loadLocalVersionGraphEffect,
+  replaceLocalVersionGraphEffect,
+  saveLocalDeviceEffect,
 } from "$lib/keyboard/local-store";
+import { forkApp, runApp } from "$lib/app/runtime";
+import { platformError } from "$lib/effect/errors";
+import {
+  MAIN_WORKBENCH_VARIANT_ID,
+  mergeWorkbenchVersionGraphs,
+  normalizeWorkbenchVersionGraph,
+  type WorkbenchVersionGraph,
+} from "$lib/app/workbench-version-graph";
 import { starterBoardProfile, type SampleBoardId } from "$lib/keyboard/sample-boards";
 import {
   changesForSavePoint,
@@ -88,7 +96,7 @@ export interface HydrateActiveProfileOptions {
 }
 
 const WORKBENCH_CONTEXT = Symbol("kbgui.workbench");
-const MAIN_VARIANT_ID = "main";
+const MAIN_VARIANT_ID = MAIN_WORKBENCH_VARIANT_ID;
 const forkLaneColors = [
   "var(--coral)",
   "var(--mustard)",
@@ -109,6 +117,10 @@ export class WorkbenchStore extends EditorStore {
   forks = $state<WorkspaceFork[]>([]);
   savePoints = $state<SavePoint[]>([]);
   selectedSavePointId = $state<string | null>(null);
+  deletedForkIds = $state<string[]>([]);
+  deletedSavePointIds = $state<string[]>([]);
+  versionGraphRevision = $state(0);
+  versionGraphUpdatedAt = $state(new Date(0).toISOString());
   versioningHydrated = $state(false);
   versioningError = $state<string | null>(null);
 
@@ -156,7 +168,11 @@ export class WorkbenchStore extends EditorStore {
   private readonly persistVersioning: boolean;
   private readonly loadDevice: typeof loadLocalDevice;
   private readonly loadDraft: typeof loadLocalDraft;
+  private readonly loadPersistedDrafts: boolean;
   private activeProfileHydrationLocked = false;
+  private graphSynchronizer: ((graph: WorkbenchVersionGraph) => Effect.Effect<void, Error>) | null =
+    null;
+  private readonly versioningReady = Deferred.makeUnsafe<void>();
 
   constructor(options: WorkbenchStoreOptions = {}) {
     const boardId = options.boardId ?? "default";
@@ -170,38 +186,47 @@ export class WorkbenchStore extends EditorStore {
     this.loadDevice = options.loadDevice ?? loadLocalDevice;
     this.loadDraft = options.loadDraft ?? loadLocalDraft;
     this.persistVersioning = options.persist ?? true;
-
+    this.loadPersistedDrafts = this.persistVersioning || options.loadDraft !== undefined;
     if (browser) {
       this.hydrated = false;
-      void this.hydrateActiveProfile();
-      void this.hydrateVersioning();
+      forkApp("workbench.hydrate-profile", this.hydrateActiveProfileEffect(), (_label, message) => {
+        this.persistenceError = message;
+      });
+      forkApp("workbench.hydrate-versioning", this.hydrateVersioningEffect(), (_label, message) => {
+        this.versioningError = message;
+      });
     } else {
       this.versioningHydrated = true;
+      forkApp("workbench.versioning-ready", Deferred.succeed(this.versioningReady, undefined));
     }
   }
 
-  override async replaceProfile(
+  override replaceProfile(
     baseProfile: DeviceProfile,
     profile?: DeviceProfile,
     options: ReplaceProfileOptions = {},
   ) {
     this.activeProfileHydrationLocked = true;
-    await super.replaceProfile(baseProfile, profile, options);
+    return super.replaceProfile(baseProfile, profile, options);
   }
 
-  async selectStarterBoard(boardId: SampleBoardId) {
-    if (boardId === this.activeBoardId && this.profile.origin === "starter") return;
+  selectStarterBoard(boardId: SampleBoardId) {
+    if (boardId === this.activeBoardId && this.profile.origin === "starter") {
+      return runApp("workbench.select-starter-board", Effect.void);
+    }
     this.activeBoardId = boardId;
     this.activeVariantId = MAIN_VARIANT_ID;
     this.activeProfileHydrationLocked = true;
-    await super.replaceProfile(starterBoardProfile(boardId), undefined, {
+    return super.replaceProfile(starterBoardProfile(boardId), undefined, {
       hydrateDraft: false,
       origin: "starter",
     });
   }
 
-  async createSavePoint(message = "", options: SavePointActionOptions = {}) {
-    if (this.changes.length === 0) return undefined;
+  createSavePoint(message = "", options: SavePointActionOptions = {}) {
+    if (this.changes.length === 0) {
+      return runApp("workbench.create-save-point", Effect.succeed(undefined));
+    }
 
     const parent = latestSavePointForVariant(this.savePoints, this.activeVariantId);
     const savePoint = createSavePointFromProfile({
@@ -218,40 +243,61 @@ export class WorkbenchStore extends EditorStore {
     this.savePoints = upsertSavePoint(this.savePoints, savePoint);
     this.selectedSavePointId = savePoint.id;
 
-    try {
-      if (this.persistVersioning && browser) await createLocalSavePoint(savePoint);
-      await this.commitCurrentDraftAsBase();
-      this.versioningError = null;
-    } catch (error) {
-      this.versioningError = error instanceof Error ? error.message : "Could not create save point";
-      throw error;
-    }
-
-    return savePoint;
+    return runApp(
+      "workbench.create-save-point",
+      Effect.gen({ self: this }, function* () {
+        yield* this.persistVersionGraphEffect();
+        yield* this.commitCurrentDraftAsBaseEffect();
+        this.versioningError = null;
+        return savePoint;
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            this.versioningError = errorMessage(error, "Could not create save point");
+          }),
+        ),
+      ),
+    );
   }
 
   selectSavePoint(id: string) {
     if (!this.savePoints.some((savePoint) => savePoint.id === id)) return;
     this.selectedSavePointId = id;
+    forkApp(
+      "workbench.persist-version-graph",
+      this.persistVersionGraphEffect(),
+      (_label, message) => {
+        this.versioningError = message;
+      },
+    );
   }
 
-  async restoreSavePoint(savePointId = this.selectedSavePoint?.id) {
-    if (!savePointId) return undefined;
+  restoreSavePoint(savePointId = this.selectedSavePoint?.id) {
+    if (!savePointId) {
+      return runApp("workbench.restore-save-point", Effect.succeed(undefined));
+    }
 
     const profile = resolveProfileAtSavePoint(this.savePoints, savePointId);
-    if (!profile) return undefined;
+    if (!profile) return runApp("workbench.restore-save-point", Effect.succeed(undefined));
 
     this.selectedSavePointId = savePointId;
-    await this.loadProfileAsDraft(profile, { origin: "draft" });
-    return profile;
+    return runApp(
+      "workbench.restore-save-point",
+      this.loadProfileAsDraftEffect(profile, { origin: "draft" }).pipe(
+        Effect.andThen(this.persistVersionGraphEffect()),
+        Effect.as(profile),
+      ),
+    );
   }
 
-  async branchFromSavePoint(name = "", options: BranchFromSavePointOptions = {}) {
+  branchFromSavePoint(name = "", options: BranchFromSavePointOptions = {}) {
     const savePointId = options.savePointId ?? this.selectedSavePoint?.id;
     const savePoint = savePointId
       ? this.savePoints.find((candidate) => candidate.id === savePointId)
       : undefined;
-    if (!savePoint) return undefined;
+    if (!savePoint) {
+      return runApp("workbench.branch-from-save-point", Effect.succeed(undefined));
+    }
 
     const fork: WorkspaceFork = {
       id: options.id ?? randomId("variant"),
@@ -267,23 +313,27 @@ export class WorkbenchStore extends EditorStore {
     this.activeVariantId = fork.id;
     this.selectedSavePointId = savePoint.id;
 
-    try {
-      if (this.persistVersioning && browser) await saveForks(this.forks);
-      await this.replaceProfile(fork.device, fork.device);
-      this.baseProfile = cloneDevice(fork.device);
-      this.profile = cloneDevice(fork.device);
-      await this.commitCurrentDraftAsBase();
-      this.versioningError = null;
-    } catch (error) {
-      this.versioningError =
-        error instanceof Error ? error.message : "Could not branch from save point";
-      throw error;
-    }
-
-    return fork;
+    return runApp(
+      "workbench.branch-from-save-point",
+      Effect.gen({ self: this }, function* () {
+        yield* this.persistVersionGraphEffect();
+        yield* this.replaceProfileEffect(fork.device, fork.device);
+        this.baseProfile = cloneDevice(fork.device);
+        this.profile = cloneDevice(fork.device);
+        yield* this.commitCurrentDraftAsBaseEffect();
+        this.versioningError = null;
+        return fork;
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            this.versioningError = errorMessage(error, "Could not branch from save point");
+          }),
+        ),
+      ),
+    );
   }
 
-  async adoptCommunityVariant(input: AdoptCommunityVariantInput) {
+  adoptCommunityVariant(input: AdoptCommunityVariantInput) {
     const { fork, savePoint } = createCommunityAdoptionVersioning(input);
 
     this.forks = [fork, ...this.forks.filter((candidate) => candidate.id !== fork.id)];
@@ -291,23 +341,24 @@ export class WorkbenchStore extends EditorStore {
     this.activeVariantId = fork.id;
     this.selectedSavePointId = savePoint.id;
 
-    try {
-      if (this.persistVersioning && browser) {
-        await saveForks(this.forks);
-        await createLocalSavePoint(savePoint);
-      }
-      await this.replaceProfile(fork.device, fork.device);
-      this.baseProfile = cloneDevice(fork.device);
-      this.profile = cloneDevice(fork.device);
-      await this.commitCurrentDraftAsBase();
-      this.versioningError = null;
-    } catch (error) {
-      this.versioningError =
-        error instanceof Error ? error.message : "Could not adopt community keymap";
-      throw error;
-    }
-
-    return { fork, savePoint };
+    return runApp(
+      "workbench.adopt-community-variant",
+      Effect.gen({ self: this }, function* () {
+        yield* this.persistVersionGraphEffect();
+        yield* this.replaceProfileEffect(fork.device, fork.device);
+        this.baseProfile = cloneDevice(fork.device);
+        this.profile = cloneDevice(fork.device);
+        yield* this.commitCurrentDraftAsBaseEffect();
+        this.versioningError = null;
+        return { fork, savePoint };
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            this.versioningError = errorMessage(error, "Could not adopt community keymap");
+          }),
+        ),
+      ),
+    );
   }
 
   materializeSavePointProfile(savePointId = this.selectedSavePoint?.id) {
@@ -316,50 +367,196 @@ export class WorkbenchStore extends EditorStore {
     if (!profile) return undefined;
 
     this.selectedSavePointId = savePointId;
+    forkApp(
+      "workbench.persist-version-graph",
+      this.persistVersionGraphEffect(),
+      (_label, message) => {
+        this.versioningError = message;
+      },
+    );
     return profile;
   }
 
-  private async hydrateVersioning() {
-    if (!this.persistVersioning) {
-      this.versioningHydrated = true;
-      return;
-    }
-
-    try {
-      const forks = await loadForks();
-      const variantIds = [MAIN_VARIANT_ID, ...forks.map((fork) => fork.id)];
-      const savePointsByVariant = await Promise.all(
-        variantIds.map((variantId) => listLocalSavePointsByVariant(variantId)),
-      );
-
-      this.forks = forks;
-      this.savePoints = savePointsByVariant.flat();
-      this.selectedSavePointId =
-        this.activeSavePoints[0]?.id ?? newestSavePoint(this.savePoints)?.id ?? null;
-      this.versioningError = null;
-    } catch (error) {
-      this.versioningError =
-        error instanceof Error ? error.message : "Could not load version history";
-    } finally {
-      this.versioningHydrated = true;
-    }
+  setVersionGraphSynchronizer(
+    synchronizer: ((graph: WorkbenchVersionGraph) => Effect.Effect<void, Error>) | null,
+  ) {
+    this.graphSynchronizer = synchronizer;
   }
 
-  async hydrateActiveProfile(
-    options: HydrateActiveProfileOptions = {},
-  ): Promise<WorkbenchHydrationSelection | undefined> {
+  whenVersioningReady() {
+    return runApp("workbench.versioning-ready", Deferred.await(this.versioningReady));
+  }
+
+  versionGraphSnapshot(): WorkbenchVersionGraph {
+    return normalizeWorkbenchVersionGraph({
+      activeVariantId: this.activeVariantId,
+      deletedForkIds: this.deletedForkIds,
+      deletedSavePointIds: this.deletedSavePointIds,
+      forks: this.forks,
+      revision: this.versionGraphRevision,
+      savePoints: this.savePoints,
+      selectedSavePointId: this.selectedSavePointId,
+      updatedAt: this.versionGraphUpdatedAt,
+    });
+  }
+
+  reconcileVersionGraph(remote: WorkbenchVersionGraph): Promise<WorkbenchVersionGraph> {
+    return runApp(
+      "workbench.reconcile-version-graph",
+      Effect.gen({ self: this }, function* () {
+        yield* Deferred.await(this.versioningReady);
+        const merged = mergeWorkbenchVersionGraphs(this.versionGraphSnapshot(), remote);
+        this.applyVersionGraphState(merged);
+        if (this.persistVersioning && browser) yield* replaceLocalVersionGraphEffect(merged);
+        return merged;
+      }),
+    );
+  }
+
+  canDeleteSavePoint(savePointId: string) {
+    return (
+      !this.savePoints.some((savePoint) => savePoint.parentSavePointId === savePointId) &&
+      !this.forks.some((fork) => fork.parentSavePointId === savePointId)
+    );
+  }
+
+  deleteSavePoint(savePointId: string) {
+    if (!this.savePoints.some((savePoint) => savePoint.id === savePointId)) {
+      return runApp("workbench.delete-save-point", Effect.succeed(false));
+    }
+    if (!this.canDeleteSavePoint(savePointId)) {
+      return runApp(
+        "workbench.delete-save-point",
+        Effect.fail(
+          new Error("Delete child history or dependent variants before removing this save point."),
+        ),
+      );
+    }
+    this.savePoints = this.savePoints.filter((savePoint) => savePoint.id !== savePointId);
+    this.deletedSavePointIds = unionIds(this.deletedSavePointIds, [savePointId]);
+    if (this.selectedSavePointId === savePointId) {
+      this.selectedSavePointId =
+        newestSavePoint(
+          this.savePoints.filter((savePoint) => savePoint.variantId === this.activeVariantId),
+        )?.id ?? null;
+    }
+    return runApp(
+      "workbench.delete-save-point",
+      this.persistVersionGraphEffect().pipe(Effect.as(true)),
+    );
+  }
+
+  canDeleteVariant(variantId: string) {
+    return (
+      variantId !== MAIN_VARIANT_ID &&
+      this.forks.some((fork) => fork.id === variantId) &&
+      !this.forks.some((fork) => fork.sourceVariantId === variantId)
+    );
+  }
+
+  deleteVariant(variantId: string) {
+    if (!this.canDeleteVariant(variantId)) {
+      return runApp(
+        "workbench.delete-variant",
+        Effect.fail(new Error("Delete child variants before removing this variant.")),
+      );
+    }
+    const removedSavePointIds = this.savePoints
+      .filter((savePoint) => savePoint.variantId === variantId)
+      .map((savePoint) => savePoint.id);
+    this.forks = this.forks.filter((fork) => fork.id !== variantId);
+    this.savePoints = this.savePoints.filter((savePoint) => savePoint.variantId !== variantId);
+    this.deletedForkIds = unionIds(this.deletedForkIds, [variantId]);
+    this.deletedSavePointIds = unionIds(this.deletedSavePointIds, removedSavePointIds);
+    const activateMain = this.activeVariantId === variantId;
+    let mainPoint: SavePoint | undefined;
+    if (activateMain) {
+      this.activeVariantId = MAIN_VARIANT_ID;
+      mainPoint = newestSavePoint(
+        this.savePoints.filter((savePoint) => savePoint.variantId === MAIN_VARIANT_ID),
+      );
+      this.selectedSavePointId = mainPoint?.id ?? null;
+    }
+    return runApp(
+      "workbench.delete-variant",
+      Effect.gen({ self: this }, function* () {
+        if (mainPoint) {
+          yield* this.replaceProfileEffect(mainPoint.snapshot, mainPoint.snapshot, {
+            hydrateDraft: false,
+            origin: "draft",
+          });
+        }
+        yield* this.persistVersionGraphEffect();
+        return true;
+      }),
+    );
+  }
+
+  private hydrateVersioningEffect() {
+    if (!this.persistVersioning) {
+      return Effect.sync(() => (this.versioningHydrated = true)).pipe(
+        Effect.andThen(Deferred.succeed(this.versioningReady, undefined)),
+        Effect.map(() => undefined),
+      );
+    }
+
+    return Effect.gen({ self: this }, function* () {
+      this.applyVersionGraphState(yield* loadLocalVersionGraphEffect());
+      this.versioningError = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => (this.versioningHydrated = true)).pipe(
+          Effect.andThen(Deferred.succeed(this.versioningReady, undefined)),
+        ),
+      ),
+    );
+  }
+
+  private applyVersionGraphState(graph: WorkbenchVersionGraph) {
+    const normalized = normalizeWorkbenchVersionGraph(graph);
+    this.activeVariantId = normalized.activeVariantId;
+    this.deletedForkIds = normalized.deletedForkIds;
+    this.deletedSavePointIds = normalized.deletedSavePointIds;
+    this.forks = normalized.forks;
+    this.savePoints = normalized.savePoints;
+    this.selectedSavePointId = normalized.selectedSavePointId;
+    this.versionGraphRevision = normalized.revision;
+    this.versionGraphUpdatedAt = normalized.updatedAt;
+  }
+
+  private persistVersionGraphEffect() {
+    return Effect.gen({ self: this }, function* () {
+      this.versionGraphUpdatedAt = new Date().toISOString();
+      const graph = this.versionGraphSnapshot();
+      if (this.persistVersioning && browser) yield* replaceLocalVersionGraphEffect(graph);
+      if (this.graphSynchronizer) yield* this.graphSynchronizer(graph);
+    });
+  }
+
+  private hydrateActiveProfileEffect(options: HydrateActiveProfileOptions = {}) {
     if (!this.persistVersioning && !options.force && !options.connectedProfile) {
       this.hydrated = true;
-      return undefined;
+      return Effect.succeed<WorkbenchHydrationSelection | undefined>(undefined);
     }
     if (this.activeProfileHydrationLocked && !options.force && !options.connectedProfile) {
       this.hydrated = true;
-      return undefined;
+      return Effect.succeed<WorkbenchHydrationSelection | undefined>(undefined);
     }
 
-    try {
-      const draft = options.connectedProfile ? undefined : await this.loadDraft();
-      const draftBase = draft ? await this.loadDevice(draft.id) : undefined;
+    return Effect.gen({ self: this }, function* () {
+      const draft = this.loadPersistedDrafts
+        ? yield* Effect.tryPromise({
+            try: () => this.loadDraft(options.connectedProfile?.id),
+            catch: (cause) => platformError("workbench.load-draft", cause),
+          })
+        : undefined;
+      const draftBase =
+        draft && !options.connectedProfile
+          ? yield* Effect.tryPromise({
+              try: () => this.loadDevice(draft.id),
+              catch: (cause) => platformError("workbench.load-device", cause),
+            })
+          : undefined;
       if (this.activeProfileHydrationLocked && !options.force && !options.connectedProfile) {
         this.hydrated = true;
         return undefined;
@@ -372,19 +569,46 @@ export class WorkbenchStore extends EditorStore {
         starterProfile: starterBoardProfile(this.activeBoardId),
       });
 
-      await super.replaceProfile(selection.baseProfile, selection.profile, {
+      yield* this.replaceProfileEffect(selection.baseProfile, selection.profile, {
         flushPersistence: false,
         hydrateDraft: false,
         origin: selection.origin,
       });
       this.persistenceError = null;
       return selection;
-    } catch (error) {
-      this.persistenceError = error instanceof Error ? error.message : "Could not load local draft";
-      return undefined;
-    } finally {
-      this.hydrated = true;
-    }
+    }).pipe(Effect.ensuring(Effect.sync(() => (this.hydrated = true))));
+  }
+
+  hydrateActiveProfile(options: HydrateActiveProfileOptions = {}) {
+    return runApp(
+      "workbench.hydrate-profile",
+      this.hydrateActiveProfileEffect(options),
+      (_label, message) => {
+        this.persistenceError = message;
+      },
+    );
+  }
+
+  activateConnectedProfile(connectedProfile: DeviceProfile) {
+    return runApp(
+      "workbench.activate-connected-profile",
+      Effect.gen({ self: this }, function* () {
+        yield* this.flushPersistenceEffect();
+        const selection = yield* this.hydrateActiveProfileEffect({ connectedProfile });
+        if (!selection) return undefined;
+
+        if (this.persistVersioning && browser) {
+          yield* saveLocalDeviceEffect(selection.baseProfile);
+        }
+        yield* Effect.tryPromise({
+          try: () => this.flushPersistence(),
+          catch: (cause) => platformError("workbench.flush-connected-profile", cause),
+        });
+        this.persistenceError = null;
+        return selection;
+      }),
+      (_label, message) => (this.persistenceError = message),
+    );
   }
 }
 
@@ -392,9 +616,20 @@ export function resolveWorkbenchHydration(
   input: WorkbenchHydrationInput,
 ): WorkbenchHydrationSelection {
   if (input.connectedProfile) {
-    const profile = withDeviceProfileOrigin(input.connectedProfile, "device");
+    const matchingDraft =
+      input.draftProfile?.id === input.connectedProfile.id ? input.draftProfile : undefined;
+    const baseProfile = withDeviceProfileOrigin(input.connectedProfile, "device");
+    const profile = withDeviceProfileOrigin(
+      {
+        ...input.connectedProfile,
+        firmwareMetadata:
+          matchingDraft?.firmwareMetadata ?? input.connectedProfile.firmwareMetadata,
+        settings: matchingDraft?.settings ?? input.connectedProfile.settings,
+      },
+      "device",
+    );
     return {
-      baseProfile: cloneDevice(profile),
+      baseProfile,
       origin: "device",
       profile,
     };
@@ -457,6 +692,14 @@ function newestSavePoint(savePoints: readonly SavePoint[]): SavePoint | undefine
   })[0];
 }
 
+function unionIds(...collections: string[][]): string[] {
+  return [...new Set(collections.flat())].sort();
+}
+
 function normalizedVariantName(name: string, index: number): string {
   return name.trim() || `variant-${index}`;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

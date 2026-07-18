@@ -1,6 +1,9 @@
 import { browser } from "$app/environment";
-import { Effect } from "effect";
+import { Cause, Deferred, Effect } from "effect";
 
+import { runApp } from "$lib/app/runtime";
+import { platformError } from "$lib/effect/errors";
+import { tryMaybePromise } from "$lib/effect/maybe-promise";
 import type { Capability, DeviceProfile, KeyboardDetection } from "./schema";
 import { viaCommand, viaReportSize } from "./via-protocol";
 import type { ZmkStudioConnection } from "./zmk-studio";
@@ -202,6 +205,22 @@ function deviceKey(device: {
   return `keyboard:${hexId(device.vendorId)}:${hexId(device.productId)}:${product}`;
 }
 
+function deviceIdentity(device: {
+  vendorId?: number;
+  productId?: number;
+  productName?: string;
+  serialNumber?: string;
+}) {
+  // Browser device handles are host objects, not plain JavaScript objects.
+  // Never let one cross a SvelteKit remote-call or reactive-state boundary.
+  return {
+    vendorId: device.vendorId,
+    productId: device.productId,
+    productName: device.productName,
+    serialNumber: device.serialNumber,
+  };
+}
+
 function uniqueFilters<T extends object>(filters: T[]): T[] {
   const seen = new Set<string>();
 
@@ -274,6 +293,29 @@ function isViaHidDevice(device: MinimalHidDevice) {
   );
 }
 
+function grantedViaHidDevice(
+  devices: MinimalHidDevice[],
+  filters: Array<{ vendorId?: number; productId?: number }>,
+) {
+  const viaDevices = devices.filter(isViaHidDevice);
+  const rankedFilters = [...filters].sort(
+    (left, right) =>
+      Number(right.productId !== undefined) - Number(left.productId !== undefined) ||
+      Number(right.vendorId !== undefined) - Number(left.vendorId !== undefined),
+  );
+
+  for (const filter of rankedFilters) {
+    const matches = viaDevices.filter(
+      (device) =>
+        (filter.vendorId === undefined || device.vendorId === filter.vendorId) &&
+        (filter.productId === undefined || device.productId === filter.productId),
+    );
+    if (matches.length === 1) return matches[0];
+  }
+
+  return viaDevices.length === 1 ? viaDevices[0] : undefined;
+}
+
 function isKeyboardLikeUsbDevice(device: MinimalUsbDevice) {
   const productName = device.productName?.toLowerCase() ?? "";
   return (
@@ -284,87 +326,89 @@ function isKeyboardLikeUsbDevice(device: MinimalUsbDevice) {
   );
 }
 
-async function connectUsbDevice(
+function connectUsbDeviceEffect(
   device: MinimalUsbDevice,
   environment: TransportEnvironment,
-): Promise<ConnectionState> {
-  await device.open();
+): Effect.Effect<ConnectionState, Error> {
+  return Effect.gen(function* () {
+    yield* hostPromise("keyboard.webusb.open", () => device.open());
 
-  if (!device.configuration) {
-    await device.selectConfiguration?.(1);
-  }
+    if (!device.configuration && device.selectConfiguration) {
+      yield* hostPromise("keyboard.webusb.select-configuration", () =>
+        device.selectConfiguration!(1),
+      );
+    }
 
-  const interfaceNumber = claimableUsbInterface(device);
-  if (interfaceNumber !== undefined) {
-    await device.claimInterface?.(interfaceNumber);
-  }
+    const interfaceNumber = claimableUsbInterface(device);
+    if (interfaceNumber !== undefined && device.claimInterface) {
+      yield* hostPromise("keyboard.webusb.claim-interface", () =>
+        device.claimInterface!(interfaceNumber),
+      );
+    }
 
-  return {
-    ...getConnectionState(environment),
-    status: "connected",
-    transport: "webusb",
-    protocol: "via-v3",
-    deviceKey: deviceKey(device),
-    productName: device.productName ?? "QMK device",
-    vendorId: device.vendorId,
-    productId: device.productId,
-    serialNumber: device.serialNumber,
-    detection: {
-      identity: {
-        key: deviceKey(device),
-        transport: "webusb",
-        vendorId: device.vendorId,
-        productId: device.productId,
-        productName: device.productName,
-        serialNumber: device.serialNumber,
+    return {
+      ...getConnectionState(environment),
+      status: "connected" as const,
+      transport: "webusb" as const,
+      protocol: "via-v3" as const,
+      deviceKey: deviceKey(device),
+      productName: device.productName ?? "QMK device",
+      vendorId: device.vendorId,
+      productId: device.productId,
+      serialNumber: device.serialNumber,
+      detection: {
+        identity: {
+          key: deviceKey(device),
+          transport: "webusb" as const,
+          vendorId: device.vendorId,
+          productId: device.productId,
+          productName: device.productName,
+          serialNumber: device.serialNumber,
+        },
+        capabilities: ["keymap", "layers"] as Capability[],
+        notes: ["WebUSB connected. Use WebHID/VIA to read live keymap data."],
       },
-      capabilities: ["keymap", "layers"],
-      notes: ["WebUSB connected. Use WebHID/VIA to read live keymap data."],
-    },
-    message: "Connected",
-  };
+      message: "Connected",
+    };
+  });
 }
 
-async function connectHidDevice(
+function connectHidDeviceEffect(
   device: MinimalHidDevice,
   options: TransportOptions,
   environment: TransportEnvironment,
-): Promise<ConnectionState> {
-  if (!device.opened) await device.open();
-  const matrixHint = (await options.resolveMatrixHint?.(device)) ?? options.matrixHint;
+): Effect.Effect<ConnectionState, Error> {
+  return Effect.gen(function* () {
+    if (!device.opened) yield* hostPromise("keyboard.webhid.open", () => device.open());
+    const resolvedMatrix = options.resolveMatrixHint
+      ? yield* tryMaybePromise(
+          () => options.resolveMatrixHint!(deviceIdentity(device)),
+          (cause) => platformError("keyboard.resolve-matrix", cause),
+        )
+      : undefined;
+    const matrixHint = resolvedMatrix ?? options.matrixHint;
+    const detection = yield* detectViaHidEffect(device, matrixHint);
 
-  const detection = await detectViaHid(device, matrixHint).catch((error: unknown) => ({
-    identity: {
-      key: deviceKey(device),
+    return {
+      ...getConnectionState(environment),
+      status: "connected" as const,
       transport: "webhid" as const,
+      protocol: "via-v3" as const,
+      hidDevice: device,
+      deviceKey: detection.identity.key,
+      productName: device.productName ?? "HID keyboard",
       vendorId: device.vendorId,
       productId: device.productId,
-      productName: device.productName,
       serialNumber: device.serialNumber,
-    },
-    capabilities: ["keymap" as const, "layers" as const],
-    notes: [error instanceof Error ? error.message : "Could not probe VIA protocol"],
-  }));
-
-  return {
-    ...getConnectionState(environment),
-    status: "connected",
-    transport: "webhid",
-    protocol: "via-v3",
-    hidDevice: device,
-    deviceKey: detection.identity.key,
-    productName: device.productName ?? "HID keyboard",
-    vendorId: device.vendorId,
-    productId: device.productId,
-    serialNumber: device.serialNumber,
-    detection,
-    message: "Connected",
-  };
+      detection,
+      message: "Connected",
+    };
+  });
 }
 
-function hidCommand(device: MinimalHidDevice, command: number, payload: number[] = []) {
+function hidCommandEffect(device: MinimalHidDevice, command: number, payload: number[] = []) {
   if (!device.sendReport || !device.addEventListener || !device.removeEventListener) {
-    throw new Error("WebHID reports are unavailable for this device");
+    return Effect.fail(new Error("WebHID reports are unavailable for this device"));
   }
 
   const sendReport = device.sendReport.bind(device);
@@ -374,35 +418,40 @@ function hidCommand(device: MinimalHidDevice, command: number, payload: number[]
   request[0] = command;
   request.set(payload.slice(0, viaReportSize - 1), 1);
 
-  return new Promise<Uint8Array>((resolve, reject) => {
-    const timeout = globalThis.setTimeout(() => {
-      removeEventListener("inputreport", onInputReport);
-      reject(new Error(`VIA command 0x${command.toString(16)} timed out`));
-    }, 800);
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const response = yield* Deferred.make<Uint8Array, Error>();
+      const onInputReport = (event: MinimalHidInputReportEvent) => {
+        if (event.device !== device) return;
 
-    function onInputReport(event: MinimalHidInputReportEvent) {
-      if (event.device !== device) return;
+        const bytes = new Uint8Array(
+          event.data.buffer.slice(
+            event.data.byteOffset,
+            event.data.byteOffset + event.data.byteLength,
+          ),
+        );
+        if (bytes[0] !== command) return;
+        Deferred.doneUnsafe(response, Effect.succeed(bytes));
+      };
 
-      const response = new Uint8Array(
-        event.data.buffer.slice(
-          event.data.byteOffset,
-          event.data.byteOffset + event.data.byteLength,
+      yield* Effect.acquireRelease(
+        Effect.sync(() => addEventListener("inputreport", onInputReport)),
+        () => Effect.sync(() => removeEventListener("inputreport", onInputReport)),
+      );
+      yield* Effect.tryPromise({
+        try: () => sendReport(0, request),
+        catch: (cause) => platformError("via.send-report", cause),
+      });
+      return yield* Deferred.await(response).pipe(
+        Effect.timeout(800),
+        Effect.mapError((error) =>
+          Cause.isTimeoutError(error)
+            ? new Error(`VIA command 0x${command.toString(16)} timed out`)
+            : error,
         ),
       );
-      if (response[0] !== command) return;
-
-      globalThis.clearTimeout(timeout);
-      removeEventListener("inputreport", onInputReport);
-      resolve(response);
-    }
-
-    addEventListener("inputreport", onInputReport);
-    void sendReport(0, request).catch((error: unknown) => {
-      globalThis.clearTimeout(timeout);
-      removeEventListener("inputreport", onInputReport);
-      reject(error);
-    });
-  });
+    }),
+  );
 }
 
 function keycodeFromResponse(response: Uint8Array) {
@@ -434,148 +483,135 @@ export interface ViaKeycodeWriteResult {
   verifiedKeycode: number;
 }
 
-export async function writeViaKeycode(
+export function writeViaKeycode(
   connection: ConnectionState,
   input: ViaKeycodeWriteInput,
 ): Promise<ViaKeycodeWriteResult> {
-  return Effect.runPromise(writeViaKeycodeEffect(connection, input));
+  return runApp("keyboard.via.write-keycode", writeViaKeycodeEffect(connection, input));
 }
 
 export function writeViaKeycodeEffect(connection: ConnectionState, input: ViaKeycodeWriteInput) {
-  return Effect.tryPromise({
-    try: async () => {
-      if (connection.status !== "connected" || connection.transport !== "webhid") {
-        throw new Error("Connect a WebHID VIA keyboard before saving to the device.");
-      }
+  return Effect.gen(function* () {
+    if (connection.status !== "connected" || connection.transport !== "webhid") {
+      return yield* Effect.fail(
+        new Error("Connect a WebHID VIA keyboard before saving to the device."),
+      );
+    }
 
-      const device = connection.hidDevice;
-      if (!device) {
-        throw new Error("The WebHID device handle is unavailable. Reconnect the keyboard.");
-      }
+    const device = connection.hidDevice;
+    if (!device) {
+      return yield* Effect.fail(
+        new Error("The WebHID device handle is unavailable. Reconnect the keyboard."),
+      );
+    }
 
-      assertViaKeycodeWriteInput(input);
+    yield* Effect.try(() => assertViaKeycodeWriteInput(input));
 
-      await hidCommand(device, viaCommand.dynamicKeymapSetKeycode, [
-        input.layer,
-        input.row,
-        input.col,
-        (input.keycode >> 8) & 0xff,
-        input.keycode & 0xff,
-      ]);
+    yield* hidCommandEffect(device, viaCommand.dynamicKeymapSetKeycode, [
+      input.layer,
+      input.row,
+      input.col,
+      (input.keycode >> 8) & 0xff,
+      input.keycode & 0xff,
+    ]);
 
-      const readback = await hidCommand(device, viaCommand.dynamicKeymapGetKeycode, [
-        input.layer,
-        input.row,
-        input.col,
-      ]);
-      const verifiedKeycode = keycodeFromResponse(readback);
+    const readback = yield* hidCommandEffect(device, viaCommand.dynamicKeymapGetKeycode, [
+      input.layer,
+      input.row,
+      input.col,
+    ]);
+    const verifiedKeycode = keycodeFromResponse(readback);
 
-      if (verifiedKeycode !== input.keycode) {
-        throw new Error(
+    if (verifiedKeycode !== input.keycode) {
+      return yield* Effect.fail(
+        new Error(
           `VIA readback mismatch: wrote 0x${input.keycode.toString(16).padStart(4, "0")}, read 0x${verifiedKeycode.toString(16).padStart(4, "0")}.`,
-        );
-      }
+        ),
+      );
+    }
 
-      return {
-        requestedKeycode: input.keycode,
-        verifiedKeycode,
-      };
-    },
-    catch: (error) => error,
+    return {
+      requestedKeycode: input.keycode,
+      verifiedKeycode,
+    };
   });
 }
 
-async function readViaKeymap(
+function readViaKeymapEffect(
   device: MinimalHidDevice,
   layerCount: number,
   matrixHint?: { rows: number; cols: number },
 ) {
-  if (!matrixHint) return undefined;
-
-  const keymap: number[][][] = [];
+  if (!matrixHint) return Effect.succeed<number[][][] | undefined>(undefined);
   const cappedLayerCount = Math.min(layerCount, 8);
-
-  for (let layer = 0; layer < cappedLayerCount; layer += 1) {
-    const rows: number[][] = [];
-
-    for (let row = 0; row < matrixHint.rows; row += 1) {
-      const cols: number[] = [];
-
-      for (let col = 0; col < matrixHint.cols; col += 1) {
-        const response = await hidCommand(device, viaCommand.dynamicKeymapGetKeycode, [
-          layer,
-          row,
-          col,
-        ]);
-        cols.push((response[4] << 8) | response[5]);
-      }
-
-      rows.push(cols);
-    }
-
-    keymap.push(rows);
-  }
-
-  return keymap;
+  return Effect.forEach(
+    Array.from({ length: cappedLayerCount }, (_, layer) => layer),
+    (layer) =>
+      Effect.forEach(
+        Array.from({ length: matrixHint.rows }, (_, row) => row),
+        (row) =>
+          Effect.forEach(
+            Array.from({ length: matrixHint.cols }, (_, col) => col),
+            (col) =>
+              hidCommandEffect(device, viaCommand.dynamicKeymapGetKeycode, [layer, row, col]).pipe(
+                Effect.map(keycodeFromResponse),
+              ),
+            { concurrency: 1 },
+          ),
+        { concurrency: 1 },
+      ),
+    { concurrency: 1 },
+  );
 }
 
-async function detectViaHid(
+function detectViaHidEffect(
   device: MinimalHidDevice,
   matrixHint?: { rows: number; cols: number },
-): Promise<KeyboardDetection> {
-  const notes: string[] = [];
-  const capabilities = new Set<Capability>(["keymap", "layers"]);
-  const protocolResponse = await hidCommand(device, viaCommand.getProtocolVersion);
-  const protocolVersion = (protocolResponse[1] << 8) | protocolResponse[2];
-
-  const layerResponse = await hidCommand(device, viaCommand.dynamicKeymapGetLayerCount).catch(
-    (error: unknown) => {
-      notes.push(error instanceof Error ? error.message : "Could not read VIA layer count");
-      return undefined;
-    },
-  );
-  const layerCount = layerResponse?.[1];
-
-  const macroResponse = await hidCommand(device, viaCommand.dynamicKeymapMacroGetCount).catch(
-    () => undefined,
-  );
-  if (macroResponse?.[1]) capabilities.add("macros");
-
-  let keymap: number[][][] | undefined;
-  if (layerCount && matrixHint) {
-    keymap = await readViaKeymap(device, layerCount, matrixHint).catch((error: unknown) => {
-      notes.push(error instanceof Error ? error.message : "Could not read current VIA keymap");
-      return undefined;
-    });
-  } else {
-    notes.push(
-      "Need a keyboard definition to map physical layout dimensions before reading all keys.",
+): Effect.Effect<KeyboardDetection, Error> {
+  if (!matrixHint) {
+    return Effect.fail(
+      new Error(
+        "A verified keyboard definition is required before reading or writing the VIA matrix.",
+      ),
     );
   }
+  return Effect.gen(function* () {
+    const capabilities = new Set<Capability>(["keymap", "layers"]);
+    const protocolResponse = yield* hidCommandEffect(device, viaCommand.getProtocolVersion);
+    const protocolVersion = (protocolResponse[1] << 8) | protocolResponse[2];
 
-  return {
-    identity: {
-      key: deviceKey(device),
-      transport: "webhid",
-      vendorId: device.vendorId,
-      productId: device.productId,
-      productName: device.productName,
-      serialNumber: device.serialNumber,
-    },
-    protocolVersion,
-    layerCount,
-    keymap,
-    capabilities: Array.from(capabilities),
-    notes,
-  };
+    const layerResponse = yield* hidCommandEffect(device, viaCommand.dynamicKeymapGetLayerCount);
+    const layerCount = layerResponse[1];
+    if (!layerCount) return yield* Effect.fail(new Error("VIA reported no writable layers."));
+
+    const macroResponse = yield* hidCommandEffect(device, viaCommand.dynamicKeymapMacroGetCount);
+    if (macroResponse?.[1]) capabilities.add("macros");
+
+    const keymap = yield* readViaKeymapEffect(device, layerCount, matrixHint);
+    return {
+      identity: {
+        key: deviceKey(device),
+        transport: "webhid" as const,
+        vendorId: device.vendorId,
+        productId: device.productId,
+        productName: device.productName,
+        serialNumber: device.serialNumber,
+      },
+      protocolVersion,
+      layerCount,
+      keymap,
+      capabilities: Array.from(capabilities),
+      notes: [],
+    };
+  });
 }
 
-export async function connectKeyboard(
+export function connectKeyboard(
   transport: TransportKind,
   filters: Array<{ vendorId?: number; productId?: number }>,
   options: TransportOptions = {},
 ) {
-  return Effect.runPromise(connectKeyboardEffect(transport, filters, options));
+  return runApp("keyboard.connect", connectKeyboardEffect(transport, filters, options));
 }
 
 export function createWebHidViaTransport(
@@ -607,54 +643,62 @@ export function connectKeyboardEffect(
     });
   }
 
-  return Effect.tryPromise({
-    try: async () => {
-      if (transport === "webusb") {
-        if (!environment.usb) {
-          return {
-            ...getConnectionState(environment),
-            status: "unsupported" as const,
-            transport,
-            message: "WebUSB unavailable",
-          };
-        }
-
-        const device = await environment.usb.requestDevice({ filters: webUsbFilters(filters) });
-        return connectUsbDevice(device, environment);
-      }
-
-      if (transport === "webbluetooth" || transport === "webserial") {
+  return Effect.gen(function* () {
+    if (transport === "webusb") {
+      if (!environment.usb) {
         return {
           ...getConnectionState(environment),
           status: "unsupported" as const,
           transport,
-          protocol: "zmk-studio" as const,
-          message: "Use the dedicated ZMK Studio Bluetooth or Serial transport.",
+          message: "WebUSB unavailable",
         };
       }
 
-      if (!environment.hid) {
-        return {
-          ...getConnectionState(environment),
-          status: "unsupported" as const,
-          transport,
-          message: "WebHID unavailable",
-        };
-      }
+      const device = yield* hostPromise("keyboard.webusb.request-device", () =>
+        environment.usb!.requestDevice({ filters: webUsbFilters(filters) }),
+      );
+      return yield* connectUsbDeviceEffect(device, environment);
+    }
 
-      const [device] = await environment.hid.requestDevice({ filters: webHidFilters(filters) });
-      if (!device) {
-        return {
-          ...getConnectionState(environment),
-          status: "idle" as const,
-          transport,
-          message: "No device selected",
-        };
-      }
+    if (transport === "webbluetooth" || transport === "webserial") {
+      return {
+        ...getConnectionState(environment),
+        status: "unsupported" as const,
+        transport,
+        protocol: "zmk-studio" as const,
+        message: "Use the dedicated ZMK Studio Bluetooth or Serial transport.",
+      };
+    }
 
-      return connectHidDevice(device, options, environment);
-    },
-    catch: (error) => error,
+    if (!environment.hid) {
+      return {
+        ...getConnectionState(environment),
+        status: "unsupported" as const,
+        transport,
+        message: "WebHID unavailable",
+      };
+    }
+
+    const grantedDevices = environment.hid.getDevices
+      ? yield* hostPromise("keyboard.webhid.get-devices", () => environment.hid!.getDevices!())
+      : [];
+    const grantedDevice = grantedViaHidDevice(grantedDevices, filters);
+    const [requestedDevice] = grantedDevice
+      ? [undefined]
+      : yield* hostPromise("keyboard.webhid.request-device", () =>
+          environment.hid!.requestDevice({ filters: webHidFilters(filters) }),
+        );
+    const device = grantedDevice ?? requestedDevice;
+    if (!device) {
+      return {
+        ...getConnectionState(environment),
+        status: "idle" as const,
+        transport,
+        message: "No device selected",
+      };
+    }
+
+    return yield* connectHidDeviceEffect(device, options, environment);
   }).pipe(
     Effect.catch((error) =>
       Effect.succeed({
@@ -667,29 +711,30 @@ export function connectKeyboardEffect(
   );
 }
 
-export async function detectGrantedKeyboard(
+export function detectGrantedKeyboard(
   options: TransportOptions = {},
 ): Promise<ConnectionState | undefined> {
-  return Effect.runPromise(detectGrantedKeyboardEffect(options));
+  return runApp("keyboard.detect-granted", detectGrantedKeyboardEffect(options));
 }
 
 export function detectGrantedKeyboardEffect(options: TransportOptions = {}) {
   const environment = options.environment ?? browserTransportEnvironment();
   if (!environment.isBrowser) return Effect.succeed(undefined);
 
-  return Effect.tryPromise({
-    try: async () => {
-      const hidDevices = (await environment.hid?.getDevices?.()) ?? [];
-      const hidDevice = hidDevices.find(isViaHidDevice);
-      if (hidDevice) return connectHidDevice(hidDevice, options, environment);
+  return Effect.gen(function* () {
+    const hidDevices = environment.hid?.getDevices
+      ? yield* hostPromise("keyboard.webhid.get-granted", () => environment.hid!.getDevices!())
+      : [];
+    const hidDevice = hidDevices.find(isViaHidDevice);
+    if (hidDevice) return yield* connectHidDeviceEffect(hidDevice, options, environment);
 
-      const usbDevices = (await environment.usb?.getDevices?.()) ?? [];
-      const usbDevice = usbDevices.find(isKeyboardLikeUsbDevice);
-      if (usbDevice) return connectUsbDevice(usbDevice, environment);
+    const usbDevices = environment.usb?.getDevices
+      ? yield* hostPromise("keyboard.webusb.get-granted", () => environment.usb!.getDevices!())
+      : [];
+    const usbDevice = usbDevices.find(isKeyboardLikeUsbDevice);
+    if (usbDevice) return yield* connectUsbDeviceEffect(usbDevice, environment);
 
-      return undefined;
-    },
-    catch: (error) => error,
+    return undefined;
   }).pipe(
     Effect.catch((error) =>
       Effect.succeed({
@@ -699,6 +744,13 @@ export function detectGrantedKeyboardEffect(options: TransportOptions = {}) {
       }),
     ),
   );
+}
+
+function hostPromise<A>(operation: string, run: () => PromiseLike<A>) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => platformError(operation, cause),
+  }).pipe(Effect.withSpan(operation));
 }
 
 /**
@@ -725,14 +777,14 @@ export function forgetGrantedKeyboardEffect(
     const hidDevices = (await environment.hid?.getDevices?.()) ?? [];
     for (const device of hidDevices) {
       if (matches(device) && device.forget) {
-        await device.forget().catch(() => undefined);
+        await device.forget();
       }
     }
 
     const usbDevices = (await environment.usb?.getDevices?.()) ?? [];
     for (const device of usbDevices) {
       if (matches(device) && device.forget) {
-        await device.forget().catch(() => undefined);
+        await device.forget();
       }
     }
 

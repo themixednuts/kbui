@@ -13,7 +13,7 @@
 
   const metaTextClass = "font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase";
   const activeStackCardClass =
-    "active-stack-card grid gap-kb-10 rounded-[10px] border border-line bg-[color-mix(in_oklch,var(--surface)_76%,transparent)] px-kb-16 py-kb-13 shadow-card";
+    "active-stack-card grid gap-kb-8 border-t border-line bg-paper px-kb-20 py-kb-10 shadow-none";
 </script>
 
 <section class={activeStackCardClass} aria-label="Active layer stack">

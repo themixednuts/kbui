@@ -4,6 +4,7 @@ import {
   type Combo,
   type DeviceIdentity,
   type DeviceProfile,
+  type FirmwareMetadata,
   type KeyboardKey,
   type Layer,
 } from "./schema";
@@ -18,8 +19,10 @@ export interface KeyboardCatalogEntry {
   id: string;
   name: string;
   vendor: string;
-  source: "via-v3";
+  source: "via-v3" | "qmk-api";
   sourcePath: string;
+  /** Immutable upstream revision or catalog generation used to produce this entry. */
+  sourceRevision?: string;
   vendorId: number;
   productId: number;
   matrix: { rows: number; cols: number };
@@ -28,6 +31,7 @@ export interface KeyboardCatalogEntry {
   combos: Combo[];
   defaultLayers: Layer[];
   capabilities: Capability[];
+  firmwareMetadata?: FirmwareMetadata;
   priority: number;
 }
 
@@ -223,6 +227,7 @@ export function profileFromCatalog(entry: KeyboardCatalogEntry, layerCount = 4):
     origin: "imported",
     vendor: entry.vendor,
     firmware: "qmk",
+    firmwareEditIntent: "source",
     protocol: "via-v3",
     firmwareVersion: "VIA definition v3",
     vendorId: entry.vendorId,
@@ -254,7 +259,12 @@ export function profileFromCatalog(entry: KeyboardCatalogEntry, layerCount = 4):
       nkro: true,
       splitTransport: entry.name.toLowerCase().includes("split") ? "serial" : "none",
     },
-    detectionNotes: [`Loaded ${entry.sourcePath} from the VIA v3 keyboard catalog.`],
+    firmwareMetadata: entry.firmwareMetadata,
+    detectionNotes: [
+      entry.source === "qmk-api"
+        ? `Resolved ${entry.sourcePath} from the versioned QMK keyboard catalog.`
+        : `Loaded ${entry.sourcePath} from the VIA v3 keyboard catalog.`,
+    ],
     updatedAt: new Date().toISOString(),
   };
 }

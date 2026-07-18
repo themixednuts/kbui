@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LogicBindingOption } from "$lib/keyboard/logic-bindings";
-  import { Chip } from "$lib/components/ui";
+  import { Button, Chip } from "$lib/components/ui";
   import { cn } from "$lib/utils.js";
 
   type Props = {
@@ -15,10 +15,10 @@
   const reference = $derived(items.filter((item) => item.code === null));
 
   const logicRowClass =
-    "logic-row flex w-full items-center justify-between gap-kb-10 rounded-[10px] !border !border-transparent !bg-paper-2 px-kb-10 py-kb-8 text-left transition-[border-color,background,transform] duration-[120ms] ease-[ease]";
-  const logicRowButtonClass = cn(logicRowClass, "hover:-translate-y-px hover:!border-line-2");
+    "logic-row flex w-full items-center justify-between gap-kb-10 rounded-md border border-transparent bg-paper-2 px-kb-10 py-kb-8 text-left transition-[border-color,background,transform] duration-[120ms] ease-[ease]";
+  const logicRowButtonClass = cn(logicRowClass, "h-auto whitespace-normal hover:-translate-y-px hover:border-line-2 hover:bg-paper-2");
   const logicRowActiveClass =
-    "!border-[color-mix(in_oklab,var(--coral)_55%,var(--line-2))] !bg-[color-mix(in_oklab,var(--coral)_12%,var(--paper-2))]";
+    "border-[color-mix(in_oklab,var(--coral)_55%,var(--line-2))] bg-[color-mix(in_oklab,var(--coral)_12%,var(--paper-2))]";
   const logicRowMainClass = "logic-row-main flex min-w-0 flex-col gap-kb-2";
   const logicRowLabelClass =
     "logic-row-label overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.2] font-strong";
@@ -36,10 +36,13 @@
   <ul class="logic-list m-0 flex list-none flex-col gap-kb-4 pt-0 pr-[2px] pb-kb-4 pl-0">
     {#each bindable as item (item.id)}
       <li>
-        <button
+        <Button
           type="button"
-          class={cn(logicRowButtonClass, activeCode === item.code && logicRowActiveClass)}
-          class:logic-row-active={activeCode === item.code}
+          variant="ghost"
+          class={cn(
+            logicRowButtonClass,
+            activeCode === item.code && cn("logic-row-active", logicRowActiveClass),
+          )}
           title={item.detail}
           onclick={() => onBind(item)}
         >
@@ -50,7 +53,7 @@
           <Chip tone={item.kind === "macro" ? "warning" : "success"}>
             {item.kind === "macro" ? "macro" : "tap"}
           </Chip>
-        </button>
+        </Button>
       </li>
     {/each}
 

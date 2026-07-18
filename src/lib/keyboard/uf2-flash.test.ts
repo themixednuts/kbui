@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { createMockViaTransport } from "./transport-mock";
 import {
-  createUf2DownloadFallback,
   createUf2FlashPlan,
   detectUf2FileSystemAccessSupport,
   flashUf2ViaFileSystemAccess,
@@ -22,6 +21,7 @@ function syntheticUf2(
   options: {
     blocks?: number;
     familyId?: number;
+    includeFamilyId?: boolean;
     payloadSize?: number;
     targetAddress?: number;
   } = {},
@@ -37,7 +37,7 @@ function syntheticUf2(
     const offset = block * 512;
     view.setUint32(offset, uf2MagicStart0, true);
     view.setUint32(offset + 4, uf2MagicStart1, true);
-    view.setUint32(offset + 8, uf2FamilyFlag, true);
+    view.setUint32(offset + 8, options.includeFamilyId === false ? 0 : uf2FamilyFlag, true);
     view.setUint32(offset + 12, targetAddress + block * payloadSize, true);
     view.setUint32(offset + 16, payloadSize, true);
     view.setUint32(offset + 20, block, true);
@@ -171,8 +171,8 @@ describe("UF2 flashing helpers", () => {
     expect(() => parseUf2(junk)).toThrow(/not a valid UF2 block/);
   });
 
-  it("builds a conservative flash plan for a selected UF2 artifact", () => {
-    const bytes = syntheticUf2({ familyId: 0x0 });
+  it("builds a flash plan when the declared UF2 family matches the target", () => {
+    const bytes = syntheticUf2({ familyId: 0xada52840 });
     const plan = createUf2FlashPlan({
       boardName: "Workbench 65",
       expectedFamilyId: 0xada52840,
@@ -187,8 +187,39 @@ describe("UF2 flashing helpers", () => {
       familyId: 0xada52840,
       name: "UF2 mass-storage bootloader",
     });
-    expect(plan.warnings).toEqual(["UF2 family 0x00000000 does not match expected 0xada52840."]);
+    expect(plan.warnings).toEqual([]);
     expect(plan.hardwareVerified).toBe(false);
+  });
+
+  it("rejects a UF2 artifact whose declared family differs from the target", () => {
+    const bytes = syntheticUf2({ familyId: 0x0 });
+
+    expect(() =>
+      createUf2FlashPlan({
+        boardName: "Workbench 65",
+        expectedFamilyId: 0xada52840,
+        uf2Bytes: bytes,
+      }),
+    ).toThrow("UF2 family 0x00000000 does not match expected 0xada52840.");
+  });
+
+  it("blocks a UF2 artifact that omits family metadata", () => {
+    const bytes = syntheticUf2({ includeFamilyId: false });
+    expect(() =>
+      createUf2FlashPlan({
+        boardName: "Workbench 65",
+        expectedFamilyId: 0xada52840,
+        uf2Bytes: bytes,
+      }),
+    ).toThrow("UF2 does not declare a family id; direct flashing is blocked.");
+  });
+
+  it("blocks overlapping UF2 target ranges", () => {
+    const bytes = syntheticUf2({ blocks: 2 });
+    const view = new DataView(bytes.buffer);
+    view.setUint32(512 + 12, view.getUint32(12, true), true);
+
+    expect(() => parseUf2(bytes)).toThrow("UF2 target address ranges overlap.");
   });
 
   it("writes a UF2 to a mock File System Access directory and reports progress", async () => {
@@ -198,6 +229,8 @@ describe("UF2 flashing helpers", () => {
 
     const result = await flashUf2ViaFileSystemAccess(directory, bytes, {
       chunkSize: 512,
+      expectedFamilyId: rp2040Uf2FamilyId,
+      expectedVolumeHints: ["RPI-RP2"],
       fileName: "mock-board.uf2",
       onProgress: (event) => {
         progress.push(`${event.phase}:${event.bytesWritten}/${event.totalBytes}`);
@@ -238,19 +271,7 @@ describe("UF2 flashing helpers", () => {
     expect(result.log.join("\n")).toContain("VIA protocol 12");
   });
 
-  it("returns a UF2 blob for the manual download fallback", async () => {
-    const bytes = syntheticUf2();
-    const fallback = createUf2DownloadFallback(bytes, "manual");
-
-    expect(fallback.fileName).toBe("manual.uf2");
-    expect(fallback.blob.type).toBe("application/x-uf2");
-    expect(fallback.guidance.join(" ")).toContain("Copy the UF2 file");
-    expect(Array.from(new Uint8Array(await fallback.blob.arrayBuffer()))).toEqual(
-      Array.from(bytes),
-    );
-  });
-
-  it("reports manual-copy guidance when File System Access is unsupported", () => {
+  it("blocks direct copy when File System Access is unsupported", () => {
     const support = detectUf2FileSystemAccessSupport({
       isBrowser: true,
       isSecureContext: false,
@@ -261,8 +282,21 @@ describe("UF2 flashing helpers", () => {
     expect(support.supported).toBe(false);
     expect(support.canPickDirectory).toBe(false);
     expect(support.browserFamily).toBe("non-chromium");
-    expect(support.guidance).toEqual(
-      expect.arrayContaining(["Manual download and copy remains available."]),
+    expect(support.reason).toBe(
+      "File System Access writes require a secure context such as HTTPS or localhost.",
     );
+  });
+
+  it("blocks copying an artifact to an unexpected bootloader volume", async () => {
+    const bytes = syntheticUf2();
+    const directory = new MockDirectoryHandle();
+    directory.name = "WRONG-BOARD";
+
+    await expect(
+      flashUf2ViaFileSystemAccess(directory, bytes, {
+        expectedFamilyId: rp2040Uf2FamilyId,
+        expectedVolumeHints: ["RPI-RP2"],
+      }),
+    ).rejects.toThrow("Selected volume WRONG-BOARD does not match RPI-RP2.");
   });
 });

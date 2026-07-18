@@ -1,12 +1,17 @@
 import type { LucideIcon } from "@lucide/svelte";
 import type { Snippet } from "svelte";
 
+import type {
+  ButtonSize as ShadcnButtonSize,
+  ButtonVariant as ShadcnButtonVariant,
+} from "./button/index.js";
+
 /** Icon slot type. Matches `@lucide/svelte`'s `LucideIcon` (a Svelte 5 function
  * component) so consumers get full prop intellisense. */
 export type IconComponent = LucideIcon;
 
-export type ButtonVariant = "solid" | "ghost" | "coral";
-export type ButtonSize = "md" | "sm" | "icon";
+export type ButtonVariant = ShadcnButtonVariant;
+export type ButtonSize = ShadcnButtonSize | "md";
 
 export type ChipTone = "neutral" | "success" | "error" | "warning";
 

@@ -37,10 +37,10 @@
   ];
 
   const labelTextClass = "block text-ink-3 font-mono text-[10px] tracking-[0.1em] uppercase";
-  const fieldLabelClass = `field-label ${labelTextClass}`;
-  const fieldClass = "field !grid !gap-[8px]";
+  const fieldLabelClass = labelTextClass;
+  const fieldClass = "grid gap-[8px]";
   const navFillClass =
-    "!flex w-full [&>button]:min-w-0 [&>button]:flex-1 [&>button]:!px-[8px]";
+    "flex w-full [&>[data-slot=button]]:min-w-0 [&>[data-slot=button]]:flex-1 [&>[data-slot=button]]:px-[8px]";
   const inactivePreviewClass =
     "[background:var(--led-off)] text-[rgba(242,237,227,0.68)] shadow-cap";
 
@@ -80,7 +80,7 @@
   >
     <header
       class={cn(
-        "lighting-hero grid grid-cols-[58px_minmax(0,1fr)] items-center gap-[12px] rounded-[12px] border border-[color-mix(in_oklch,var(--surface-3)_58%,transparent)] bg-[color-mix(in_oklch,var(--surface-2)_62%,var(--surface))] p-[14px]",
+        "lighting-hero grid grid-cols-[58px_minmax(0,1fr)] items-center gap-[12px] rounded-[8px] border border-[color-mix(in_oklch,var(--surface-3)_58%,transparent)] bg-[color-mix(in_oklch,var(--surface-2)_62%,var(--surface))] p-[14px]",
         compact && "grid-cols-[52px_minmax(0,1fr)] p-[10px]",
       )}
     >
@@ -117,9 +117,9 @@
           <button
             type="button"
             class={cn(
-              "swatch-button relative grid size-[28px] place-items-center rounded-pill !border !border-[rgba(27,25,23,0.2)] !bg-[var(--swatch-color)] !text-[rgba(242,237,227,0.72)] shadow-[inset_0_-2px_3px_rgba(0,0,0,0.14)] transition-[transform,box-shadow,border-color] duration-[90ms] ease-[var(--ease-out-soft)] hover:scale-[1.08]",
-              active && "active !border-ink shadow-swatch-pressed",
-              swatch.off && "off !bg-[#1b1917]",
+              "swatch-button relative grid size-[28px] place-items-center rounded-pill border border-[rgba(27,25,23,0.2)] bg-[var(--swatch-color)] text-[rgba(242,237,227,0.72)] shadow-[inset_0_-2px_3px_rgba(0,0,0,0.14)] transition-[transform,box-shadow,border-color] duration-[90ms] ease-[var(--ease-out-soft)] hover:scale-[1.08]",
+              active && "active border-ink shadow-swatch-pressed",
+              swatch.off && "off bg-[#1b1917]",
             )}
             style={`--swatch-color: ${swatch.displayColor}`}
             title={swatch.label}
@@ -177,7 +177,7 @@
       onValueChange={(next) => editor.setBrightness(next)}
     />
 
-    <div class={cn("divider h-px bg-line", compact && "hidden")}></div>
+    <div class={cn("h-px bg-line", compact && "hidden")}></div>
 
     <div class={fieldClass}>
       <span class={fieldLabelClass}>Global effect</span>

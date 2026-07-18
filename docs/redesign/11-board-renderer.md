@@ -6,8 +6,11 @@ Wave 0c adds a new reusable board renderer under `src/lib/components/board/`. It
 
 - `coords.ts`: adapter between handoff `"r,c"` coordinates and stable engine `KeyboardKey.id` values.
 - `board-view-model.ts`: pure engine-backed render model builder.
-- `Keycap.svelte`: one visual keycap with marker snippets.
-- `KeyboardBoard.svelte`: responsive board surface with zoom, pan, combo routes, split seam, and lighting drag-select.
+- `board-flow.ts`: converts rendered keys and routed combo segments into typed Svelte Flow nodes and edges.
+- `BoardKeyNode.svelte`: custom Svelte Flow node that preserves the existing keycap UI.
+- `BoardComboEdge.svelte`: custom Svelte Flow edge that preserves the existing routed combo line.
+- `Keycap.svelte`: one visual keycap with marker snippets; it can be positioned directly or fill a flow-managed node.
+- `KeyboardBoard.svelte`: responsive Svelte Flow board surface with zoom, pan, combo routes, split seam, and lighting drag-select.
 - `KeyboardBoard.stories.svelte`: Storybook visual fixtures for keys, lighting, and split layouts.
 - `index.ts`: import surface for Wave 1.
 
@@ -36,7 +39,9 @@ Callbacks:
 - `onLightingDrag(ids, mode)` where mode is `"select" | "add" | "toggle" | "clear"`
 - `onHoverKey(id | null)`
 
-`Keycap.svelte` accepts a `BoardKeyViewModel`, the active lens, the same marker snippets, and key-level pointer/click callbacks. Default marker rendering is provided when snippets are omitted.
+`Keycap.svelte` accepts a `BoardKeyViewModel`, the active lens, the same marker snippets, and key-level pointer/click callbacks. Default marker rendering is provided when snippets are omitted. `KeyboardBoard` uses it through `BoardKeyNode`; the `flowManaged` prop removes only absolute positioning, leaving the visual component unchanged.
+
+The board viewport is measured with a Svelte 5 `{@attach}` attachment. Svelte Flow's internal viewport stays locked at `0,0,1`; the existing outer board surface continues to own zoom and middle-button pan, so adopting flow nodes does not change editor controls.
 
 ## Coordinate Conversion
 
@@ -56,8 +61,9 @@ Behavior preserved from the inline renderer:
 
 - Active-layer `KC_TRNS` keys resolve to the base layer when `showFallthrough` is true.
 - Fall-through keys carry source-layer metadata for the cap corner.
-- Combo markers and routed SVG paths are derived from active-layer-visible combos.
+- Combo markers and routed paths are derived from active-layer-visible combos, then represented as real Svelte Flow edges between key nodes.
 - Layer activation markers include chain-risk styling metadata.
+- Direct layer actions use the action (`MO`, `TG`, and so on) as the key label while the marker owns the target (`L1`), avoiding duplicate target labels.
 - Non-positioned engine layouts are converted to key-unit geometry by row flow, so wide keys do not overlap.
 - Positioned VIA/KLE layouts keep their `x`, `y`, `width`, `height`, and rotation.
 

@@ -10,8 +10,14 @@ import {
   setKeyboardChoicesFromEnvironment,
   TYPING_RUNS_REQUIRES_WORKER,
 } from "$lib/typing-runs/service";
+import {
+  extensionDeviceIdInput,
+  extensionKeyboardChoicesInput,
+  taggedRunsFilterInput,
+  typingRunStatsGroupInput,
+} from "$lib/server/remote-input";
 
-export const createExtensionPairingToken = command(async () => {
+export const createExtensionPairingToken = command(() => {
   const event = getRequestEvent();
   const userId = requireExtensionSession(event.locals.user);
   assertTypingRunsBinding(event.platform?.env);
@@ -19,7 +25,7 @@ export const createExtensionPairingToken = command(async () => {
   return createPairingTokenFromEnvironment(event.platform?.env, userId);
 });
 
-export const listExtensionDevices = query(async () => {
+export const listExtensionDevices = query(() => {
   const event = getRequestEvent();
   const userId = requireExtensionSession(event.locals.user);
   assertTypingRunsBinding(event.platform?.env);
@@ -27,15 +33,15 @@ export const listExtensionDevices = query(async () => {
   return listExtensionDevicesFromEnvironment(event.platform?.env, userId);
 });
 
-export const revokeExtensionDevice = command("unchecked", async (id: unknown) => {
+export const revokeExtensionDevice = command(extensionDeviceIdInput, (id) => {
   const event = getRequestEvent();
   const userId = requireExtensionSession(event.locals.user);
   assertTypingRunsBinding(event.platform?.env);
 
-  await revokeExtensionDeviceFromEnvironment(event.platform?.env, userId, id);
+  return revokeExtensionDeviceFromEnvironment(event.platform?.env, userId, id);
 });
 
-export const listTaggedRuns = query("unchecked", async (rawFilter: unknown) => {
+export const listTaggedRuns = query(taggedRunsFilterInput, (rawFilter) => {
   const event = getRequestEvent();
   const userId = requireExtensionSession(event.locals.user);
   assertTypingRunsBinding(event.platform?.env);
@@ -43,7 +49,7 @@ export const listTaggedRuns = query("unchecked", async (rawFilter: unknown) => {
   return listTaggedRunsFromEnvironment(event.platform?.env, userId, rawFilter);
 });
 
-export const getTypingRunStats = query("unchecked", async (rawGroupBy: unknown) => {
+export const getTypingRunStats = query(typingRunStatsGroupInput, (rawGroupBy) => {
   const event = getRequestEvent();
   const userId = requireExtensionSession(event.locals.user);
   assertTypingRunsBinding(event.platform?.env);
@@ -51,12 +57,12 @@ export const getTypingRunStats = query("unchecked", async (rawGroupBy: unknown) 
   return getTypingRunStatsFromEnvironment(event.platform?.env, userId, rawGroupBy);
 });
 
-export const syncExtensionKeyboardChoices = command("unchecked", async (rawChoices: unknown) => {
+export const syncExtensionKeyboardChoices = command(extensionKeyboardChoicesInput, (rawChoices) => {
   const event = getRequestEvent();
   const userId = requireExtensionSession(event.locals.user);
   assertTypingRunsBinding(event.platform?.env);
 
-  await setKeyboardChoicesFromEnvironment(event.platform?.env, userId, rawChoices);
+  return setKeyboardChoicesFromEnvironment(event.platform?.env, userId, rawChoices);
 });
 
 function requireExtensionSession(user: App.Locals["user"]): string {

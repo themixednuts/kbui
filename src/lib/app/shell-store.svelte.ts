@@ -1,4 +1,7 @@
+import { Effect } from "effect";
 import { getContext, setContext } from "svelte";
+import { runApp } from "$lib/app/runtime";
+import { platformError } from "$lib/effect/errors";
 import {
   DEFAULT_MONKEYTYPE_MODE,
   DEFAULT_MONKEYTYPE_MODE2,
@@ -70,6 +73,7 @@ export interface ShellSessionUser {
   name?: string | null;
   email?: string | null;
   image?: string | null;
+  githubLogin?: string | null;
 }
 
 export type ShellPlaceMode =
@@ -150,7 +154,11 @@ function githubHandleFromEmail(email: string | null | undefined) {
 }
 
 function githubHandleFor(user: ShellSessionUser) {
-  return githubHandleFromEmail(user.email) ?? githubHandleFrom(user.name);
+  return (
+    githubHandleFrom(user.githubLogin) ??
+    githubHandleFrom(user.name) ??
+    githubHandleFromEmail(user.email)
+  );
 }
 
 function loginFor(user: ShellSessionUser, name: string) {
@@ -169,6 +177,24 @@ function loginFor(user: ShellSessionUser, name: string) {
 function githubProfileUrlFor(user: ShellSessionUser) {
   const handle = githubHandleFor(user);
   return handle ? `https://github.com/${handle}` : undefined;
+}
+
+function shellDeviceEquals(left: ShellDevice, right: ShellDevice) {
+  return (
+    left.board === right.board &&
+    left.message === right.message &&
+    left.name === right.name &&
+    left.productId === right.productId &&
+    left.protocol === right.protocol &&
+    left.protocolVersion === right.protocolVersion &&
+    left.status === right.status &&
+    left.transport === right.transport &&
+    left.vendorId === right.vendorId
+  );
+}
+
+function shellVariantEquals(left: ShellVariant, right: ShellVariant) {
+  return left.id === right.id && left.name === right.name && left.color === right.color;
 }
 
 export class ShellStore {
@@ -190,8 +216,20 @@ export class ShellStore {
   });
 
   dirty = $state(0);
-  connection = $state<ConnectionState | null>(null);
+  #connection: ConnectionState | null = null;
   connectionRevision = $state(0);
+
+  get connection(): ConnectionState | null {
+    // Register a reactive dependency without proxying native HID/ZMK handles.
+    void this.connectionRevision;
+    return this.#connection;
+  }
+
+  set connection(connection: ConnectionState | null) {
+    if (this.#connection === connection) return;
+    this.#connection = connection;
+    this.connectionRevision += 1;
+  }
 
   monkeytype = $state<ShellMonkeytype>({
     connected: false,
@@ -335,17 +373,17 @@ export class ShellStore {
   }
 
   setDirty(count: number) {
-    this.dirty = Math.max(0, Math.floor(count));
+    const next = Math.max(0, Math.floor(count));
+    if (this.dirty !== next) this.dirty = next;
   }
 
   setDevice(device: ShellDevice) {
-    this.device = device;
     if (device.status !== "connected") this.connection = null;
+    if (!shellDeviceEquals(this.device, device)) this.device = device;
   }
 
   setDisconnected(message = "Local-only editing") {
-    this.connection = null;
-    this.device = {
+    const nextDevice: ShellDevice = {
       board: "No device",
       message,
       name: "No device",
@@ -353,11 +391,12 @@ export class ShellStore {
       status: "disconnected",
       transport: "Offline",
     };
+    if (this.connection) this.connection = null;
+    if (!shellDeviceEquals(this.device, nextDevice)) this.device = nextDevice;
   }
 
   setConnecting(message = "Waiting for device permission", transport = "WebHID") {
-    this.connection = null;
-    this.device = {
+    const nextDevice: ShellDevice = {
       ...this.device,
       board: this.device.board === "No device" ? "Connecting" : this.device.board,
       message,
@@ -366,6 +405,8 @@ export class ShellStore {
       status: "connecting",
       transport,
     };
+    if (this.connection) this.connection = null;
+    if (!shellDeviceEquals(this.device, nextDevice)) this.device = nextDevice;
   }
 
   setConnected(input: {
@@ -378,11 +419,9 @@ export class ShellStore {
     transport: string;
     vendorId?: number;
   }) {
-    if (input.connection && input.connection !== this.connection) {
-      this.connectionRevision += 1;
-    }
-    this.connection = input.connection ?? this.connection;
-    this.device = {
+    const nextConnection = input.connection ?? this.connection;
+    if (this.connection !== nextConnection) this.connection = nextConnection;
+    const nextDevice: ShellDevice = {
       board: input.board,
       message: input.message ?? "Connected",
       name: input.board,
@@ -393,45 +432,70 @@ export class ShellStore {
       transport: input.transport,
       vendorId: input.vendorId,
     };
+    if (!shellDeviceEquals(this.device, nextDevice)) this.device = nextDevice;
   }
 
-  setConnectionError(message: string, transport = this.device.transport) {
-    this.connection = null;
-    this.device = {
+  setConnectionError(message: string, transport?: string) {
+    const nextDevice: ShellDevice = {
       ...this.device,
       board: "Connection error",
       message,
       name: "No device",
       status: "error",
-      transport,
+      transport: transport ?? this.device.transport,
     };
+    if (this.connection) this.connection = null;
+    if (!shellDeviceEquals(this.device, nextDevice)) this.device = nextDevice;
   }
 
-  async disconnectDevice(message = "Device disconnected; edits are local only.") {
+  disconnectDevice(message = "Device disconnected; edits are local only.") {
     const connection = this.connection;
     this.connection = null;
-
-    try {
-      await connection?.hidDevice?.close?.();
-      await connection?.zmkStudio?.close?.();
-    } finally {
-      this.setDisconnected(message);
-    }
+    const cleanups: Array<() => Promise<void>> = [];
+    if (connection?.hidDevice?.close) cleanups.push(() => connection.hidDevice!.close!());
+    if (connection?.zmkStudio?.close) cleanups.push(() => connection.zmkStudio!.close!());
+    return runApp(
+      "shell.disconnect-device",
+      Effect.gen(function* () {
+        const results = yield* Effect.forEach(
+          cleanups,
+          (cleanup) =>
+            Effect.result(
+              Effect.tryPromise({
+                try: cleanup,
+                catch: (cause) => platformError("shell.disconnect-resource", cause),
+              }),
+            ),
+          { concurrency: "unbounded" },
+        );
+        const failures = results.filter((result) => result._tag === "Failure");
+        if (failures.length > 0) {
+          return yield* Effect.fail(
+            platformError(
+              "shell.disconnect-device",
+              failures.map((failure) => failure.failure.message).join("; "),
+            ),
+          );
+        }
+      }).pipe(Effect.ensuring(Effect.sync(() => this.setDisconnected(message)))),
+    );
   }
 
   updateConnectedBoard(input: { board: string; protocol: string; transport?: string }) {
     if (this.device.status !== "connected") return;
 
-    this.device = {
+    const nextDevice: ShellDevice = {
       ...this.device,
       board: input.board,
       name: input.board,
       protocol: input.protocol,
       transport: input.transport ?? this.device.transport,
     };
+    if (!shellDeviceEquals(this.device, nextDevice)) this.device = nextDevice;
   }
 
   setCurrentVariant(variant: ShellVariant) {
+    if (shellVariantEquals(this.currentVariant, variant)) return;
     this.currentVariant = variant;
   }
 

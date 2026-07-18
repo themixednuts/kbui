@@ -47,4 +47,26 @@ describe("diffProfiles", () => {
       ]),
     );
   });
+
+  it("tracks firmware target metadata as a staged profile change", () => {
+    const draft = cloneDevice(sampleKeyboard);
+    draft.firmwareMetadata = {
+      qmk: {
+        keyboard: "bastardkb/charybdis/4x6",
+        keymap: "kbui",
+        layout: "LAYOUT",
+      },
+    };
+
+    expect(diffProfiles(sampleKeyboard, draft)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "metadata",
+          scope: "Firmware target",
+          path: "firmware/target",
+          staged: true,
+        }),
+      ]),
+    );
+  });
 });

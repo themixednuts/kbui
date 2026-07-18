@@ -1,5 +1,8 @@
 import * as protobuf from "protobufjs/minimal.js";
+import { Cause, Deferred, Effect, Fiber, Semaphore } from "effect";
 
+import { forkApp, runApp } from "$lib/app/runtime";
+import { platformError } from "$lib/effect/errors";
 import {
   createZmkBehaviorCatalog,
   type ZmkBehaviorBinding,
@@ -971,10 +974,8 @@ export interface ZmkStudioRpcClientOptions {
 }
 
 interface PendingRpc {
-  reject: (error: unknown) => void;
+  deferred: Deferred.Deferred<ZmkStudioResponse, Error>;
   request: ZmkStudioRequest;
-  resolve: (response: ZmkStudioResponse) => void;
-  timeout: ReturnType<typeof globalThis.setTimeout>;
 }
 
 enum DeframeState {
@@ -1668,131 +1669,193 @@ export class ZmkStudioRpcClient {
   private nextRequestId = 1;
   private readonly onNotification: ((notification: ZmkStudioNotification) => void) | undefined;
   private readonly pending = new Map<number, PendingRpc>();
-  private reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-  private readonly readTask: Promise<void>;
+  private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  private readonly readFiber: Fiber.Fiber<void, Error>;
   private readonly timeoutMs: number;
   private readonly transport: ZmkStudioByteTransport;
+  private readonly writeSemaphore = Semaphore.makeUnsafe(1);
   private readonly writer: WritableStreamDefaultWriter<Uint8Array>;
-  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(transport: ZmkStudioByteTransport, options: ZmkStudioRpcClientOptions = {}) {
     this.onNotification = options.onNotification;
     this.timeoutMs = options.timeoutMs ?? defaultRpcTimeoutMs;
     this.transport = transport;
+    this.reader = transport.readable.getReader();
     this.writer = transport.writable.getWriter();
-    this.readTask = this.readLoop().catch((error: unknown) => this.failPending(error));
+    this.readFiber = forkApp(
+      "zmk-studio.rpc.read",
+      this.readLoopEffect().pipe(Effect.tapError((error) => this.failPendingEffect(error))),
+    );
   }
 
   call(request: ZmkStudioRequest): Promise<ZmkStudioResponse> {
-    if (this.closed) return Promise.reject(new Error("ZMK Studio RPC connection is closed."));
+    return runApp("zmk-studio.rpc.call", this.callEffect(request));
+  }
 
-    const requestId = this.nextRequestId;
-    this.nextRequestId += 1;
+  callEffect(request: ZmkStudioRequest): Effect.Effect<ZmkStudioResponse, Error> {
+    let requestId = 0;
+    return Effect.gen({ self: this }, function* () {
+      if (this.closed) return yield* Effect.fail(new Error("ZMK Studio RPC connection is closed."));
 
-    const protoRequest = {
-      ...zmkStudioProtoRequestFor(request),
-      requestId,
-    };
-    const frame = frameZmkStudioPayload(encodeZmkStudioRequestMessage(protoRequest));
+      requestId = this.nextRequestId;
+      this.nextRequestId += 1;
+      const protoRequest = {
+        ...zmkStudioProtoRequestFor(request),
+        requestId,
+      };
+      const frame = frameZmkStudioPayload(encodeZmkStudioRequestMessage(protoRequest));
+      const deferred = yield* Deferred.make<ZmkStudioResponse, Error>();
+      yield* Effect.sync(() => this.pending.set(requestId, { deferred, request }));
 
-    const responsePromise = new Promise<ZmkStudioResponse>((resolve, reject) => {
-      const timeout = globalThis.setTimeout(() => {
-        this.pending.delete(requestId);
-        reject(new Error(`ZMK Studio RPC request ${requestId} timed out.`));
-      }, this.timeoutMs);
+      yield* this.writeSemaphore.withPermit(
+        Effect.tryPromise({
+          try: () => this.writer.write(frame),
+          catch: (cause) => platformError("zmk-studio.write-frame", cause),
+        }),
+      );
 
-      this.pending.set(requestId, { reject, request, resolve, timeout });
-    });
+      return yield* Deferred.await(deferred).pipe(
+        Effect.timeout(this.timeoutMs),
+        Effect.mapError((error) =>
+          Cause.isTimeoutError(error)
+            ? new Error(`ZMK Studio RPC request ${requestId} timed out.`)
+            : error,
+        ),
+      );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (requestId !== 0) this.pending.delete(requestId);
+        }),
+      ),
+    );
+  }
 
-    this.writeChain = this.writeChain
-      .then(() => this.writer.write(frame))
-      .catch((error: unknown) => {
-        const pending = this.pending.get(requestId);
-        if (pending) {
-          globalThis.clearTimeout(pending.timeout);
-          this.pending.delete(requestId);
-          pending.reject(error);
+  close(): Promise<void> {
+    return runApp(
+      "zmk-studio.rpc.close",
+      Effect.gen({ self: this }, function* () {
+        if (this.closed) return;
+        this.closed = true;
+        yield* this.failPendingEffect(new Error("ZMK Studio RPC connection closed."));
+
+        const cleanups: ReadonlyArray<Effect.Effect<unknown, Error>> = [
+          Fiber.interrupt(this.readFiber),
+          Effect.tryPromise({
+            try: () => this.reader.cancel(),
+            catch: (cause) => platformError("zmk-studio.cancel-reader", cause),
+          }),
+          Effect.tryPromise({
+            try: () => this.writer.close(),
+            catch: (cause) => platformError("zmk-studio.close-writer", cause),
+          }),
+          ...(this.transport.close
+            ? [
+                Effect.tryPromise({
+                  try: () => this.transport.close!(),
+                  catch: (cause) => platformError("zmk-studio.close-transport", cause),
+                }),
+              ]
+            : []),
+        ];
+        const results = yield* Effect.forEach(cleanups, (cleanup) => cleanup.pipe(Effect.result), {
+          concurrency: "unbounded",
+        });
+        yield* Effect.sync(() => {
+          this.writer.releaseLock();
+          this.transport.abortController?.abort();
+        });
+        const failures = results.filter((result) => result._tag === "Failure");
+        if (failures.length > 0) {
+          return yield* Effect.fail(
+            platformError(
+              "zmk-studio.close",
+              failures.map((result) => result.failure.message).join("; "),
+            ),
+          );
         }
-      });
-
-    return responsePromise;
+      }),
+    );
   }
 
-  async close() {
-    if (this.closed) return;
-    this.closed = true;
-
-    for (const pending of this.pending.values()) {
-      globalThis.clearTimeout(pending.timeout);
-      pending.reject(new Error("ZMK Studio RPC connection closed."));
-    }
+  private failPendingEffect(error: Error): Effect.Effect<void> {
+    const pending = [...this.pending.values()];
     this.pending.clear();
-
-    await this.reader?.cancel().catch(() => undefined);
-    await this.writeChain.catch(() => undefined);
-    await this.writer.close().catch(() => undefined);
-    this.writer.releaseLock();
-    this.transport.abortController?.abort();
-    await this.transport.close?.().catch(() => undefined);
-    await this.readTask.catch(() => undefined);
+    return Effect.forEach(pending, ({ deferred }) => Deferred.fail(deferred, error), {
+      discard: true,
+    });
   }
 
-  private failPending(error: unknown) {
-    if (this.closed) return;
-    for (const pending of this.pending.values()) {
-      globalThis.clearTimeout(pending.timeout);
-      pending.reject(error);
-    }
-    this.pending.clear();
-  }
-
-  private handleRequestResponse(response: StudioRequestResponseMessage) {
+  private handleRequestResponseEffect(
+    response: StudioRequestResponseMessage,
+  ): Effect.Effect<void, Error> {
     const pending = this.pending.get(response.requestId);
-    if (!pending) return;
+    if (!pending) return Effect.void;
 
-    globalThis.clearTimeout(pending.timeout);
     this.pending.delete(response.requestId);
 
     if (response.meta?.noResponse) {
-      pending.reject(new ZmkStudioRpcNoResponseError());
-      return;
+      return Deferred.fail(pending.deferred, new ZmkStudioRpcNoResponseError()).pipe(
+        Effect.map(() => undefined),
+      );
     }
     if (response.meta?.simpleError !== undefined) {
-      pending.reject(new ZmkStudioRpcMetaError(response.meta.simpleError));
-      return;
+      return Deferred.fail(
+        pending.deferred,
+        new ZmkStudioRpcMetaError(response.meta.simpleError),
+      ).pipe(Effect.map(() => undefined));
     }
 
-    try {
-      pending.resolve(zmkStudioResponseFromProtoRequestResponse(pending.request, response));
-    } catch (error) {
-      pending.reject(error);
-    }
+    return Effect.try({
+      try: () => zmkStudioResponseFromProtoRequestResponse(pending.request, response),
+      catch: (cause) => platformError("zmk-studio.decode-response", cause),
+    }).pipe(
+      Effect.flatMap((decoded) => Deferred.succeed(pending.deferred, decoded)),
+      Effect.map(() => undefined),
+    );
   }
 
-  private handleResponse(response: StudioResponseMessage) {
+  private handleResponseEffect(response: StudioResponseMessage): Effect.Effect<void, Error> {
     if (response.requestResponse) {
-      this.handleRequestResponse(response.requestResponse);
-      return;
+      return this.handleRequestResponseEffect(response.requestResponse);
     }
 
     if (response.notification) {
       const notification = zmkNotificationFromProto(response.notification);
-      if (notification) this.onNotification?.(notification);
-    }
-  }
-
-  private async readLoop() {
-    this.reader = this.transport.readable.getReader();
-
-    while (!this.closed) {
-      const { done, value } = await this.reader.read();
-      if (done) break;
-      if (!value) continue;
-
-      for (const payload of this.deframer.push(value)) {
-        this.handleResponse(decodeZmkStudioResponseMessage(payload));
+      if (notification && this.onNotification) {
+        return Effect.try({
+          try: () => this.onNotification!(notification),
+          catch: (cause) => platformError("zmk-studio.notification", cause),
+        });
       }
     }
+    return Effect.void;
+  }
+
+  private readLoopEffect(): Effect.Effect<void, Error> {
+    return Effect.suspend(() =>
+      Effect.gen({ self: this }, function* () {
+        const { done, value } = yield* Effect.tryPromise({
+          try: () => this.reader.read(),
+          catch: (cause) => platformError("zmk-studio.read-frame", cause),
+        });
+        if (done) {
+          if (this.closed) return;
+          return yield* Effect.fail(new Error("ZMK Studio RPC transport closed unexpectedly."));
+        }
+        if (value) {
+          const responses = yield* Effect.try({
+            try: () =>
+              this.deframer.push(value).map((payload) => decodeZmkStudioResponseMessage(payload)),
+            catch: (cause) => platformError("zmk-studio.decode-frame", cause),
+          });
+          yield* Effect.forEach(responses, (response) => this.handleResponseEffect(response), {
+            discard: true,
+          });
+        }
+        return yield* this.readLoopEffect();
+      }),
+    );
   }
 }
 
@@ -1819,14 +1882,21 @@ export class RealZmkStudioConnection implements ZmkStudioConnection {
     });
   }
 
-  async call(request: ZmkStudioRequest): Promise<ZmkStudioResponse> {
-    const response = await this.rpc.call(request);
-    if (response.type === "get_lock_state") this.lockState = response.lockState;
-    if (response.type === "get_keymap") {
-      this.keymap = response.keymap;
-      this.layerIdByLayerIndex = response.keymap.layers.map((layer) => layer.id);
-    }
-    return response;
+  call(request: ZmkStudioRequest): Promise<ZmkStudioResponse> {
+    return runApp(
+      "zmk-studio.connection.call",
+      this.rpc.callEffect(request).pipe(
+        Effect.tap((response) =>
+          Effect.sync(() => {
+            if (response.type === "get_lock_state") this.lockState = response.lockState;
+            if (response.type === "get_keymap") {
+              this.keymap = response.keymap;
+              this.layerIdByLayerIndex = response.keymap.layers.map((layer) => layer.id);
+            }
+          }),
+        ),
+      ),
+    );
   }
 
   close() {

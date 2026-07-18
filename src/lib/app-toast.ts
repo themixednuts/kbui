@@ -1,6 +1,6 @@
 import { toast } from "svelte-sonner";
 
-export type AppNoticeTone = "info" | "success" | "error";
+export type AppNoticeTone = "info" | "success" | "warning" | "error";
 
 const NOTICE_DURATION_MS = 7000;
 
@@ -11,7 +11,9 @@ const toastOptions = {
   classes: {
     toast: "app-toast",
     title: "app-toast-title",
+    description: "app-toast-description",
     closeButton: "app-toast-close",
+    actionButton: "app-toast-action",
   },
 } as const;
 
@@ -21,7 +23,24 @@ export function showAppToast(message: string, tone: AppNoticeTone = "info") {
       return toast.success(message, toastOptions);
     case "error":
       return toast.error(message, toastOptions);
+    case "warning":
+      return toast.warning(message, toastOptions);
     default:
       return toast.info(message, toastOptions);
   }
+}
+
+export function showAppUpdateToast(description: string, onReload: () => void) {
+  return toast.warning("New Klakson version available", {
+    ...toastOptions,
+    id: "klakson-app-update",
+    description,
+    duration: Number.POSITIVE_INFINITY,
+    dismissible: false,
+    closeButton: false,
+    action: {
+      label: "Reload",
+      onClick: onReload,
+    },
+  });
 }

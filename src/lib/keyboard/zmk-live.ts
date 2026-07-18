@@ -6,6 +6,7 @@ import {
 } from "./live-sync-classification";
 import { incompleteLogicBindingReason } from "./logic-bindings";
 import { encodeZmkBinding } from "./zmk-binding";
+import { zmkBindingExpression } from "./zmk-keycodes";
 import { type ChangeRecord, type DeviceProfile, type KeyBinding, type KeyboardKey } from "./schema";
 import type { ConnectionState } from "./transport";
 import type { ZmkBehaviorBinding } from "./zmk-studio";
@@ -225,16 +226,27 @@ function classifyBindingChange(
     );
   }
 
+  if (!code) return withClassification(change, "invalid", "Binding code is missing.");
+
+  const sourceBinding = zmkBindingExpression(code);
   const zmk = connection?.protocol === "zmk-studio" ? connection.zmkStudio : undefined;
   if (!zmk) {
+    if (sourceBinding) {
+      return withClassification(
+        change,
+        "firmwareRebuildRequired",
+        `ZMK binding ${sourceBinding} is valid generated source; connect ZMK Studio for live writes.`,
+        change.kind,
+        undefined,
+        "bindings",
+      );
+    }
     return withClassification(
       change,
       "invalid",
       "A ZMK Studio connection is required to map layers and key positions.",
     );
   }
-
-  if (!code) return withClassification(change, "invalid", "Binding code is missing.");
 
   if (/^ZMK_BEHAVIOR\(/i.test(code.trim())) {
     const behavior = zmkBehaviorLabel(code);
@@ -260,6 +272,16 @@ function classifyBindingChange(
 
   const encodedBinding = encodeZmkBinding(draftBinding, zmk.behaviorCatalog, draft.layers);
   if (!encodedBinding) {
+    if (sourceBinding) {
+      return withClassification(
+        change,
+        "firmwareRebuildRequired",
+        `ZMK binding ${sourceBinding} is supported in generated source but not exposed by this Studio behavior catalog.`,
+        change.kind,
+        undefined,
+        "behaviors",
+      );
+    }
     return withClassification(
       change,
       "localOnly",

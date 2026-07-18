@@ -41,12 +41,14 @@ const targets: CaptureTarget[] = [
   {
     name: "flash-overlay.png",
     prepare: async (page) => {
-      await page
+      await page.locator('[data-key-id="s0-0"]').click();
+      const inspector = page.getByRole("complementary", { name: "Selected key" });
+      await inspector
         .getByRole("navigation", { name: "Selected key inspector" })
-        .getByRole("button", { name: "Hold-Tap" })
+        .getByRole("button", { name: "Behavior" })
         .click();
-      await page.getByLabel("Hold").fill("KC_LCTL");
-      await page.getByRole("button", { name: "Apply behavior" }).click();
+      await inspector.getByLabel("Hold", { exact: true }).fill("&kp LCTRL");
+      await inspector.getByRole("button", { name: "Apply behavior" }).click();
       await expect(page.getByTestId("via-rebuild-required")).toBeVisible();
       await page.getByRole("button", { name: "Build firmware" }).click();
       await expect(page.getByTestId("flash-overlay")).toBeVisible();
@@ -63,12 +65,20 @@ const targets: CaptureTarget[] = [
     ready: async (page) => {
       await expect(page.locator(".editor-route.split")).toBeVisible();
       await expect(page.getByRole("region", { name: "Keyboard board viewport" })).toBeVisible();
+      await expect(page.getByRole("separator", { name: "Resize key inspector" })).toBeVisible();
+      await page.locator('[data-key-id="s0-0"]').click();
+      await expect(page.locator('[data-firmware="zmk"]')).toHaveText("ZMK · Bluetooth");
+      await expect(page.getByLabel("ZMK behavior binding", { exact: true })).toHaveValue("&kp Q");
     },
     route: "/editor?board=split",
   },
   {
     name: "connect.png",
-    ready: (page) => waitForAppRouteHeading(page, "Connect"),
+    ready: async (page) => {
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Connect a keyboard" }),
+      ).toBeVisible();
+    },
     route: "/connect",
   },
   {
@@ -78,7 +88,12 @@ const targets: CaptureTarget[] = [
   },
   {
     name: "versions.png",
-    ready: (page) => waitForAppRouteHeading(page, "Versions"),
+    ready: async (page) => {
+      await waitForAppRouteHeading(page, "Versions");
+      const deliverySummary = page.getByLabel("Change delivery summary");
+      await expect(deliverySummary).toBeVisible();
+      await expect(deliverySummary.locator(".delivery-lane")).toHaveCount(4);
+    },
     route: "/versions",
   },
   {

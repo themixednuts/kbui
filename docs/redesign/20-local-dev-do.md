@@ -47,14 +47,41 @@ vp run dev:worker
 It now runs:
 
 ```sh
-vp build && vp exec wrangler dev --ip 127.0.0.1 --port 8787
+node scripts/dev-worker.mjs --check-only && vp build && node scripts/dev-worker.mjs
 ```
 
-The direct command after an already-fresh build is:
+`scripts/dev-worker.mjs` reads `BETTER_AUTH_URL` from the environment or `.dev.vars`,
+then passes the matching `--ip` and `--port` to Wrangler. The auth URL is the
+single local source of truth because GitHub OAuth callbacks must match the
+browser-visible origin exactly.
+
+The preflight rejects a duplicate server before SvelteKit touches its adapter output. After a
+successful build, the script copies the Cloudflare adapter output, its generated manifest, and the
+referenced SvelteKit server output into `.svelte-kit/wrangler-dev`, then serves that self-contained
+snapshot. Keeping the entire import graph together prevents a later `vp build` from mixing fresh
+SSR HTML hashes with stale static assets. It also keeps the live Windows Wrangler process from
+locking the adapter's replaceable build directory, so builds can run while local Worker dev remains
+online. The generated Agents exports are rebased to the project `src/agents` directory before
+Wrangler bundles them, because their original relative paths are anchored to the adapter directory.
+
+The direct command after an already-fresh build is resolved by:
 
 ```sh
-vp exec wrangler dev --ip 127.0.0.1 --port 8787
+node scripts/dev-worker.mjs --print
 ```
+
+The Worker-backed Browse regression is:
+
+```sh
+vp run test:worker
+```
+
+It builds the Cloudflare Worker, starts Wrangler on `127.0.0.1:8790`, serves an isolated
+`.svelte-kit/wrangler-worker-test` snapshot, and persists bindings under
+`.wrangler/worker-test-state`. The Playwright check requires the rendered Browse route to report
+`durable-object-sqlite`, then verifies the six seeded cards and their database-backed `@kbui`
+author records. This keeps the full persistence test separate from a developer's live `8787`
+session.
 
 The generated Worker was verified to export both Durable Object classes:
 
@@ -69,7 +96,7 @@ Copy `.dev.vars.example` to `.dev.vars` and set:
 
 ```txt
 BETTER_AUTH_SECRET="at-least-32-random-characters"
-BETTER_AUTH_URL="http://127.0.0.1:8787"
+BETTER_AUTH_URL="<local worker origin, for example http://127.0.0.1:8787>"
 GITHUB_CLIENT_ID="<github-oauth-app-client-id>"
 GITHUB_CLIENT_SECRET="<github-oauth-app-client-secret>"
 ```
@@ -77,8 +104,8 @@ GITHUB_CLIENT_SECRET="<github-oauth-app-client-secret>"
 The local GitHub OAuth App should use:
 
 ```txt
-Homepage URL: http://127.0.0.1:8787
-Callback URL: http://127.0.0.1:8787/api/auth/callback/github
+Homepage URL: <BETTER_AUTH_URL>
+Callback URL: <BETTER_AUTH_URL>/api/auth/callback/github
 ```
 
 Dummy `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` values are enough to prove the better-auth sign-in route builds a GitHub authorize URL. A real GitHub callback requires real credentials and the exact callback URL above.

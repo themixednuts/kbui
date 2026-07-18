@@ -12,5 +12,7 @@
  */
 export { runApp, runAppSync } from "./runtime.ts";
 export * as Accent from "./services/accent.ts";
+export * as EditorLayout from "./services/editor-layout.ts";
 export * as Preferences from "./services/preferences.ts";
 export * as TargetOS from "./services/target-os.ts";
+export * as Theme from "./services/theme.ts";
