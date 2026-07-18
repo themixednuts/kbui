@@ -10,6 +10,7 @@ const agentExports = [
   'export { CommunityAgent } from "../../src/agents/community-agent";',
   'export { TypingRunsAgent } from "../../src/agents/typing-runs-agent";',
   'export { UserWorkbenchAgent } from "../../src/agents/user-workbench";',
+  'export { QmkIndexAgent } from "../../src/agents/qmk-index-agent";',
 ];
 const queueImport = 'import { processGitHubWebhookQueue } from "../../src/worker-queue";';
 const workerDefaultMarker = "var worker_default = {";

@@ -23,13 +23,14 @@ interface __BaseEnv_Env {
 	CommunityAgent: DurableObjectNamespace<import("./agents/community-agent").CommunityAgent>;
 	TypingRunsAgent: DurableObjectNamespace<import("./agents/typing-runs-agent").TypingRunsAgent>;
 	FirmwareBuildAgent: DurableObjectNamespace<import("./agents/firmware-build-agent").FirmwareBuildAgent>;
+	QmkIndexAgent: DurableObjectNamespace<import("./agents/qmk-index-agent").QmkIndexAgent>;
 	FirmwareBuildWorkflow: Workflow<import("./agents/firmware-build-workflow").FirmwareBuildWorkflowParams>;
 	FirmwareMaintenanceWorkflow: Workflow<import("./agents/firmware-maintenance-workflow").FirmwareMaintenanceWorkflowParams>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: unknown;
-		durableNamespaces: "UserWorkbenchAgent" | "AuthAgent" | "CommunityAgent" | "TypingRunsAgent" | "FirmwareBuildAgent";
+		durableNamespaces: "UserWorkbenchAgent" | "AuthAgent" | "CommunityAgent" | "TypingRunsAgent" | "FirmwareBuildAgent" | "QmkIndexAgent";
 	}
 	interface Env extends __BaseEnv_Env {}
 }

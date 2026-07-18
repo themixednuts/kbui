@@ -40,6 +40,7 @@
       { "name": "CommunityAgent", "class_name": "CommunityAgent" },
       { "name": "TypingRunsAgent", "class_name": "TypingRunsAgent" },
       { "name": "FirmwareBuildAgent", "class_name": "FirmwareBuildAgent" },
+      { "name": "QmkIndexAgent", "class_name": "QmkIndexAgent" },
     ],
   },
   "workflows": [
@@ -78,5 +79,6 @@
     { "tag": "v3", "new_sqlite_classes": ["CommunityAgent"] },
     { "tag": "v4", "new_sqlite_classes": ["TypingRunsAgent"] },
     { "tag": "v5", "new_sqlite_classes": ["FirmwareBuildAgent"] },
+    { "tag": "v6", "new_sqlite_classes": ["QmkIndexAgent"] },
   ],
 }

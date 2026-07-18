@@ -1,10 +1,10 @@
-import { query } from "$app/server";
+import { getRequestEvent, query } from "$app/server";
 
 import { loadViaKeyboardDetail, loadViaKeyboardIndex } from "$lib/server/keyboards/via-source";
 import { keyboardIdentityInput, viaKeyboardIdInput } from "$lib/server/remote-input";
 import { zmkTargetInput } from "$lib/server/remote-input";
 import { resolveZmkFirmwareMetadata } from "$lib/server/keyboards/zmk-target";
-import { resolveQmkKeyboardIdentity } from "$lib/server/keyboards/qmk-target";
+import { resolveKeyboardIdentityFromEnvironment } from "$lib/server/keyboards/qmk-identity-service";
 
 // Keyboard definitions are an upstream, versioned data source. Keeping this as
 // a runtime query lets the catalog refresh itself without requiring a new app
@@ -15,6 +15,8 @@ export const getViaKeyboardDetail = query(viaKeyboardIdInput, (id: string) =>
   loadViaKeyboardDetail(id),
 );
 
-export const resolveKeyboardIdentity = query(keyboardIdentityInput, resolveQmkKeyboardIdentity);
+export const resolveKeyboardIdentity = query(keyboardIdentityInput, (input) =>
+  resolveKeyboardIdentityFromEnvironment(getRequestEvent().platform?.env, input),
+);
 
 export const resolveZmkTarget = query(zmkTargetInput, resolveZmkFirmwareMetadata);

@@ -28,6 +28,14 @@ const replacements = new Map([
     'import("./agents/firmware-build-agent").FirmwareBuildAgent',
   ],
   [
+    "DurableObjectNamespace /* QmkIndexAgent */",
+    'DurableObjectNamespace<import("./agents/qmk-index-agent").QmkIndexAgent>',
+  ],
+  [
+    'import("../.svelte-kit/cloudflare/_worker").QmkIndexAgent',
+    'import("./agents/qmk-index-agent").QmkIndexAgent',
+  ],
+  [
     "Workflow<Parameters<import(\"../.svelte-kit/cloudflare/_worker\").FirmwareBuildWorkflow['run']>[0]['payload']>",
     'Workflow<import("./agents/firmware-build-workflow").FirmwareBuildWorkflowParams>',
   ],

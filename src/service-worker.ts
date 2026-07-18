@@ -15,6 +15,18 @@ const CACHE_PREFIX = "klakson-cache-";
 const CACHE_NAME = `${CACHE_PREFIX}${version}`;
 const PRECACHE_ASSETS = [...build, ...files];
 
+// Dynamic endpoints that must always hit the network and must never be read
+// from — or written to — any cache. `/_app/remote/*` carries SvelteKit remote
+// queries/commands and `/api/*` carries live JSON. A cached success (or worse, a
+// cached `{"message":"Internal Error"}`) would replay stale data until a hard
+// reload. These prefixes must never be served from the precache regardless of
+// what `build`/`files` happen to contain.
+const NETWORK_ONLY_PREFIXES = ["/_app/remote/", "/api/"];
+
+function isNetworkOnlyPath(pathname: string) {
+  return NETWORK_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 const clearKlaksonCachesEffect = Effect.gen(function* () {
   const keys = yield* Effect.tryPromise({
     try: () => caches.keys(),
@@ -135,6 +147,12 @@ worker.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
+
+  // Never intercept dynamic endpoints: let them fall through to the network so
+  // they are never served from — nor written to — the cache.
+  if (isNetworkOnlyPath(url.pathname)) return;
+
+  // Only the precached, content-hashed build/static assets are cache-eligible.
   if (url.origin !== worker.location.origin || !PRECACHE_ASSETS.includes(url.pathname)) return;
 
   event.respondWith(
@@ -146,6 +164,10 @@ worker.addEventListener("fetch", (event) => {
           catch: (cause) => platformError("service-worker.match-cache", cause),
         });
         if (cached) return cached;
+        // Cache miss (e.g. a stale/evicted entry): fetch from network and serve
+        // it directly. We deliberately do NOT cache.put() the runtime response —
+        // precaching (install) is the only writer, and it stores ok responses
+        // only, so an error response can never land in the cache.
         return yield* selfHeal(
           Effect.tryPromise({
             try: () => fetch(event.request),

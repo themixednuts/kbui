@@ -21,14 +21,24 @@ let qmkUsbIndexCache:
       items: Map<string, QmkCatalogRecord[]>;
     }
   | undefined;
-type QmkUsbIndex = { lastUpdated: string; items: Map<string, QmkCatalogRecord[]> };
+export type QmkUsbIndex = { lastUpdated: string; items: Map<string, QmkCatalogRecord[]> };
 
 let qmkUsbIndexLoad: Deferred.Deferred<QmkUsbIndex, QmkCatalogFetchError> | undefined;
 
-type QmkCatalogRecord = {
+export type QmkCatalogRecord = {
   info: JsonRecord;
   keyboard: string;
 };
+
+/** GitHub API headers used for QMK repository-revision lookups. */
+export function qmkGithubHeaders(token?: string): HeadersInit {
+  return {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "kbui-qmk-catalog",
+    "X-GitHub-Api-Version": "2022-11-28",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 class QmkCatalogFetchError extends Error {
   constructor(
@@ -51,7 +61,7 @@ function parseUsbId(value: unknown) {
   return Number.isInteger(parsed) ? parsed : undefined;
 }
 
-function usbIdentityKey(vendorId: number, productId: number) {
+export function usbIdentityKey(vendorId: number, productId: number) {
   return `${vendorId.toString(16).padStart(4, "0")}:${productId.toString(16).padStart(4, "0")}`;
 }
 
@@ -386,10 +396,116 @@ function resolvePinnedQmkRefEffect(githubHeaders: HeadersInit) {
 }
 
 /**
+ * Pure, CPU-cheap resolution of a VIA-capable HID device against the QMK
+ * catalog records already reduced to a single USB identity. This deliberately
+ * takes the pre-fetched `records`, the pinned `ref`, and the catalog
+ * `dataVersion` as arguments so it performs NO network I/O and no multi-megabyte
+ * parse — it only ranks the handful of records that share this exact USB id.
+ *
+ * Exact USB IDs are mandatory (the caller keys `records` by them). When an ID is
+ * shared by materially different layouts and the product name cannot
+ * disambiguate them, no entry is returned; choosing a wrong matrix or build
+ * target would be unsafe.
+ *
+ * This is what {@link QmkIndexAgent} calls per request against its persisted DO
+ * SQLite index, keeping the request path off the heavy `keyboards.json` build.
+ */
+export function resolveQmkIdentityFromRecords(
+  records: QmkCatalogRecord[],
+  input: { productId?: number; productName?: string; vendorId?: number },
+  ref: string,
+  dataVersion: string,
+): KeyboardCatalogEntry | undefined {
+  if (input.vendorId === undefined || input.productId === undefined) return undefined;
+  if (records.length === 0) return undefined;
+
+  const ranked = records
+    .map((record) => ({ record, score: qmkIdentityScore(record, input.productName) }))
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.record.keyboard.localeCompare(right.record.keyboard),
+    );
+  const topScore = ranked[0]?.score ?? 0;
+  const topMatches = ranked.filter((candidate) => candidate.score === topScore);
+  const signatures = new Set(topMatches.map(({ record }) => qmkLayoutSignature(record)));
+  if (signatures.size !== 1 || signatures.has("")) return undefined;
+
+  const primary = topMatches[0]?.record;
+  const selectedLayout = primary ? qmkLayoutEntries(primary.info)[0] : undefined;
+  if (!primary || !selectedLayout) return undefined;
+  const keys = keysFromQmkLayout(selectedLayout.layout);
+  if (keys.length === 0) return undefined;
+
+  const matrixSize = isRecord(primary.info.matrix_size) ? primary.info.matrix_size : undefined;
+  const rows =
+    typeof matrixSize?.rows === "number"
+      ? matrixSize.rows
+      : Math.max(...keys.map((key) => key.row + 1));
+  const cols =
+    typeof matrixSize?.cols === "number"
+      ? matrixSize.cols
+      : Math.max(...keys.map((key) => key.col + 1));
+  const alternatives = topMatches.slice(1).map(({ record }) => ({
+    keyboard: record.keyboard,
+    layout: qmkLayoutEntries(record.info)[0]?.name ?? selectedLayout.name,
+  }));
+  const processor =
+    stringField(primary.info, "processor") ||
+    stringField(primary.info, "development_board") ||
+    undefined;
+  const bootloader = stringField(primary.info, "bootloader") || undefined;
+  const uf2 = uf2TargetForHardware({ bootloader, processor });
+
+  return {
+    id: `qmk/${primary.keyboard}`,
+    name:
+      typeof primary.info.keyboard_name === "string"
+        ? primary.info.keyboard_name
+        : (primary.keyboard.split("/").at(-1) ?? primary.keyboard),
+    vendor:
+      typeof primary.info.manufacturer === "string"
+        ? primary.info.manufacturer
+        : (primary.keyboard.split("/")[0] ?? "QMK"),
+    source: "qmk-api",
+    sourcePath: primary.keyboard,
+    sourceRevision: dataVersion,
+    vendorId: input.vendorId,
+    productId: input.productId,
+    matrix: { rows, cols },
+    layout: {
+      width: Math.max(...keys.map((key) => (key.x ?? key.col) + (key.width ?? 1))),
+      height: Math.max(...keys.map((key) => (key.y ?? key.row) + (key.height ?? 1))),
+      keyCount: keys.length,
+    },
+    keys,
+    combos: [],
+    defaultLayers: [],
+    capabilities: ["keymap", "layers", "settings", "firmware"],
+    firmwareMetadata: {
+      qmk: {
+        alternatives: alternatives.length > 0 ? alternatives : undefined,
+        bootloader,
+        keyboard: primary.keyboard,
+        layout: selectedLayout.name,
+        keyOrder: keys.map((key) => key.id),
+        processor,
+        repository: qmkRepository,
+        ref,
+        targetConfirmed: topMatches.length === 1,
+        uf2FamilyId: uf2?.familyId,
+        uf2VolumeLabels: uf2?.volumeLabels,
+      },
+    },
+    priority: 100,
+  } satisfies KeyboardCatalogEntry;
+}
+
+/**
  * Resolves a VIA-capable HID device against QMK's complete, generated keyboard
- * catalog. Exact USB IDs are mandatory. When an ID is shared by materially
- * different layouts and the product name cannot disambiguate them, no entry is
- * returned; choosing a wrong matrix or build target would be unsafe.
+ * catalog, building the multi-megabyte USB index in-process. This is the heavy
+ * path (it exceeds the Cloudflare free-plan CPU budget when run per request) and
+ * is used for local dev / tests and by {@link QmkIndexAgent}'s background build.
+ * Production request traffic goes through the DO-persisted index instead.
  */
 function resolveQmkKeyboardIdentityEffect(input: {
   productId?: number;
@@ -399,92 +515,11 @@ function resolveQmkKeyboardIdentityEffect(input: {
   return Effect.gen(function* () {
     if (input.vendorId === undefined || input.productId === undefined) return undefined;
     const catalog = yield* loadQmkUsbIndexEffect();
-    const matches = catalog.items.get(usbIdentityKey(input.vendorId, input.productId)) ?? [];
-    if (matches.length === 0) return undefined;
+    const records = catalog.items.get(usbIdentityKey(input.vendorId, input.productId)) ?? [];
+    if (records.length === 0) return undefined;
 
-    const ranked = matches
-      .map((record) => ({ record, score: qmkIdentityScore(record, input.productName) }))
-      .sort(
-        (left, right) =>
-          right.score - left.score || left.record.keyboard.localeCompare(right.record.keyboard),
-      );
-    const topScore = ranked[0]?.score ?? 0;
-    const topMatches = ranked.filter((candidate) => candidate.score === topScore);
-    const signatures = new Set(topMatches.map(({ record }) => qmkLayoutSignature(record)));
-    if (signatures.size !== 1 || signatures.has("")) return undefined;
-
-    const primary = topMatches[0]?.record;
-    const selectedLayout = primary ? qmkLayoutEntries(primary.info)[0] : undefined;
-    if (!primary || !selectedLayout) return undefined;
-    const keys = keysFromQmkLayout(selectedLayout.layout);
-    if (keys.length === 0) return undefined;
-
-    const matrixSize = isRecord(primary.info.matrix_size) ? primary.info.matrix_size : undefined;
-    const rows =
-      typeof matrixSize?.rows === "number"
-        ? matrixSize.rows
-        : Math.max(...keys.map((key) => key.row + 1));
-    const cols =
-      typeof matrixSize?.cols === "number"
-        ? matrixSize.cols
-        : Math.max(...keys.map((key) => key.col + 1));
-    const alternatives = topMatches.slice(1).map(({ record }) => ({
-      keyboard: record.keyboard,
-      layout: qmkLayoutEntries(record.info)[0]?.name ?? selectedLayout.name,
-    }));
-    const processor =
-      stringField(primary.info, "processor") ||
-      stringField(primary.info, "development_board") ||
-      undefined;
-    const bootloader = stringField(primary.info, "bootloader") || undefined;
-    const uf2 = uf2TargetForHardware({ bootloader, processor });
-
-    return {
-      id: `qmk/${primary.keyboard}`,
-      name:
-        typeof primary.info.keyboard_name === "string"
-          ? primary.info.keyboard_name
-          : (primary.keyboard.split("/").at(-1) ?? primary.keyboard),
-      vendor:
-        typeof primary.info.manufacturer === "string"
-          ? primary.info.manufacturer
-          : (primary.keyboard.split("/")[0] ?? "QMK"),
-      source: "qmk-api",
-      sourcePath: primary.keyboard,
-      sourceRevision: catalog.lastUpdated,
-      vendorId: input.vendorId,
-      productId: input.productId,
-      matrix: { rows, cols },
-      layout: {
-        width: Math.max(...keys.map((key) => (key.x ?? key.col) + (key.width ?? 1))),
-        height: Math.max(...keys.map((key) => (key.y ?? key.row) + (key.height ?? 1))),
-        keyCount: keys.length,
-      },
-      keys,
-      combos: [],
-      defaultLayers: [],
-      capabilities: ["keymap", "layers", "settings", "firmware"],
-      firmwareMetadata: {
-        qmk: {
-          alternatives: alternatives.length > 0 ? alternatives : undefined,
-          bootloader,
-          keyboard: primary.keyboard,
-          layout: selectedLayout.name,
-          keyOrder: keys.map((key) => key.id),
-          processor,
-          repository: qmkRepository,
-          ref: yield* resolvePinnedQmkRefEffect({
-            Accept: "application/vnd.github+json",
-            "User-Agent": "kbui-qmk-catalog",
-            "X-GitHub-Api-Version": "2022-11-28",
-          }),
-          targetConfirmed: topMatches.length === 1,
-          uf2FamilyId: uf2?.familyId,
-          uf2VolumeLabels: uf2?.volumeLabels,
-        },
-      },
-      priority: 100,
-    } satisfies KeyboardCatalogEntry;
+    const ref = yield* resolvePinnedQmkRefEffect(qmkGithubHeaders());
+    return resolveQmkIdentityFromRecords(records, input, ref, catalog.lastUpdated);
   });
 }
 
@@ -494,6 +529,22 @@ export function resolveQmkKeyboardIdentity(input: {
   vendorId?: number;
 }): Promise<KeyboardCatalogEntry | undefined> {
   return runWorkerEffect("qmk.resolve-keyboard-identity", resolveQmkKeyboardIdentityEffect(input));
+}
+
+/**
+ * Builds the reduced QMK USB index (vendorId:productId -> catalog records) with a
+ * single `keyboards.json` fetch + parse. This is the CPU-heavy operation that
+ * must run OFF the request path — {@link QmkIndexAgent} invokes it from a
+ * scheduled DO alarm (a separate invocation with its own CPU budget) and
+ * persists the result to DO SQLite.
+ */
+export function buildQmkUsbIndex(): Promise<QmkUsbIndex> {
+  return runWorkerEffect("qmk.build-usb-index", createQmkUsbIndexEffect());
+}
+
+/** Resolves the pinned QMK firmware repository revision (cached ~15 min). */
+export function resolveQmkRepositoryRef(githubHeaders: HeadersInit): Promise<string> {
+  return runWorkerEffect("qmk.resolve-repository-ref", resolvePinnedQmkRefEffect(githubHeaders));
 }
 
 function resolveQmkFirmwareMetadataEffect(

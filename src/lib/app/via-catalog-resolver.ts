@@ -153,6 +153,29 @@ export function createViaCatalogResolver({
     });
   }
 
+  /**
+   * QMK USB-identity resolution is best-effort. On the free Cloudflare plan the
+   * server `resolveKeyboardIdentity` query can exceed the CPU budget (it parses
+   * the multi-megabyte QMK catalog) and return a 503. That failure must NOT
+   * poison the VIA-detail-based profile: a keyboard identified by its VIA
+   * definition still connects and edits fine without the QMK build target. So we
+   * degrade any QMK resolution failure to `undefined` (the QMK metadata simply
+   * arrives on a later visit once the server-side index is warm).
+   */
+  function qmkEntryOrUndefinedEffect(identity: CatalogIdentity) {
+    return qmkEntryEffect(identity).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          console.warn(
+            "[via-catalog.resolve-qmk-identity] QMK identity resolution failed; continuing without a QMK build target.",
+            error.message,
+          );
+          return undefined;
+        }),
+      ),
+    );
+  }
+
   function catalogEntryEffect(identity: CatalogIdentity) {
     return Effect.flatMap(catalogSummaryEffect(identity), (summary) =>
       summary
@@ -162,11 +185,11 @@ export function createViaCatalogResolver({
                 try: () => getViaKeyboardDetail(summary.id),
                 catch: (cause) => platformError("via-catalog.detail", cause),
               }),
-              qmkEntryEffect(identity),
+              qmkEntryOrUndefinedEffect(identity),
             ]),
             ([definition, identityEntry]) => withResolvedQmkTarget(definition, identityEntry),
           )
-        : qmkEntryEffect(identity),
+        : qmkEntryOrUndefinedEffect(identity),
     );
   }
 
@@ -177,7 +200,7 @@ export function createViaCatalogResolver({
       Effect.gen(function* () {
         const summary = yield* catalogSummaryEffect(plainIdentity);
         if (summary) return summary.matrix;
-        return (yield* qmkEntryEffect(plainIdentity))?.matrix;
+        return (yield* qmkEntryOrUndefinedEffect(plainIdentity))?.matrix;
       }),
     );
   }
