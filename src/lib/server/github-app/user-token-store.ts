@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 
 import { platformError } from "$lib/effect/errors";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import type { GitHubAppUserToken } from "$lib/server/github-app/oauth";
 
 export interface GitHubAppUserTokenSecretEnv {
@@ -32,71 +31,66 @@ export function githubAppUserTokenSecretsFor(env: GitHubAppUserTokenSecretEnv) {
   return primary ? [assertValidGitHubAppUserTokenSecret(primary)] : [];
 }
 
-export function encryptGitHubAppUserToken(
-  token: GitHubAppUserToken,
-  secretKeyBase64: string,
-  nowMs: number,
-  cryptoProvider: CryptoProvider = globalThis.crypto,
-): Promise<EncryptedGitHubAppUserToken> {
-  return runWorkerEffect(
-    "github-app.encrypt-user-token",
-    Effect.gen(function* () {
-      const accessToken = yield* encryptSecretEffect(
-        token.accessToken,
-        secretKeyBase64,
-        cryptoProvider,
-      );
-      const refreshToken = token.refreshToken
-        ? yield* encryptSecretEffect(token.refreshToken, secretKeyBase64, cryptoProvider)
-        : null;
-      return {
-        accessTokenCiphertext: accessToken.ciphertext,
-        accessTokenExpiresAt: expiresAt(nowMs, token.expiresIn),
-        accessTokenIv: accessToken.iv,
-        refreshTokenCiphertext: refreshToken?.ciphertext ?? null,
-        refreshTokenExpiresAt: expiresAt(nowMs, token.refreshTokenExpiresIn),
-        refreshTokenIv: refreshToken?.iv ?? null,
-        tokenType: token.tokenType,
-      };
-    }),
-  );
-}
+export const encryptGitHubAppUserTokenEffect = Effect.fn("github-app.encrypt-user-token")(
+  function* (
+    token: GitHubAppUserToken,
+    secretKeyBase64: string,
+    nowMs: number,
+    cryptoProvider: CryptoProvider = globalThis.crypto,
+  ) {
+    const accessToken = yield* encryptSecretEffect(
+      token.accessToken,
+      secretKeyBase64,
+      cryptoProvider,
+    );
+    const refreshToken = token.refreshToken
+      ? yield* encryptSecretEffect(token.refreshToken, secretKeyBase64, cryptoProvider)
+      : null;
+    return {
+      accessTokenCiphertext: accessToken.ciphertext,
+      accessTokenExpiresAt: expiresAt(nowMs, token.expiresIn),
+      accessTokenIv: accessToken.iv,
+      refreshTokenCiphertext: refreshToken?.ciphertext ?? null,
+      refreshTokenExpiresAt: expiresAt(nowMs, token.refreshTokenExpiresIn),
+      refreshTokenIv: refreshToken?.iv ?? null,
+      tokenType: token.tokenType,
+    } satisfies EncryptedGitHubAppUserToken;
+  },
+);
 
-export function decryptGitHubAppUserAccessToken(
-  encrypted: { accessTokenCiphertext: string; accessTokenIv: string },
-  secretKeyBase64: string,
-  cryptoProvider: CryptoProvider = globalThis.crypto,
-) {
-  return runWorkerEffect(
-    "github-app.decrypt-access-token",
-    decryptSecretEffect(
+export const decryptGitHubAppUserAccessTokenEffect = Effect.fn("github-app.decrypt-access-token")(
+  function* (
+    encrypted: { accessTokenCiphertext: string; accessTokenIv: string },
+    secretKeyBase64: string,
+    cryptoProvider: CryptoProvider = globalThis.crypto,
+  ) {
+    return yield* decryptSecretEffect(
       {
         ciphertext: encrypted.accessTokenCiphertext,
         iv: encrypted.accessTokenIv,
       },
       secretKeyBase64,
       cryptoProvider,
-    ),
-  );
-}
+    );
+  },
+);
 
-export function decryptGitHubAppUserRefreshToken(
-  encrypted: { refreshTokenCiphertext: string; refreshTokenIv: string },
-  secretKeyBase64: string,
-  cryptoProvider: CryptoProvider = globalThis.crypto,
-) {
-  return runWorkerEffect(
-    "github-app.decrypt-refresh-token",
-    decryptSecretEffect(
+export const decryptGitHubAppUserRefreshTokenEffect = Effect.fn("github-app.decrypt-refresh-token")(
+  function* (
+    encrypted: { refreshTokenCiphertext: string; refreshTokenIv: string },
+    secretKeyBase64: string,
+    cryptoProvider: CryptoProvider = globalThis.crypto,
+  ) {
+    return yield* decryptSecretEffect(
       {
         ciphertext: encrypted.refreshTokenCiphertext,
         iv: encrypted.refreshTokenIv,
       },
       secretKeyBase64,
       cryptoProvider,
-    ),
-  );
-}
+    );
+  },
+);
 
 export function assertValidGitHubAppUserTokenSecret(secretKeyBase64: string) {
   const keyBytes = base64ToBytes(secretKeyBase64.trim());

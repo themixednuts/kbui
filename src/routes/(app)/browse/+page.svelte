@@ -3,7 +3,7 @@
   import { Clock3, GitFork, Heart, Search } from "@lucide/svelte";
   import { Effect } from "effect";
 
-  import { runApp } from "$lib/app";
+  import { forkApp, startScopedApp } from "$lib/app/runtime";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import CommunityKeymapCard from "$lib/components/browse/CommunityKeymapCard.svelte";
@@ -19,7 +19,10 @@
     CommunityKeymapSort,
   } from "$lib/community/types";
   import type { SegmentItem } from "$lib/components/ui/types";
-  import { decodeDeviceProfileFromStorage, profileDisplayName } from "$lib/keyboard/schema";
+  import {
+    decodeDeviceProfileFromStorageEffect,
+    profileDisplayName,
+  } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
   import { newId } from "$lib/util/id";
   import { platformError } from "$lib/effect/errors";
@@ -137,12 +140,19 @@
   const listKey = $derived(JSON.stringify(listInput));
   const resultCopy = $derived(`${cards.length} ${cards.length === 1 ? "map" : "maps"}`);
 
-  let lastListKey = $state(JSON.stringify({ sort: "likes", limit: 24 }));
+  let lastListKey = JSON.stringify({ sort: "likes", limit: 24 });
 
   $effect(() => {
     if (listKey === lastListKey) return;
     lastListKey = listKey;
-    void refreshList(listInput, listKey);
+    const input = listInput;
+    const requestKey = listKey;
+    return startScopedApp(
+      "community.refresh-list",
+      Effect.sleep("250 millis").pipe(
+        Effect.andThen(Effect.suspend(() => refreshListEffect(input, requestKey))),
+      ),
+    );
   });
 
   function remoteEffect<A>(operation: string, request: () => PromiseLike<A>) {
@@ -153,16 +163,14 @@
   }
 
   function refreshListEffect(input: CommunityKeymapListInput, requestKey: string) {
-    loading = true;
-    listError = null;
-    return remoteEffect("community.list", () => listCommunityKeymaps(input)).pipe(
-      Effect.tap((next) =>
-        Effect.sync(() => {
+    return Effect.gen(function* () {
+      loading = true;
+      listError = null;
+      const next = yield* remoteEffect("community.list", () => listCommunityKeymaps(input));
       if (lastListKey !== requestKey) return;
       cards = next;
       tagBank = uniqueTags([...cards, ...tagBank.map(tagToSyntheticCard)]);
-        }),
-      ),
+    }).pipe(
       Effect.catch((error) =>
         Effect.sync(() => {
           if (lastListKey !== requestKey) return;
@@ -179,7 +187,7 @@
   }
 
   function refreshList(input: CommunityKeymapListInput, requestKey: string) {
-    void runApp("community.refresh-list", refreshListEffect(input, requestKey));
+    forkApp("community.refresh-list", refreshListEffect(input, requestKey));
   }
 
   function openPreview(id: string) {
@@ -190,7 +198,7 @@
     actionNotice = null;
     detailLoading = true;
 
-    void runApp(
+    forkApp(
       "community.open-preview",
       remoteEffect("community.get-keymap", () => getCommunityKeymap(id)).pipe(
         Effect.tap((detail) =>
@@ -244,7 +252,7 @@
       likesCount: wasLiked ? Math.max(0, detail.likesCount - 1) : detail.likesCount + 1,
     });
 
-    void runApp(
+    forkApp(
       "community.toggle-like",
       Effect.gen(function* () {
         yield* remoteEffect("community.toggle-like", () =>
@@ -279,26 +287,23 @@
     actionError = null;
     actionNotice = null;
 
-    void runApp(
+    forkApp(
       "community.adopt-variant",
       Effect.gen(function* () {
         const adopted = yield* remoteEffect("community.adopt", () =>
           adoptCommunityKeymap({ keymapId: detail.id, localForkId }),
         );
-        const profile = yield* Effect.try({
-          try: () => decodeDeviceProfileFromStorage(adopted.profile),
-          catch: (cause) => platformError("community.decode-adopted-profile", cause),
-        });
-        const adoptedAt = new Date().toISOString();
-        yield* remoteEffect("community.persist-adopted-variant", () =>
-          workbench.adoptCommunityVariant({
-            detail: adopted,
-            profile,
-            localForkId,
-            savePointId: `sp-${newId()}`,
-            adoptedAt,
-          }),
+        const profile = yield* decodeDeviceProfileFromStorageEffect(adopted.profile).pipe(
+          Effect.mapError((cause) => platformError("community.decode-adopted-profile", cause)),
         );
+        const adoptedAt = new Date().toISOString();
+        yield* workbench.adoptCommunityVariantEffect({
+          detail: adopted,
+          profile,
+          localForkId,
+          savePointId: `sp-${newId()}`,
+          adoptedAt,
+        });
         replaceCardFromDetail(adopted);
         closePreview();
         yield* remoteEffect("community.navigate-editor", () => goto("/editor"));
@@ -340,7 +345,7 @@
     actionNotice = null;
 
     const targetId = reportTarget.id;
-    void runApp(
+    forkApp(
       "community.report",
       Effect.gen(function* () {
         yield* remoteEffect("community.report", () =>
@@ -574,7 +579,7 @@
         class="report-form contents"
         onsubmit={(event) => {
           event.preventDefault();
-          void submitReport();
+          submitReport();
         }}
       >
         <header class={reportHeaderClass}>

@@ -1,13 +1,24 @@
 import { strToU8, zipSync } from "fflate";
+import { ConfigProvider, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { parseZmkHardwareMetadata } from "./zmk-target";
+import {
+  invalidateZmkCatalogCacheEffect,
+  parseZmkHardwareMetadata,
+  resolveZmkFirmwareMetadataEffect,
+  resolveZmkFirmwareMetadataOrUndefinedEffect,
+} from "./zmk-target";
 
-// $env/dynamic/private is a virtual SvelteKit module; mock it directly so each
-// test can configure (or omit) a GitHub token explicitly instead of depending
-// on ambient process.env state.
-const mockEnv = vi.hoisted(() => ({}) as Record<string, string | undefined>);
-vi.mock("$env/dynamic/private", () => ({ env: mockEnv }));
+function zmkConfigLayer(token?: string) {
+  return ConfigProvider.layer(
+    ConfigProvider.fromUnknown(token === undefined ? {} : { GITHUB_TOKEN: token }),
+  );
+}
+
+function requestUrl(input: RequestInfo | URL) {
+  return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+}
 
 describe("ZMK hardware target resolution", () => {
   it("reads official shield metadata including split siblings", () => {
@@ -82,36 +93,23 @@ function zmkZipball(root: string) {
   });
 }
 
-// Each test needs a fresh module instance because zmk-target.ts memoizes the
-// hardware catalog (and its resolved ref) at module scope.
-async function freshZmkTarget() {
-  vi.resetModules();
-  return import("./zmk-target");
-}
-
-describe("resolveZmkFirmwareMetadata", () => {
+describe("resolveZmkFirmwareMetadataEffect", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete mockEnv.GITHUB_TOKEN;
   });
 
-  it("without a GitHub token, resolves targets from the codeload archive and never calls api.github.com", async () => {
+  it("without a GitHub token, resolves targets from codeload and never calls the REST API", async () => {
     const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
       requestedUrls.push(url);
 
       if (url.startsWith("https://codeload.github.com/zmkfirmware/zmk/legacy.zip/")) {
         return new Response(zmkZipball("zmkfirmware-zmk-abc1234"), { status: 200 });
       }
-      // Production has no GITHUB_TOKEN secret, so the unauthenticated core
-      // API's shared 60 req/hr limit routinely 403s. The tokenless resolver
-      // must never touch api.github.com at all.
       if (url.includes("api.github.com")) {
         throw new Error(`regression: unauthenticated ZMK resolver hit the GitHub REST API: ${url}`);
       }
-      // Metadata contents come out of the archive; per-file raw fetches were
-      // the old tree-API design and must not come back.
       if (url.includes("raw.githubusercontent.com")) {
         throw new Error(`regression: ZMK resolver fetched metadata file-by-file: ${url}`);
       }
@@ -119,8 +117,12 @@ describe("resolveZmkFirmwareMetadata", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { resolveZmkFirmwareMetadata } = await freshZmkTarget();
-    const metadata = await resolveZmkFirmwareMetadata({ deviceName: "Corne" });
+    const metadata = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" });
+      }).pipe(Effect.provide(zmkConfigLayer())),
+    );
 
     expect(metadata?.zmk).toMatchObject({
       board: "nice_nano//zmk",
@@ -137,48 +139,100 @@ describe("resolveZmkFirmwareMetadata", () => {
     expect(requestedUrls.some((url) => url.includes("raw.githubusercontent.com"))).toBe(false);
   });
 
-  it("degrades to undefined instead of failing when the archive cannot be fetched", async () => {
-    const fetchMock = vi.fn(async () => new Response("forbidden", { status: 403 }));
+  it("keeps provider failures typed in the core Effect", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("forbidden", { status: 403 })),
+    );
+
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* Effect.flip(resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" }));
+      }).pipe(Effect.provide(zmkConfigLayer())),
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ZmkCatalogFetchError",
+      operation: "ZmkCatalog.fetchCodeloadArchive.status",
+      retryable: false,
+      status: 403,
+    });
+  });
+
+  it("degrades to undefined only at the best-effort boundary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("forbidden", { status: 403 })),
+    );
+
+    const metadata = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* resolveZmkFirmwareMetadataOrUndefinedEffect({ deviceName: "Corne" });
+      }).pipe(Effect.provide(zmkConfigLayer())),
+    );
+
+    expect(metadata).toBeUndefined();
+  });
+
+  it("bounds transient fetch retries using TestClock", async () => {
+    const fetchMock = vi.fn(async () => new Response("unavailable", { status: 503 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const { resolveZmkFirmwareMetadata } = await freshZmkTarget();
+    const metadata = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        const fiber = yield* resolveZmkFirmwareMetadataOrUndefinedEffect({
+          deviceName: "Corne",
+        }).pipe(Effect.forkChild);
 
-    // The ZMK-BLE connect flow treats "no metadata" as a soft state; a
-    // catalog outage must never reject the remote-query promise.
-    await expect(resolveZmkFirmwareMetadata({ deviceName: "Corne" })).resolves.toBeUndefined();
+        while (fetchMock.mock.calls.length === 0) yield* Effect.yieldNow;
+        yield* TestClock.adjust("10 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(zmkConfigLayer()), Effect.provide(TestClock.layer())),
+    );
+
+    expect(metadata).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("resolves undefined for hardware the catalog does not know", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://codeload.github.com/zmkfirmware/zmk/legacy.zip/")) {
-        return new Response(zmkZipball("zmkfirmware-zmk-abc1234"), { status: 200 });
-      }
-      return new Response("not found", { status: 404 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url.startsWith("https://codeload.github.com/zmkfirmware/zmk/legacy.zip/")) {
+          return new Response(zmkZipball("zmkfirmware-zmk-abc1234"), { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
 
-    const { resolveZmkFirmwareMetadata } = await freshZmkTarget();
+    const metadata = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* resolveZmkFirmwareMetadataEffect({
+          deviceName: "Completely Unknown Device 9000",
+        });
+      }).pipe(Effect.provide(zmkConfigLayer())),
+    );
 
-    await expect(
-      resolveZmkFirmwareMetadata({ deviceName: "Completely Unknown Device 9000" }),
-    ).resolves.toBeUndefined();
+    expect(metadata).toBeUndefined();
   });
 
-  it("with a GitHub token configured, resolves the revision via the commits API and fetches the pinned zipball", async () => {
-    mockEnv.GITHUB_TOKEN = "test-token";
+  it("reads the GitHub token from Config and fetches the pinned zipball", async () => {
     const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
       requestedUrls.push(url);
 
       if (url === "https://api.github.com/repos/zmkfirmware/zmk/commits/main") {
-        const headers = init?.headers as Record<string, string> | undefined;
-        expect(headers?.Authorization).toBe("Bearer test-token");
-        return new Response(JSON.stringify({ sha: "pinnedsha1234567" }), { status: 200 });
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test-token");
+        return new Response(JSON.stringify({ sha: "abcdef0123456789" }), { status: 200 });
       }
-      if (url === "https://api.github.com/repos/zmkfirmware/zmk/zipball/pinnedsha1234567") {
-        return new Response(zmkZipball("zmkfirmware-zmk-pinnedsha"), { status: 200 });
+      if (url === "https://api.github.com/repos/zmkfirmware/zmk/zipball/abcdef0123456789") {
+        return new Response(zmkZipball("zmkfirmware-zmk-abcdef0"), { status: 200 });
       }
       if (url.startsWith("https://codeload.github.com/")) {
         throw new Error(`regression: authenticated ZMK resolver fell back to codeload: ${url}`);
@@ -187,10 +241,14 @@ describe("resolveZmkFirmwareMetadata", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { resolveZmkFirmwareMetadata } = await freshZmkTarget();
-    const metadata = await resolveZmkFirmwareMetadata({ deviceName: "Corne" });
+    const metadata = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" });
+      }).pipe(Effect.provide(zmkConfigLayer("test-token"))),
+    );
 
-    expect(metadata?.zmk?.ref).toBe("pinnedsha1234567");
+    expect(metadata?.zmk?.ref).toBe("abcdef0123456789");
     expect(
       requestedUrls.some(
         (url) => url === "https://api.github.com/repos/zmkfirmware/zmk/commits/main",
@@ -198,28 +256,79 @@ describe("resolveZmkFirmwareMetadata", () => {
     ).toBe(true);
   });
 
-  it("falls back to the codeload archive when the authenticated revision lookup fails", async () => {
-    mockEnv.GITHUB_TOKEN = "test-token";
+  it("does not retry a malformed revision body before falling back to codeload", async () => {
+    const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
+      requestedUrls.push(url);
 
       if (url === "https://api.github.com/repos/zmkfirmware/zmk/commits/main") {
-        // A rate-limited (non-retryable) failure of the commits API call.
-        return new Response("forbidden", { status: 403 });
+        return new Response("not-json", { status: 200 });
       }
       if (url.startsWith("https://codeload.github.com/zmkfirmware/zmk/legacy.zip/")) {
         return new Response(zmkZipball("zmkfirmware-zmk-fedcba9"), { status: 200 });
-      }
-      if (url.startsWith("https://api.github.com/repos/zmkfirmware/zmk/zipball/")) {
-        throw new Error("regression: fetched the authenticated zipball without a resolved ref");
       }
       return new Response("not found", { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { resolveZmkFirmwareMetadata } = await freshZmkTarget();
-    const metadata = await resolveZmkFirmwareMetadata({ deviceName: "Corne" });
+    const metadata = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" });
+      }).pipe(Effect.provide(zmkConfigLayer("test-token"))),
+    );
 
     expect(metadata?.zmk?.ref).toBe("fedcba9");
+    expect(
+      requestedUrls.filter(
+        (url) => url === "https://api.github.com/repos/zmkfirmware/zmk/commits/main",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("coalesces concurrent catalog loads", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(zmkZipball("zmkfirmware-zmk-abc1234"), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const results = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        return yield* Effect.all(
+          [
+            resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" }),
+            resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" }),
+          ],
+          { concurrency: "unbounded" },
+        );
+      }).pipe(Effect.provide(zmkConfigLayer())),
+    );
+
+    expect(results[0]?.zmk?.ref).toBe("abc1234");
+    expect(results[1]?.zmk?.ref).toBe("abc1234");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("expires the successful catalog after one hour using TestClock", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(zmkZipball("zmkfirmware-zmk-abc1234"), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* invalidateZmkCatalogCacheEffect;
+        yield* resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" });
+        yield* TestClock.adjust("59 minutes");
+        yield* resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        yield* TestClock.adjust("2 minutes");
+        yield* resolveZmkFirmwareMetadataEffect({ deviceName: "Corne" });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      }).pipe(Effect.provide(zmkConfigLayer()), Effect.provide(TestClock.layer())),
+    );
   });
 });

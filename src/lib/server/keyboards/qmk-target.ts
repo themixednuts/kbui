@@ -1,34 +1,55 @@
+import { Cache, Context, Effect, Exit, Layer, Schedule, Schema } from "effect";
+
 import type { KeyboardCatalogEntry } from "$lib/keyboard/catalog";
 import type { FirmwareMetadata, KeyboardKey } from "$lib/keyboard/schema";
-import { Deferred, Effect } from "effect";
 import { uf2TargetForHardware } from "$lib/keyboard/uf2-families";
-import { retryTransient } from "$lib/effect/self-healing";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
-type JsonRecord = Record<string, unknown>;
+type JsonRecord = Readonly<Record<string, unknown>>;
 
 const qmkInfoBase = "https://keyboards.qmk.fm/v1/keyboards";
 const qmkCatalogUrl = "https://keyboards.qmk.fm/v1/keyboards.json";
 const qmkRepository = "qmk/qmk_firmware";
 const qmkDefaultRef = "master";
-const qmkCacheTtlMs = 15 * 60 * 1000;
+const qmkCacheTtl = "15 minutes";
+const qmkFetchRetrySchedule = Schedule.exponential("250 millis").pipe(
+  Schedule.jittered,
+  Schedule.upTo({ times: 3 }),
+);
 
-let qmkRefCache: { expiresAt: number; ref: string } | undefined;
-let qmkUsbIndexCache:
-  | {
-      expiresAt: number;
-      lastUpdated: string;
-      items: Map<string, QmkCatalogRecord[]>;
-    }
-  | undefined;
-export type QmkUsbIndex = { lastUpdated: string; items: Map<string, QmkCatalogRecord[]> };
+const JsonRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
+export const QmkCatalogRecordSchema = Schema.Struct({
+  info: JsonRecordSchema,
+  keyboard: Schema.String,
+});
+export const QmkCatalogRecordsJsonSchema = Schema.fromJsonString(
+  Schema.Array(QmkCatalogRecordSchema),
+);
+export interface QmkCatalogRecord extends Schema.Schema.Type<typeof QmkCatalogRecordSchema> {}
 
-let qmkUsbIndexLoad: Deferred.Deferred<QmkUsbIndex, QmkCatalogFetchError> | undefined;
-
-export type QmkCatalogRecord = {
-  info: JsonRecord;
-  keyboard: string;
+export type QmkUsbIndex = {
+  lastUpdated: string;
+  items: Map<string, QmkCatalogRecord[]>;
 };
+
+export class QmkCatalogFetchError extends Schema.TaggedErrorClass<QmkCatalogFetchError>()(
+  "QmkCatalogFetchError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+    status: Schema.optionalKey(Schema.Finite),
+    cause: Schema.Defect(),
+  },
+) {}
+
+interface QmkTargetCacheService {
+  readonly loadUsbIndex: () => Effect.Effect<QmkUsbIndex, QmkCatalogFetchError>;
+  readonly resolvePinnedRef: (githubToken?: string) => Effect.Effect<string, QmkCatalogFetchError>;
+}
+
+export class QmkTargetCache extends Context.Service<QmkTargetCache, QmkTargetCacheService>()(
+  "@kbui/QmkTargetCache",
+) {}
 
 /** GitHub API headers used for QMK repository-revision lookups. */
 export function qmkGithubHeaders(token?: string): HeadersInit {
@@ -40,14 +61,18 @@ export function qmkGithubHeaders(token?: string): HeadersInit {
   };
 }
 
-class QmkCatalogFetchError extends Error {
-  constructor(
-    message: string,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "QmkCatalogFetchError";
-  }
+function qmkCatalogFetchError(
+  operation: string,
+  cause: unknown,
+  options: { message?: string; retryable: boolean; status?: number },
+) {
+  return new QmkCatalogFetchError({
+    operation,
+    message: options.message ?? (cause instanceof Error ? cause.message : String(cause)),
+    retryable: options.retryable,
+    ...(options.status === undefined ? {} : { status: options.status }),
+    cause,
+  });
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -65,28 +90,69 @@ export function usbIdentityKey(vendorId: number, productId: number) {
   return `${vendorId.toString(16).padStart(4, "0")}:${productId.toString(16).padStart(4, "0")}`;
 }
 
-function retryingJsonRequestEffect<T>(url: string, headers: HeadersInit = {}) {
-  const request = Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        throw new QmkCatalogFetchError(
-          `QMK catalog request returned ${response.status}.`,
-          response.status === 408 || response.status === 429 || response.status >= 500,
-        );
-      }
-      return (await response.json()) as T;
-    },
-    catch: (error) =>
-      error instanceof QmkCatalogFetchError
-        ? error
-        : new QmkCatalogFetchError(
-            error instanceof Error ? error.message : "QMK catalog request failed.",
-            true,
-          ),
+const readErrorBodyEffect = Effect.fn("qmk.read-error-body")(function* (response: Response) {
+  return yield* Effect.tryPromise({
+    try: () => response.text(),
+    catch: (cause) => qmkCatalogFetchError("qmk.read-error-body", cause, { retryable: false }),
+  }).pipe(Effect.orElseSucceed(() => ""));
+});
+
+const requestResponseEffect = Effect.fn("qmk.request-response")(function* (
+  url: string,
+  headers: HeadersInit,
+  operation: string,
+  allowNotFound = false,
+) {
+  const attempt = Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: (signal) => fetch(url, { headers, signal }),
+      catch: (cause) => qmkCatalogFetchError(operation, cause, { retryable: true }),
+    });
+
+    if (response.ok || (allowNotFound && response.status === 404)) return response;
+
+    const body = yield* readErrorBodyEffect(response);
+    return yield* Effect.fail(
+      qmkCatalogFetchError(operation, response.status, {
+        message: `QMK request returned ${response.status}${body ? `: ${body.slice(0, 400)}` : "."}`,
+        retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+        status: response.status,
+      }),
+    );
   });
 
-  return retryTransient(request);
+  return yield* Effect.retry(attempt, {
+    schedule: qmkFetchRetrySchedule,
+    while: (error) => error.retryable,
+  });
+});
+
+const requestJsonEffect = Effect.fn("qmk.request-json")(function* (
+  url: string,
+  headers: HeadersInit,
+  operation: string,
+  allowNotFound = false,
+) {
+  const response = yield* requestResponseEffect(url, headers, operation, allowNotFound);
+  if (allowNotFound && response.status === 404) return undefined;
+
+  return yield* Effect.tryPromise({
+    try: () => response.json(),
+    catch: (cause) => qmkCatalogFetchError(`${operation}.decode-json`, cause, { retryable: false }),
+  });
+});
+
+function decodeQmkResponseEffect<
+  S extends Schema.Constraint & { readonly DecodingServices: never },
+>(schema: S, value: unknown, operation: string): Effect.Effect<S["Type"], QmkCatalogFetchError> {
+  return Schema.decodeUnknownEffect(schema)(value).pipe(
+    Effect.mapError((cause) =>
+      qmkCatalogFetchError(operation, cause, {
+        message: `QMK response for ${operation} was malformed.`,
+        retryable: false,
+      }),
+    ),
+  );
 }
 
 function matrixToken(row: number, col: number) {
@@ -201,64 +267,47 @@ function qmkLayoutSignature(record: QmkCatalogRecord) {
     .join(";");
 }
 
-function createQmkUsbIndexEffect() {
-  return Effect.gen(function* () {
-    const body = yield* retryingJsonRequestEffect<unknown>(qmkCatalogUrl, {
+const QmkCatalogResponseSchema = Schema.Struct({
+  keyboards: Schema.Record(Schema.String, JsonRecordSchema),
+  last_updated: Schema.optionalKey(Schema.String),
+});
+
+/**
+ * Builds the reduced QMK USB index with one multi-megabyte catalog fetch and
+ * parse. Production invokes this only from the QMK index Agent's scheduled
+ * alarm, never from the request path.
+ */
+export const createQmkUsbIndexEffect = Effect.fn("qmk.build-usb-index")(function* () {
+  const json = yield* requestJsonEffect(
+    qmkCatalogUrl,
+    {
       Accept: "application/json",
       "User-Agent": "kbui-qmk-catalog",
-    });
-    if (!isRecord(body) || !isRecord(body.keyboards)) {
-      return yield* Effect.fail(
-        new QmkCatalogFetchError("QMK catalog response was malformed.", false),
-      );
-    }
+    },
+    "qmk.fetch-catalog",
+  );
+  const body = yield* decodeQmkResponseEffect(QmkCatalogResponseSchema, json, "qmk.decode-catalog");
 
-    const items = new Map<string, QmkCatalogRecord[]>();
-    for (const [keyboard, rawInfo] of Object.entries(body.keyboards)) {
-      if (!isRecord(rawInfo) || !isRecord(rawInfo.usb)) continue;
-      const vendorId = parseUsbId(rawInfo.usb.vid);
-      const productId = parseUsbId(rawInfo.usb.pid);
-      if (vendorId === undefined || productId === undefined) continue;
-      const key = usbIdentityKey(vendorId, productId);
-      const records = items.get(key) ?? [];
-      records.push({ info: rawInfo, keyboard });
-      items.set(key, records);
-    }
+  const items = new Map<string, QmkCatalogRecord[]>();
+  for (const [keyboard, rawInfo] of Object.entries(body.keyboards)) {
+    if (!isRecord(rawInfo.usb)) continue;
+    const vendorId = parseUsbId(rawInfo.usb.vid);
+    const productId = parseUsbId(rawInfo.usb.pid);
+    if (vendorId === undefined || productId === undefined) continue;
+    const key = usbIdentityKey(vendorId, productId);
+    const records = items.get(key) ?? [];
+    records.push({ info: rawInfo, keyboard });
+    items.set(key, records);
+  }
 
-    return {
-      lastUpdated: typeof body.last_updated === "string" ? body.last_updated : "unknown",
-      items,
-    } satisfies QmkUsbIndex;
-  });
-}
+  return {
+    lastUpdated: body.last_updated ?? "unknown",
+    items,
+  } satisfies QmkUsbIndex;
+});
 
 function loadQmkUsbIndexEffect() {
-  return Effect.suspend(() => {
-    if (qmkUsbIndexCache && qmkUsbIndexCache.expiresAt > Date.now()) {
-      return Effect.succeed(qmkUsbIndexCache);
-    }
-    if (qmkUsbIndexLoad) return Deferred.await(qmkUsbIndexLoad);
-
-    const deferred = Deferred.makeUnsafe<QmkUsbIndex, QmkCatalogFetchError>();
-    qmkUsbIndexLoad = deferred;
-    return Effect.matchEffect(createQmkUsbIndexEffect(), {
-      onFailure: (error) =>
-        Effect.sync(() => Deferred.doneUnsafe(deferred, Effect.fail(error))).pipe(
-          Effect.andThen(Effect.fail(error)),
-        ),
-      onSuccess: (loaded) =>
-        Effect.sync(() => {
-          qmkUsbIndexCache = { ...loaded, expiresAt: Date.now() + qmkCacheTtlMs };
-          Deferred.doneUnsafe(deferred, Effect.succeed(loaded));
-        }).pipe(Effect.as(loaded)),
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (qmkUsbIndexLoad === deferred) qmkUsbIndexLoad = undefined;
-        }),
-      ),
-    );
-  });
+  return Effect.flatMap(QmkTargetCache, (cache) => cache.loadUsbIndex());
 }
 
 export function resolveQmkLayout(keys: KeyboardKey[], keyboardInfo: unknown) {
@@ -302,98 +351,111 @@ export function qmkKeyboardCandidates(entry: Pick<KeyboardCatalogEntry, "id" | "
   return candidates.slice(0, 18);
 }
 
-function fetchQmkKeyboardInfoEffect(keyboard: string) {
+const QmkKeyboardInfoResponseSchema = Schema.Struct({
+  keyboards: Schema.Record(Schema.String, JsonRecordSchema),
+});
+const QmkChildKeyboardSchema = Schema.Struct({
+  name: Schema.String,
+  type: Schema.String,
+});
+const QmkRepositoryRefSchema = Schema.Struct({
+  sha: Schema.String.check(Schema.isMinLength(7)),
+});
+
+const fetchQmkKeyboardInfoEffect = Effect.fn("qmk.fetch-keyboard-info")(function* (
+  keyboard: string,
+) {
   const encodedKeyboard = keyboard.split("/").map(encodeURIComponent).join("/");
-  const request = Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(`${qmkInfoBase}/${encodedKeyboard}/info.json`, {
-        headers: { Accept: "application/json" },
-      });
-      if (response.status === 404) return undefined;
-      if (!response.ok) {
-        throw new QmkCatalogFetchError(
-          `QMK keyboard info returned ${response.status}.`,
-          response.status === 408 || response.status === 429 || response.status >= 500,
-        );
-      }
+  const json = yield* requestJsonEffect(
+    `${qmkInfoBase}/${encodedKeyboard}/info.json`,
+    { Accept: "application/json" },
+    "qmk.fetch-keyboard-info",
+    true,
+  );
+  if (json === undefined) return undefined;
 
-      const body = (await response.json()) as unknown;
-      if (!isRecord(body) || !isRecord(body.keyboards)) {
-        throw new QmkCatalogFetchError("QMK keyboard info was malformed.", false);
-      }
-      const info = body.keyboards[keyboard];
-      return isRecord(info) ? info : undefined;
-    },
-    catch: (error) =>
-      error instanceof QmkCatalogFetchError
-        ? error
-        : new QmkCatalogFetchError(
-            error instanceof Error ? error.message : "QMK keyboard info request failed.",
-            true,
-          ),
-  });
-  return retryTransient(request);
-}
+  const body = yield* decodeQmkResponseEffect(
+    QmkKeyboardInfoResponseSchema,
+    json,
+    "qmk.decode-keyboard-info",
+  );
+  return body.keyboards[keyboard];
+});
 
-function discoverQmkChildKeyboardsEffect(keyboard: string, githubHeaders: HeadersInit) {
+const discoverQmkChildKeyboardsEffect = Effect.fn("qmk.discover-child-keyboards")(function* (
+  keyboard: string,
+  githubHeaders: HeadersInit,
+) {
   const encodedPath = keyboard.split("/").map(encodeURIComponent).join("/");
-  const request = Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(
-        `https://api.github.com/repos/${qmkRepository}/contents/keyboards/${encodedPath}`,
-        { headers: githubHeaders },
-      );
-      if (response.status === 404) return [];
-      if (!response.ok) {
-        throw new QmkCatalogFetchError(
-          `QMK child-keyboard lookup returned ${response.status}.`,
-          response.status === 408 || response.status === 429 || response.status >= 500,
-        );
-      }
+  const json = yield* requestJsonEffect(
+    `https://api.github.com/repos/${qmkRepository}/contents/keyboards/${encodedPath}`,
+    githubHeaders,
+    "qmk.discover-child-keyboards",
+    true,
+  );
+  if (json === undefined) return [];
 
-      const body = (await response.json()) as unknown;
-      if (!Array.isArray(body)) {
-        throw new QmkCatalogFetchError("QMK child-keyboard response was malformed.", false);
-      }
-      return body
-        .filter(
-          (item): item is JsonRecord =>
-            isRecord(item) && item.type === "dir" && typeof item.name === "string",
-        )
-        .map((item) => `${keyboard}/${item.name as string}`)
-        .sort();
-    },
-    catch: (error) =>
-      error instanceof QmkCatalogFetchError
-        ? error
-        : new QmkCatalogFetchError(
-            error instanceof Error ? error.message : "QMK child-keyboard lookup failed.",
-            true,
-          ),
-  });
-  return retryTransient(request);
-}
+  const body = yield* decodeQmkResponseEffect(
+    Schema.Array(QmkChildKeyboardSchema),
+    json,
+    "qmk.decode-child-keyboards",
+  );
+  return body
+    .filter((item) => item.type === "dir")
+    .map((item) => `${keyboard}/${item.name}`)
+    .sort();
+});
 
-function resolvePinnedQmkRefEffect(githubHeaders: HeadersInit) {
-  return Effect.suspend(() => {
-    if (qmkRefCache && qmkRefCache.expiresAt > Date.now()) {
-      return Effect.succeed(qmkRefCache.ref);
-    }
-    return Effect.gen(function* () {
-      const body = yield* retryingJsonRequestEffect<unknown>(
-        `https://api.github.com/repos/${qmkRepository}/commits/${qmkDefaultRef}`,
-        githubHeaders,
-      );
-      if (!isRecord(body) || typeof body.sha !== "string" || body.sha.length < 7) {
-        return yield* Effect.fail(
-          new QmkCatalogFetchError("QMK repository revision response was malformed.", false),
-        );
-      }
-      qmkRefCache = { ref: body.sha, expiresAt: Date.now() + qmkCacheTtlMs };
-      return body.sha;
+const fetchPinnedQmkRefEffect = Effect.fn("qmk.fetch-repository-ref")(function* (
+  githubToken?: string,
+) {
+  const json = yield* requestJsonEffect(
+    `https://api.github.com/repos/${qmkRepository}/commits/${qmkDefaultRef}`,
+    qmkGithubHeaders(githubToken),
+    "qmk.fetch-repository-ref",
+  );
+  const body = yield* decodeQmkResponseEffect(
+    QmkRepositoryRefSchema,
+    json,
+    "qmk.decode-repository-ref",
+  );
+  return body.sha;
+});
+
+export const qmkTargetCacheLayer = Layer.effect(
+  QmkTargetCache,
+  Effect.gen(function* () {
+    const usbIndexCache = yield* Cache.makeWith((_key: string) => createQmkUsbIndexEffect(), {
+      capacity: 1,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? qmkCacheTtl : "0 millis"),
     });
-  });
-}
+    const refCache = yield* Cache.makeWith(
+      (githubToken: string) => fetchPinnedQmkRefEffect(githubToken || undefined),
+      {
+        capacity: 4,
+        timeToLive: (exit) => (Exit.isSuccess(exit) ? qmkCacheTtl : "0 millis"),
+      },
+    );
+
+    return QmkTargetCache.of({
+      loadUsbIndex: Effect.fn("QmkTargetCache.loadUsbIndex")(function* () {
+        return yield* Cache.get(usbIndexCache, "catalog");
+      }),
+      resolvePinnedRef: Effect.fn("QmkTargetCache.resolvePinnedRef")(function* (
+        githubToken?: string,
+      ) {
+        return yield* Cache.get(refCache, githubToken ?? "");
+      }),
+    });
+  }),
+);
+
+export const resolvePinnedQmkRefEffect = Effect.fn("qmk.resolve-repository-ref")(function* (
+  githubToken?: string,
+) {
+  const cache = yield* QmkTargetCache;
+  return yield* cache.resolvePinnedRef(githubToken);
+});
 
 /**
  * Pure, CPU-cheap resolution of a VIA-capable HID device against the QMK
@@ -411,7 +473,7 @@ function resolvePinnedQmkRefEffect(githubHeaders: HeadersInit) {
  * SQLite index, keeping the request path off the heavy `keyboards.json` build.
  */
 export function resolveQmkIdentityFromRecords(
-  records: QmkCatalogRecord[],
+  records: ReadonlyArray<QmkCatalogRecord>,
   input: { productId?: number; productName?: string; vendorId?: number },
   ref: string,
   dataVersion: string,
@@ -507,12 +569,8 @@ export function resolveQmkIdentityFromRecords(
  * is used for local dev / tests and by {@link QmkIndexAgent}'s background build.
  * Production request traffic goes through the DO-persisted index instead.
  */
-function resolveQmkKeyboardIdentityEffect(input: {
-  productId?: number;
-  productName?: string;
-  vendorId?: number;
-}) {
-  return Effect.gen(function* () {
+export const resolveQmkKeyboardIdentityEffect = Effect.fn("qmk.resolve-keyboard-identity")(
+  function* (input: { productId?: number; productName?: string; vendorId?: number }) {
     if (input.vendorId === undefined || input.productId === undefined) return undefined;
     const catalog = yield* loadQmkUsbIndexEffect();
     const records = catalog.items.get(usbIdentityKey(input.vendorId, input.productId)) ?? [];
@@ -521,42 +579,21 @@ function resolveQmkKeyboardIdentityEffect(input: {
     // The pinned ref is best-effort: an unauthenticated commits-API rate
     // limit must not discard a resolved USB-identity match. Fall back to the
     // default branch ref, same as QmkIndexAgent.buildIndex.
-    const ref = yield* resolvePinnedQmkRefEffect(qmkGithubHeaders()).pipe(
-      Effect.catch(() => Effect.succeed(qmkDefaultRef)),
+    const ref = yield* resolvePinnedQmkRefEffect().pipe(
+      Effect.tapError((error) =>
+        Effect.logInfo("QMK repository ref unavailable; using default branch").pipe(
+          Effect.annotateLogs({ operation: error.operation, status: error.status }),
+        ),
+      ),
+      Effect.catchTag("QmkCatalogFetchError", () => Effect.succeed(qmkDefaultRef)),
     );
     return resolveQmkIdentityFromRecords(records, input, ref, catalog.lastUpdated);
-  });
-}
+  },
+);
 
-export function resolveQmkKeyboardIdentity(input: {
-  productId?: number;
-  productName?: string;
-  vendorId?: number;
-}): Promise<KeyboardCatalogEntry | undefined> {
-  return runWorkerEffect("qmk.resolve-keyboard-identity", resolveQmkKeyboardIdentityEffect(input));
-}
-
-/**
- * Builds the reduced QMK USB index (vendorId:productId -> catalog records) with a
- * single `keyboards.json` fetch + parse. This is the CPU-heavy operation that
- * must run OFF the request path — {@link QmkIndexAgent} invokes it from a
- * scheduled DO alarm (a separate invocation with its own CPU budget) and
- * persists the result to DO SQLite.
- */
-export function buildQmkUsbIndex(): Promise<QmkUsbIndex> {
-  return runWorkerEffect("qmk.build-usb-index", createQmkUsbIndexEffect());
-}
-
-/** Resolves the pinned QMK firmware repository revision (cached ~15 min). */
-export function resolveQmkRepositoryRef(githubHeaders: HeadersInit): Promise<string> {
-  return runWorkerEffect("qmk.resolve-repository-ref", resolvePinnedQmkRefEffect(githubHeaders));
-}
-
-function resolveQmkFirmwareMetadataEffect(
-  entry: KeyboardCatalogEntry,
-  githubHeaders: HeadersInit,
-): Effect.Effect<FirmwareMetadata | undefined, QmkCatalogFetchError> {
-  return Effect.gen(function* () {
+export const resolveQmkFirmwareMetadataEffect = Effect.fn("qmk.resolve-firmware-metadata")(
+  function* (entry: KeyboardCatalogEntry, githubToken?: string) {
+    const githubHeaders = qmkGithubHeaders(githubToken);
     const candidates = qmkKeyboardCandidates(entry);
     const matches: Array<{ info: JsonRecord; keyboard: string; layout: string }> = [];
 
@@ -613,26 +650,21 @@ function resolveQmkFirmwareMetadataEffect(
           // just because the commits-API ref lookup hits the unauthenticated
           // rate limit. Fall back to the default branch ref, same as
           // QmkIndexAgent.buildIndex and resolveQmkKeyboardIdentityEffect.
-          ref: yield* resolvePinnedQmkRefEffect(githubHeaders).pipe(
-            Effect.catch(() => Effect.succeed(qmkDefaultRef)),
+          ref: yield* resolvePinnedQmkRefEffect(githubToken).pipe(
+            Effect.tapError((error) =>
+              Effect.logInfo("QMK repository ref unavailable; using default branch").pipe(
+                Effect.annotateLogs({ operation: error.operation, status: error.status }),
+              ),
+            ),
+            Effect.catchTag("QmkCatalogFetchError", () => Effect.succeed(qmkDefaultRef)),
           ),
           targetConfirmed: matches.length === 1,
           uf2FamilyId: uf2?.familyId,
           uf2VolumeLabels: uf2?.volumeLabels,
         },
-      };
+      } satisfies FirmwareMetadata;
     }
 
     return undefined;
-  });
-}
-
-export function resolveQmkFirmwareMetadata(
-  entry: KeyboardCatalogEntry,
-  githubHeaders: HeadersInit,
-): Promise<FirmwareMetadata | undefined> {
-  return runWorkerEffect(
-    "qmk.resolve-firmware-metadata",
-    resolveQmkFirmwareMetadataEffect(entry, githubHeaders),
-  );
-}
+  },
+);

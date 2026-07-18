@@ -14,7 +14,7 @@
   import KeyboardBoard from "$lib/components/board/KeyboardBoard.svelte";
   import { Button } from "$lib/components/ui";
   import type { CommunityKeymapDetail } from "$lib/community/types";
-  import { decodeDeviceProfileFromStorage } from "$lib/keyboard/schema";
+  import { decodeDeviceProfileFromStorageOrNull } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
 
   interface Props {
@@ -107,7 +107,7 @@
   let previewLayerIndex = $state(0);
   let previewProfileId = $state<string | null>(null);
 
-  const profile = $derived(detail ? decodeDeviceProfileFromStorage(detail.profile) : null);
+  const profile = $derived(detail ? decodeDeviceProfileFromStorageOrNull(detail.profile) : null);
   const authorLabel = $derived(
     detail?.author.handle ? `@${detail.author.handle}` : (detail?.author.displayName ?? ""),
   );

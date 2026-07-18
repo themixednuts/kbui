@@ -1,15 +1,18 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createMockViaTransport } from "./transport-mock";
 import {
   createUf2FlashPlan,
+  createUf2FlashPlanEffect,
   detectUf2FileSystemAccessSupport,
-  flashUf2ViaFileSystemAccess,
+  flashUf2ViaFileSystemAccessEffect,
   packUf2,
   parseUf2,
   rp2040FlashBaseAddress,
   rp2040Uf2FamilyId,
-  verifyUf2Reconnect,
+  Uf2ValidationError,
+  verifyUf2ReconnectEffect,
 } from "./uf2-flash";
 
 const uf2MagicStart0 = 0x0a324655;
@@ -214,6 +217,26 @@ describe("UF2 flashing helpers", () => {
     ).toThrow("UF2 does not declare a family id; direct flashing is blocked.");
   });
 
+  it("reports corrupt UF2 input as a typed validation failure", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(
+          createUf2FlashPlanEffect({
+            boardName: "Workbench 65",
+            expectedFamilyId: 0xada52840,
+            uf2Bytes: new Uint8Array([1, 2, 3, 4]),
+          }),
+        );
+
+        expect(error).toBeInstanceOf(Uf2ValidationError);
+        expect(error).toMatchObject({
+          _tag: "Uf2ValidationError",
+          operation: "uf2.create-flash-plan",
+          message: "UF2 file must be a non-empty sequence of 512-byte blocks.",
+        });
+      }),
+    ));
+
   it("blocks overlapping UF2 target ranges", () => {
     const bytes = syntheticUf2({ blocks: 2 });
     const view = new DataView(bytes.buffer);
@@ -222,54 +245,63 @@ describe("UF2 flashing helpers", () => {
     expect(() => parseUf2(bytes)).toThrow("UF2 target address ranges overlap.");
   });
 
-  it("writes a UF2 to a mock File System Access directory and reports progress", async () => {
-    const bytes = syntheticUf2({ blocks: 2 });
-    const directory = new MockDirectoryHandle();
-    const progress: string[] = [];
+  it("writes a UF2 to a mock File System Access directory and reports progress", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const bytes = syntheticUf2({ blocks: 2 });
+        const directory = new MockDirectoryHandle();
+        const progress: string[] = [];
 
-    const result = await flashUf2ViaFileSystemAccess(directory, bytes, {
-      chunkSize: 512,
-      expectedFamilyId: rp2040Uf2FamilyId,
-      expectedVolumeHints: ["RPI-RP2"],
-      fileName: "mock-board.uf2",
-      onProgress: (event) => {
-        progress.push(`${event.phase}:${event.bytesWritten}/${event.totalBytes}`);
-      },
-    });
+        const result = yield* flashUf2ViaFileSystemAccessEffect(directory, bytes, {
+          chunkSize: 512,
+          expectedFamilyId: rp2040Uf2FamilyId,
+          expectedVolumeHints: ["RPI-RP2"],
+          fileName: "mock-board.uf2",
+          onProgress: (event) => {
+            progress.push(`${event.phase}:${event.bytesWritten}/${event.totalBytes}`);
+          },
+        });
 
-    const written = directory.files.get("mock-board.uf2")?.writable;
-    expect(result.ok).toBe(true);
-    expect(result.hardwareVerified).toBe(false);
-    expect(result.bytesWritten).toBe(bytes.byteLength);
-    expect(result.volumeName).toBe("RPI-RP2");
-    expect(result.progress.map((event) => event.phase)).toEqual([
-      "validating",
-      "writing",
-      "writing",
-      "done",
-    ]);
-    expect(progress.at(0)).toBe("validating:0/1024");
-    expect(progress.at(-1)).toBe("done:1024/1024");
-    expect(written?.closed).toBe(true);
-    expect(Array.from(written?.bytes() ?? [])).toEqual(Array.from(bytes));
-  });
+        const written = directory.files.get("mock-board.uf2")?.writable;
+        expect(result.ok).toBe(true);
+        expect(result.hardwareVerified).toBe(false);
+        expect(result.bytesWritten).toBe(bytes.byteLength);
+        expect(result.volumeName).toBe("RPI-RP2");
+        expect(result.progress.map((event) => event.phase)).toEqual([
+          "validating",
+          "writing",
+          "writing",
+          "done",
+        ]);
+        expect(progress.at(0)).toBe("validating:0/1024");
+        expect(progress.at(-1)).toBe("done:1024/1024");
+        expect(written?.closed).toBe(true);
+        expect(Array.from(written?.bytes() ?? [])).toEqual(Array.from(bytes));
+      }),
+    ));
 
-  it("verifies a post-flash reconnect through the mock VIA transport", async () => {
-    const transport = createMockViaTransport();
-    const result = await verifyUf2Reconnect(() => transport.connect(), {
-      productId: 0x6060,
-      protocol: "via-v3",
-      vendorId: 0xfeed,
-    });
+  it("verifies a post-flash reconnect through the mock VIA transport", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = createMockViaTransport();
+        const result = yield* verifyUf2ReconnectEffect(
+          Effect.promise(() => transport.connect()),
+          {
+            productId: 0x6060,
+            protocol: "via-v3",
+            vendorId: 0xfeed,
+          },
+        );
 
-    expect(result.ok).toBe(true);
-    expect(result.metadata).toMatchObject({
-      keymapRead: true,
-      layerCount: 3,
-      protocolVersion: 12,
-    });
-    expect(result.log.join("\n")).toContain("VIA protocol 12");
-  });
+        expect(result.ok).toBe(true);
+        expect(result.metadata).toMatchObject({
+          keymapRead: true,
+          layerCount: 3,
+          protocolVersion: 12,
+        });
+        expect(result.log.join("\n")).toContain("VIA protocol 12");
+      }),
+    ));
 
   it("blocks direct copy when File System Access is unsupported", () => {
     const support = detectUf2FileSystemAccessSupport({
@@ -287,16 +319,21 @@ describe("UF2 flashing helpers", () => {
     );
   });
 
-  it("blocks copying an artifact to an unexpected bootloader volume", async () => {
-    const bytes = syntheticUf2();
-    const directory = new MockDirectoryHandle();
-    directory.name = "WRONG-BOARD";
+  it("blocks copying an artifact to an unexpected bootloader volume", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const bytes = syntheticUf2();
+        const directory = new MockDirectoryHandle();
+        directory.name = "WRONG-BOARD";
 
-    await expect(
-      flashUf2ViaFileSystemAccess(directory, bytes, {
-        expectedFamilyId: rp2040Uf2FamilyId,
-        expectedVolumeHints: ["RPI-RP2"],
+        const error = yield* Effect.flip(
+          flashUf2ViaFileSystemAccessEffect(directory, bytes, {
+            expectedFamilyId: rp2040Uf2FamilyId,
+            expectedVolumeHints: ["RPI-RP2"],
+          }),
+        );
+
+        expect(error.message).toBe("Selected volume WRONG-BOARD does not match RPI-RP2.");
       }),
-    ).rejects.toThrow("Selected volume WRONG-BOARD does not match RPI-RP2.");
-  });
+    ));
 });

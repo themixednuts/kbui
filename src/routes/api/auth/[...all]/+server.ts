@@ -2,7 +2,6 @@ import { dev } from "$app/environment";
 import { Effect } from "effect";
 
 import { platformError } from "$lib/effect/errors";
-import { selfHeal } from "$lib/effect/self-healing";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import type { RequestHandler } from "./$types";
 
@@ -48,13 +47,12 @@ const handleAuth: RequestHandler = ({ request, platform }) => {
 
   return runWorkerEffect(
     "api.auth.agent",
-    selfHeal(
-      Effect.tryPromise({
-        try: () => agent.fetch(request.url, init),
-        catch: (cause) => platformError("auth-agent.fetch", cause),
-      }),
-      "500 millis",
-    ),
+    Effect.tryPromise({
+      // Wire Effect interruption into the DO fetch so an aborted client request
+      // does not leave the proxied auth call running inside the AuthAgent.
+      try: (signal) => agent.fetch(request.url, { ...init, signal }),
+      catch: (cause) => platformError("auth-agent.fetch", cause),
+    }),
   );
 };
 

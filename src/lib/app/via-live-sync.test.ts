@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { connectViaAndActivate } from "$lib/app/connect-flow";
+import { runApp } from "$lib/app/runtime";
 import { ShellStore } from "$lib/app/shell-store.svelte";
 import { WorkbenchStore } from "$lib/app/workbench-store.svelte";
 import { qmkKeycodeValue } from "$lib/keyboard/schema";
 import { MockHidKeyboardDevice, createMockViaTransport } from "$lib/keyboard/transport-mock";
 
-import { ViaLiveSyncEngine } from "./via-live-sync.svelte";
+import { ViaLiveSyncEngine, type ViaLiveSyncOptions } from "./via-live-sync.svelte";
 
-async function createLiveSyncHarness(debounceMs = 8) {
+async function createLiveSyncHarness(
+  debounceMs = 8,
+  writeKeycode?: ViaLiveSyncOptions["writeKeycode"],
+) {
   const shell = new ShellStore();
   const workbench = new WorkbenchStore({ persist: false });
   await connectViaAndActivate({
@@ -16,7 +20,12 @@ async function createLiveSyncHarness(debounceMs = 8) {
     transport: createMockViaTransport(),
     workbench,
   });
-  const engine = new ViaLiveSyncEngine({ debounceMs, editor: workbench, shell });
+  const engine = new ViaLiveSyncEngine({
+    debounceMs,
+    editor: workbench,
+    shell,
+    ...(writeKeycode ? { writeKeycode } : {}),
+  });
   const hidDevice = shell.liveConnection?.hidDevice as MockHidKeyboardDevice;
 
   return { engine, hidDevice, shell, workbench };
@@ -36,7 +45,7 @@ describe("VIA live sync engine", () => {
     workbench.selectKey("k2-4");
     workbench.applyKeycode("KC_G");
     engine.processChanges();
-    await engine.flush();
+    await runApp("test.via-live-sync.flush", engine.flushEffect());
 
     const expectedKeycode = qmkKeycodeValue("KC_G");
     expect(setKeycodeWrites(hidDevice).length - beforeWrites).toBe(1);
@@ -142,5 +151,28 @@ describe("VIA live sync engine", () => {
     expect(setKeycodeWrites(hidDevice).length - beforeWrites).toBe(1);
     expect(hidDevice.definition.keymap[0][2][4]).toBe(qmkKeycodeValue("KC_J"));
     expect(workbench.baseProfile.layers[0].bindings["k2-4"].code).toBe("KC_J");
+  });
+
+  it("interrupts an in-flight write when destroyed", async () => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const { engine, workbench } = await createLiveSyncHarness(1, async (_connection, input) => {
+      started.resolve();
+      await release.promise;
+      return { requestedKeycode: input.keycode, verifiedKeycode: input.keycode };
+    });
+    const originalBaseCode = workbench.baseProfile.layers[0].bindings["k2-4"].code;
+
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_G");
+    engine.processChanges();
+    await started.promise;
+
+    engine.destroy();
+    release.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(workbench.baseProfile.layers[0].bindings["k2-4"].code).toBe(originalBaseCode);
   });
 });

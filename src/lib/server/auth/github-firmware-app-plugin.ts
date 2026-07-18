@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import * as z from "zod";
 
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
+import { platformError, type PlatformError } from "$lib/effect/errors";
 import {
   releaseFlagKeys,
   requireBooleanReleaseFlag,
@@ -48,23 +49,17 @@ import {
   type GitHubAppUserToken,
 } from "$lib/server/github-app/oauth";
 import {
-  decryptGitHubAppUserAccessToken,
-  decryptGitHubAppUserRefreshToken,
-  encryptGitHubAppUserToken,
+  decryptGitHubAppUserAccessTokenEffect,
+  decryptGitHubAppUserRefreshTokenEffect,
+  encryptGitHubAppUserTokenEffect,
   githubAppUserTokenSecretFor,
   githubAppUserTokenSecretsFor,
 } from "$lib/server/github-app/user-token-store";
 import {
   GitHubAppInstallationTokenClient,
   githubAppInstallationAuthConfigFromEnv,
-  type GitHubAppInstallationAccessToken,
 } from "$lib/server/github-app/installation-token";
-import {
-  GitHubRestApiError,
-  GitHubRestClient,
-  type GitHubCommit,
-  type GitHubGitRef,
-} from "$lib/server/github/client";
+import { GitHubRestClient } from "$lib/server/github/client";
 
 interface AuthEndpointContext {
   context: {
@@ -72,7 +67,7 @@ interface AuthEndpointContext {
     adapter: unknown;
   };
   body?: unknown;
-  json: <T extends Record<string, unknown> | null>(body: T) => T | Promise<T>;
+  json: <T extends object | null>(body: T) => T | Promise<T>;
   query?: unknown;
   request?: Request;
   redirect: (url: string) => unknown;
@@ -536,14 +531,21 @@ export function githubFirmwareAppPlugin(
           method: "GET",
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.status", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const config = githubFirmwareAppConfigFromEnv(options);
-            const connection = await findConnection(authCtx, session.user.id);
-            return ctx.json(statusForConnection(config, connection, nowMs()));
-          }),
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.status",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const config = githubFirmwareAppConfigFromEnv(options);
+              const connection = yield* findConnection(authCtx, session.user.id);
+              return yield* authJsonEffect(
+                authCtx,
+                statusForConnection(config, connection, nowMs()),
+              );
+            }),
+          );
+        },
       ),
       githubFirmwareAppConnect: createAuthEndpoint(
         "/firmware/github/connect",
@@ -552,27 +554,33 @@ export function githubFirmwareAppPlugin(
           requireRequest: true,
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.connect", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const config = githubFirmwareAppConfigFromEnv(options);
-            if (!config.configured) {
-              throw APIError.from("SERVICE_UNAVAILABLE", {
-                code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
-                message:
-                  "GitHub App firmware builds are not configured. Set the GitHub App env vars and restart the Worker.",
-              });
-            }
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.connect",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const config = githubFirmwareAppConfigFromEnv(options);
+              if (!config.configured) {
+                return yield* Effect.fail(
+                  APIError.from("SERVICE_UNAVAILABLE", {
+                    code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
+                    message:
+                      "GitHub App firmware builds are not configured. Set the GitHub App env vars and restart the Worker.",
+                  }),
+                );
+              }
 
-            const state = crypto.randomUUID();
-            await createInstallState(authCtx, session.user.id, state, nowMs());
+              const state = crypto.randomUUID();
+              yield* createInstallState(authCtx, session.user.id, state, nowMs());
 
-            return ctx.json({
-              installUrl: githubFirmwareAppAuthorizeUrl(config, state),
-              state,
-            } satisfies GitHubFirmwareAppConnectResponse);
-          }),
+              return yield* authJsonEffect(authCtx, {
+                installUrl: githubFirmwareAppAuthorizeUrl(config, state),
+                state,
+              } satisfies GitHubFirmwareAppConnectResponse);
+            }),
+          );
+        },
       ),
       githubFirmwareAppCallback: createAuthEndpoint(
         "/firmware/github/callback",
@@ -582,42 +590,54 @@ export function githubFirmwareAppPlugin(
           requireRequest: true,
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.callback", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const config = githubFirmwareAppConfigFromEnv(options);
-            const query = callbackQuerySchema.parse(authCtx.query);
-            const redirectBase = new URL(githubFirmwareAppSettingsPath, authCtx.request?.url);
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.callback",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const config = githubFirmwareAppConfigFromEnv(options);
+              const query = yield* parseBodyEffect(callbackQuerySchema, authCtx.query);
+              const redirectBase = new URL(githubFirmwareAppSettingsPath, authCtx.request?.url);
 
-            if (query.error) {
-              throw authCtx.redirect(settingsRedirect(redirectBase, "error"));
-            }
-            if (!config.clientId || !config.clientSecret || !query.code || !query.state) {
-              throw authCtx.redirect(settingsRedirect(redirectBase, "error"));
-            }
+              if (query.error) {
+                return yield* Effect.fail(
+                  authCtx.redirect(settingsRedirect(redirectBase, "error")),
+                );
+              }
+              if (!config.clientId || !config.clientSecret || !query.code || !query.state) {
+                return yield* Effect.fail(
+                  authCtx.redirect(settingsRedirect(redirectBase, "error")),
+                );
+              }
 
-            await consumeInstallState(authCtx, session.user.id, query.state, nowMs());
-            const verified = await verifiedUserInstallation(
-              oauthClient,
-              config,
-              query.code,
-              query.installation_id,
-            );
-            if (!verified?.installation) {
-              const state = crypto.randomUUID();
-              await createInstallState(authCtx, session.user.id, state, nowMs());
-              throw authCtx.redirect(githubFirmwareAppInstallUrl(config, state));
-            }
+              yield* consumeInstallState(authCtx, session.user.id, query.state, nowMs());
+              const verified = yield* verifiedUserInstallation(
+                oauthClient,
+                config,
+                query.code,
+                query.installation_id,
+              );
+              if (!verified?.installation) {
+                const state = crypto.randomUUID();
+                yield* createInstallState(authCtx, session.user.id, state, nowMs());
+                return yield* Effect.fail(
+                  authCtx.redirect(githubFirmwareAppInstallUrl(config, state)),
+                );
+              }
 
-            await upsertConnection(authCtx, session.user.id, verified.installation, {
-              setupAction: query.setup_action ?? null,
-              token: verified.token,
-              tokenSecret: githubAppUserTokenSecretFor(options),
-              tokenIssuedAtMs: nowMs(),
-            });
-            throw authCtx.redirect(settingsRedirect(redirectBase, "connected"));
-          }),
+              yield* upsertConnection(authCtx, session.user.id, verified.installation, {
+                setupAction: query.setup_action ?? null,
+                token: verified.token,
+                tokenSecret: githubAppUserTokenSecretFor(options),
+                tokenIssuedAtMs: nowMs(),
+              });
+              return yield* Effect.fail(
+                authCtx.redirect(settingsRedirect(redirectBase, "connected")),
+              );
+            }),
+          );
+        },
       ),
       githubFirmwareAppSetup: createAuthEndpoint(
         "/firmware/github/setup",
@@ -627,23 +647,31 @@ export function githubFirmwareAppPlugin(
           requireRequest: true,
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.setup", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const config = githubFirmwareAppConfigFromEnv(options);
-            if (!config.configured) {
-              throw APIError.from("SERVICE_UNAVAILABLE", {
-                code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
-                message:
-                  "GitHub App firmware builds are not configured. Set the GitHub App env vars and restart the Worker.",
-              });
-            }
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.setup",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const config = githubFirmwareAppConfigFromEnv(options);
+              if (!config.configured) {
+                return yield* Effect.fail(
+                  APIError.from("SERVICE_UNAVAILABLE", {
+                    code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
+                    message:
+                      "GitHub App firmware builds are not configured. Set the GitHub App env vars and restart the Worker.",
+                  }),
+                );
+              }
 
-            const state = crypto.randomUUID();
-            await createInstallState(authCtx, session.user.id, state, nowMs());
-            throw authCtx.redirect(githubFirmwareAppAuthorizeUrl(config, state));
-          }),
+              const state = crypto.randomUUID();
+              yield* createInstallState(authCtx, session.user.id, state, nowMs());
+              return yield* Effect.fail(
+                authCtx.redirect(githubFirmwareAppAuthorizeUrl(config, state)),
+              );
+            }),
+          );
+        },
       ),
       githubFirmwareAppSync: createAuthEndpoint(
         "/firmware/github/sync",
@@ -652,26 +680,35 @@ export function githubFirmwareAppPlugin(
           body: firmwareSyncBodySchema,
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.sync", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const body = firmwareSyncBodySchema.parse(authCtx.body) as GitHubFirmwareSyncInput;
-            const result = await syncFirmwareSourceBranch({
-              body,
-              config: githubFirmwareAppConfigFromEnv(options),
-              ctx: authCtx,
-              env: options,
-              githubClientFactory,
-              installationTokenClient,
-              nowMs: nowMs(),
-              oauthClient,
-              userId: session.user.id,
-            });
-            const response = publicSyncResult(result);
-            await options.onSourceSynced?.({ response, userId: session.user.id });
-            return ctx.json(response);
-          }),
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.sync",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const body = yield* parseBodyEffect(firmwareSyncBodySchema, authCtx.body);
+              const result = yield* syncFirmwareSourceBranch({
+                body,
+                config: githubFirmwareAppConfigFromEnv(options),
+                ctx: authCtx,
+                env: options,
+                githubClientFactory,
+                installationTokenClient,
+                nowMs: nowMs(),
+                oauthClient,
+                userId: session.user.id,
+              });
+              const response = publicSyncResult(result);
+              if (options.onSourceSynced) {
+                yield* Effect.tryPromise({
+                  try: async () => options.onSourceSynced?.({ response, userId: session.user.id }),
+                  catch: (cause) => platformError("github-firmware.on-source-synced", cause),
+                });
+              }
+              return yield* authJsonEffect(authCtx, response);
+            }),
+          );
+        },
       ),
       githubFirmwareAppBuild: createAuthEndpoint(
         "/firmware/github/build",
@@ -683,11 +720,11 @@ export function githubFirmwareAppPlugin(
         (ctx) =>
           runGitHubEndpoint(
             "auth.github-firmware.build",
-            async () => {
+            Effect.gen(function* () {
               const authCtx = asAuthEndpointContext(ctx);
-              const session = requireSession(authCtx);
-              const body = firmwareSyncBodySchema.parse(authCtx.body) as GitHubFirmwareSyncInput;
-              const synced = await syncFirmwareSourceBranch({
+              const session = yield* requireSessionEffect(authCtx);
+              const body = yield* parseBodyEffect(firmwareSyncBodySchema, authCtx.body);
+              const synced = yield* syncFirmwareSourceBranch({
                 body,
                 config: githubFirmwareAppConfigFromEnv(options),
                 ctx: authCtx,
@@ -699,13 +736,13 @@ export function githubFirmwareAppPlugin(
                 userId: session.user.id,
               });
               const requestId = crypto.randomUUID();
-              const installationToken = await installationTokenForFirmware(
+              const installationToken = yield* installationTokenForFirmware(
                 options,
                 installationTokenClient,
                 synced.connection.installationId,
               );
               const client = githubClientFactory(installationToken.token);
-              const dispatched = await client.dispatchWorkflow(
+              const dispatched = yield* client.dispatchWorkflow(
                 synced.repository.owner,
                 synced.repository.repo,
                 synced.repository.workflowPath,
@@ -719,28 +756,30 @@ export function githubFirmwareAppPlugin(
               );
 
               const now = new Date(nowMs());
-              await adapterFor(authCtx).create({
-                model: "githubFirmwareRun",
-                data: {
-                  branchId: synced.branchRow.id,
-                  createdAt: now,
-                  headBranch: synced.branch.branchName,
-                  headSha: synced.commit?.sha ?? null,
-                  htmlUrl: dispatched.html_url ?? null,
-                  repositoryId: synced.repositoryRow.id,
-                  requestId,
-                  runId: String(dispatched.workflow_run_id),
-                  sourceHash: synced.sourceHash,
-                  status: "dispatched",
-                  updatedAt: now,
-                },
-              });
-              await updateFirmwareBranch(authCtx, synced.branchRow, {
+              yield* adapterRequestEffect("github-firmware.create-run", () =>
+                adapterFor(authCtx).create({
+                  model: "githubFirmwareRun",
+                  data: {
+                    branchId: synced.branchRow.id,
+                    createdAt: now,
+                    headBranch: synced.branch.branchName,
+                    headSha: synced.commit?.sha ?? null,
+                    htmlUrl: dispatched.html_url ?? null,
+                    repositoryId: synced.repositoryRow.id,
+                    requestId,
+                    runId: String(dispatched.workflow_run_id),
+                    sourceHash: synced.sourceHash,
+                    status: "dispatched",
+                    updatedAt: now,
+                  },
+                }),
+              );
+              yield* updateFirmwareBranch(authCtx, synced.branchRow, {
                 lastRunId: requestId,
                 lastStatus: "dispatched",
                 updatedAt: now,
               });
-              await updateFirmwareRepository(authCtx, synced.repositoryRow, {
+              yield* updateFirmwareRepository(authCtx, synced.repositoryRow, {
                 lastRunId: requestId,
                 lastStatus: "dispatched",
                 updatedAt: now,
@@ -755,9 +794,15 @@ export function githubFirmwareAppPlugin(
                   status: "dispatched",
                 },
               } satisfies GitHubFirmwareBuildResponse;
-              await options.onBuildDispatched?.({ response, userId: session.user.id });
-              return ctx.json(response);
-            },
+              if (options.onBuildDispatched) {
+                yield* Effect.tryPromise({
+                  try: async () =>
+                    options.onBuildDispatched?.({ response, userId: session.user.id }),
+                  catch: (cause) => platformError("github-firmware.on-build-dispatched", cause),
+                });
+              }
+              return yield* authJsonEffect(authCtx, response);
+            }),
             githubFirmwareBuildReleaseGate(options),
           ),
       ),
@@ -768,23 +813,25 @@ export function githubFirmwareAppPlugin(
           body: firmwareArtifactDownloadBodySchema,
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.download-artifact", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const body = firmwareArtifactDownloadBodySchema.parse(
-              authCtx.body,
-            ) as GitHubFirmwareArtifactDownloadInput;
-            const result = await downloadFirmwareArtifact({
-              body,
-              ctx: authCtx,
-              env: options,
-              githubClientFactory,
-              installationTokenClient,
-              userId: session.user.id,
-            });
-            return ctx.json(result);
-          }),
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.download-artifact",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const body = yield* parseBodyEffect(firmwareArtifactDownloadBodySchema, authCtx.body);
+              const result = yield* downloadFirmwareArtifact({
+                body,
+                ctx: authCtx,
+                env: options,
+                githubClientFactory,
+                installationTokenClient,
+                userId: session.user.id,
+              });
+              return yield* authJsonEffect(authCtx, result);
+            }),
+          );
+        },
       ),
       githubFirmwareAppCleanup: createAuthEndpoint(
         "/firmware/github/cleanup",
@@ -793,25 +840,33 @@ export function githubFirmwareAppPlugin(
           body: firmwareCleanupBodySchema,
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.cleanup", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            const body = firmwareCleanupBodySchema.parse(
-              authCtx.body,
-            ) as GitHubFirmwareCleanupInput;
-            const result = await cleanupFirmwareRepository({
-              body,
-              ctx: authCtx,
-              env: options,
-              githubClientFactory,
-              installationTokenClient,
-              nowMs: nowMs(),
-              userId: session.user.id,
-            });
-            await options.onCleanedUp?.({ response: result, userId: session.user.id });
-            return ctx.json(result);
-          }),
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.cleanup",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              const body = yield* parseBodyEffect(firmwareCleanupBodySchema, authCtx.body);
+              const result = yield* cleanupFirmwareRepository({
+                body,
+                ctx: authCtx,
+                env: options,
+                githubClientFactory,
+                installationTokenClient,
+                nowMs: nowMs(),
+                userId: session.user.id,
+              });
+              if (options.onCleanedUp) {
+                yield* Effect.tryPromise({
+                  try: async () =>
+                    options.onCleanedUp?.({ response: result, userId: session.user.id }),
+                  catch: (cause) => platformError("github-firmware.on-cleaned-up", cause),
+                });
+              }
+              return yield* authJsonEffect(authCtx, result);
+            }),
+          );
+        },
       ),
       githubFirmwareAppDisconnect: createAuthEndpoint(
         "/firmware/github/disconnect",
@@ -819,34 +874,37 @@ export function githubFirmwareAppPlugin(
           method: "POST",
           use: [sessionMiddleware],
         },
-        (ctx) =>
-          runGitHubEndpoint("auth.github-firmware.disconnect", async () => {
-            const authCtx = asAuthEndpointContext(ctx);
-            const session = requireSession(authCtx);
-            await adapterFor(authCtx).deleteMany({
-              model: "githubFirmwareAppConnection",
-              where: [{ field: "userId", value: session.user.id }],
-            });
-            return ctx.json(
-              disconnectedGitHubFirmwareAppStatus(githubFirmwareAppConfigFromEnv(options)),
-            );
-          }),
+        (ctx) => {
+          const authCtx = asAuthEndpointContext(ctx);
+          return runGitHubEndpoint(
+            "auth.github-firmware.disconnect",
+            Effect.gen(function* () {
+              const session = yield* requireSessionEffect(authCtx);
+              yield* adapterRequestEffect("github-firmware.disconnect", () =>
+                adapterFor(authCtx).deleteMany({
+                  model: "githubFirmwareAppConnection",
+                  where: [{ field: "userId", value: session.user.id }],
+                }),
+              );
+              return yield* authJsonEffect(
+                authCtx,
+                disconnectedGitHubFirmwareAppStatus(githubFirmwareAppConfigFromEnv(options)),
+              );
+            }),
+          );
+        },
       ),
     },
   };
 }
 
-function runGitHubEndpoint<A>(
+function runGitHubEndpoint<A, E>(
   operation: string,
-  run: () => PromiseLike<A>,
+  endpoint: Effect.Effect<A, E>,
   before: Effect.Effect<void, unknown> = Effect.void,
 ): Promise<A> {
-  const endpoint = Effect.tryPromise({
-    try: run,
-    // Better Auth's APIError and redirect responses must cross the Effect
-    // boundary unchanged so its endpoint adapter can render them correctly.
-    catch: (error) => error,
-  });
+  // Better Auth's APIError and redirect responses stay in the failure channel
+  // unchanged so its endpoint adapter can render them correctly.
   return runWorkerEffect(operation, Effect.andThen(before, endpoint));
 }
 
@@ -871,6 +929,36 @@ function githubFirmwareBuildReleaseGate(options: GitHubFirmwareAppPluginOptions)
 
 function asAuthEndpointContext(ctx: unknown) {
   return ctx as AuthEndpointContext;
+}
+
+const requireSessionEffect = Effect.fn("github-firmware.require-session")(function* (
+  ctx: AuthEndpointContext,
+) {
+  return yield* Effect.try({
+    try: () => requireSession(ctx),
+    catch: (error) => error,
+  });
+});
+
+function parseBodyEffect<S extends z.ZodType>(schema: S, value: unknown) {
+  return Effect.try({
+    try: () => schema.parse(value),
+    catch: (error) => error,
+  });
+}
+
+function authJsonEffect<T extends object | null>(ctx: AuthEndpointContext, body: T) {
+  return Effect.tryPromise({
+    try: async () => ctx.json(body),
+    catch: (error) => error,
+  });
+}
+
+function adapterRequestEffect<A>(operation: string, request: () => Promise<A>) {
+  return Effect.tryPromise({
+    try: request,
+    catch: (cause) => platformError(operation, cause),
+  });
 }
 
 function requireSession(ctx: AuthEndpointContext) {
@@ -909,58 +997,71 @@ function statusForConnection(
   };
 }
 
-async function findConnection(ctx: AuthEndpointContext, userId: string) {
-  return (await adapterFor(ctx).findOne({
-    model: "githubFirmwareAppConnection",
-    where: [{ field: "userId", value: userId }],
-  })) as GitHubFirmwareAppConnectionRow | null;
-}
+const findConnection = Effect.fn("github-firmware.find-connection")(function* (
+  ctx: AuthEndpointContext,
+  userId: string,
+) {
+  return yield* adapterRequestEffect("github-firmware.find-connection", () =>
+    adapterFor(ctx).findOne({
+      model: "githubFirmwareAppConnection",
+      where: [{ field: "userId", value: userId }],
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareAppConnectionRow | null));
+});
 
-async function createInstallState(
+const createInstallState = Effect.fn("github-firmware.create-install-state")(function* (
   ctx: AuthEndpointContext,
   userId: string,
   state: string,
   nowMsValue: number,
 ) {
   const now = new Date(nowMsValue);
-  return adapterFor(ctx).create({
-    model: "githubFirmwareAppState",
-    data: {
-      userId,
-      state,
-      expiresAt: new Date(nowMsValue + installStateTtlMs),
-      createdAt: now,
-      updatedAt: now,
-    },
-  });
-}
+  return yield* adapterRequestEffect("github-firmware.create-install-state", () =>
+    adapterFor(ctx).create({
+      model: "githubFirmwareAppState",
+      data: {
+        userId,
+        state,
+        expiresAt: new Date(nowMsValue + installStateTtlMs),
+        createdAt: now,
+        updatedAt: now,
+      },
+    }),
+  );
+});
 
-async function consumeInstallState(
+const consumeInstallState = Effect.fn("github-firmware.consume-install-state")(function* (
   ctx: AuthEndpointContext,
   userId: string,
   state: string,
   nowMsValue: number,
 ) {
-  const row = (await adapterFor(ctx).findOne({
-    model: "githubFirmwareAppState",
-    where: [
-      { field: "userId", value: userId },
-      { field: "state", value: state },
-    ],
-  })) as GitHubFirmwareAppStateRow | null;
+  const row = yield* adapterRequestEffect("github-firmware.find-install-state", () =>
+    adapterFor(ctx).findOne({
+      model: "githubFirmwareAppState",
+      where: [
+        { field: "userId", value: userId },
+        { field: "state", value: state },
+      ],
+    }),
+  ).pipe(Effect.map((value) => value as GitHubFirmwareAppStateRow | null));
   if (!row || dateMs(row.expiresAt) <= nowMsValue) {
-    throw APIError.from("BAD_REQUEST", {
-      code: "GITHUB_FIRMWARE_APP_STATE_EXPIRED",
-      message: "GitHub App connection expired. Start the connection again.",
-    });
+    return yield* Effect.fail(
+      APIError.from("BAD_REQUEST", {
+        code: "GITHUB_FIRMWARE_APP_STATE_EXPIRED",
+        message: "GitHub App connection expired. Start the connection again.",
+      }),
+    );
   }
-  await adapterFor(ctx).deleteMany({
-    model: "githubFirmwareAppState",
-    where: [{ field: "state", value: state }],
-  });
-}
+  yield* adapterRequestEffect("github-firmware.delete-install-state", () =>
+    adapterFor(ctx).deleteMany({
+      model: "githubFirmwareAppState",
+      where: [{ field: "state", value: state }],
+    }),
+  );
+});
 
-async function upsertConnection(
+const upsertConnection = Effect.fn("github-firmware.upsert-connection")(function* (
   ctx: AuthEndpointContext,
   userId: string,
   installation: GitHubAppUserInstallation,
@@ -971,10 +1072,10 @@ async function upsertConnection(
     tokenSecret: string | null;
   },
 ) {
-  const existing = await findConnection(ctx, userId);
+  const existing = yield* findConnection(ctx, userId);
   const now = new Date();
   const encryptedToken = meta.tokenSecret
-    ? await encryptGitHubAppUserToken(meta.token, meta.tokenSecret, meta.tokenIssuedAtMs)
+    ? yield* encryptGitHubAppUserTokenEffect(meta.token, meta.tokenSecret, meta.tokenIssuedAtMs)
     : null;
   const tokenData = encryptedToken
     ? {
@@ -999,24 +1100,28 @@ async function upsertConnection(
   };
 
   if (existing) {
-    return adapterFor(ctx).update({
-      model: "githubFirmwareAppConnection",
-      where: [{ field: "userId", value: userId }],
-      update: data,
-    });
+    return yield* adapterRequestEffect("github-firmware.update-connection", () =>
+      adapterFor(ctx).update({
+        model: "githubFirmwareAppConnection",
+        where: [{ field: "userId", value: userId }],
+        update: data,
+      }),
+    );
   }
 
-  return adapterFor(ctx).create({
-    model: "githubFirmwareAppConnection",
-    data: {
-      ...data,
-      connectedAt: now,
-      userId,
-    },
-  });
-}
+  return yield* adapterRequestEffect("github-firmware.create-connection", () =>
+    adapterFor(ctx).create({
+      model: "githubFirmwareAppConnection",
+      data: {
+        ...data,
+        connectedAt: now,
+        userId,
+      },
+    }),
+  );
+});
 
-async function verifiedUserInstallation(
+const verifiedUserInstallation = Effect.fn("github-firmware.verify-user-installation")(function* (
   oauthClient: GitHubAppOAuthClient,
   config: ReturnType<typeof githubFirmwareAppConfigFromEnv>,
   code: string,
@@ -1024,17 +1129,17 @@ async function verifiedUserInstallation(
 ) {
   if (!config.clientId || !config.clientSecret) return null;
 
-  const token = await oauthClient.exchangeUserCode({
+  const token = yield* oauthClient.exchangeUserCode({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
     code,
   });
-  const installations = await oauthClient.listUserInstallations(token.accessToken);
+  const installations = yield* oauthClient.listUserInstallations(token.accessToken);
   const installation = selectInstallation(installations.installations, installationId);
   return installation ? { installation, token } : null;
-}
+});
 
-async function syncFirmwareSourceBranch(input: {
+const syncFirmwareSourceBranch = Effect.fn("github-firmware.sync-source-branch")(function* (input: {
   body: GitHubFirmwareSyncInput;
   config: ReturnType<typeof githubFirmwareAppConfigFromEnv>;
   ctx: AuthEndpointContext;
@@ -1044,24 +1149,28 @@ async function syncFirmwareSourceBranch(input: {
   nowMs: number;
   oauthClient: GitHubAppOAuthClient;
   userId: string;
-}): Promise<FirmwareSourceBranchSync> {
-  assertNoBlockingFirmwareDiagnostics(input.body.source);
+}) {
+  yield* noBlockingFirmwareDiagnosticsEffect(input.body.source);
   if (!input.config.configured) {
-    throw APIError.from("SERVICE_UNAVAILABLE", {
-      code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
-      message: "GitHub App firmware builds are not configured.",
-    });
+    return yield* Effect.fail(
+      APIError.from("SERVICE_UNAVAILABLE", {
+        code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
+        message: "GitHub App firmware builds are not configured.",
+      }),
+    );
   }
 
-  const connection = await findConnection(input.ctx, input.userId);
+  const connection = yield* findConnection(input.ctx, input.userId);
   if (!connection) {
-    throw APIError.from("UNAUTHORIZED", {
-      code: "GITHUB_FIRMWARE_APP_NOT_CONNECTED",
-      message: "Install the GitHub App before syncing firmware.",
-    });
+    return yield* Effect.fail(
+      APIError.from("UNAUTHORIZED", {
+        code: "GITHUB_FIRMWARE_APP_NOT_CONNECTED",
+        message: "Install the GitHub App before syncing firmware.",
+      }),
+    );
   }
 
-  const { desired, row } = await ensureFirmwareRepository(input, connection);
+  const { desired, row } = yield* ensureFirmwareRepository(input, connection);
   const variant = firmwareGitHubVariantForProfile(input.body.profile, input.body.variant);
   const branchName = firmwareGitHubBranchForVariant(variant);
   const source = sourceBundleFromInput(input.body.source);
@@ -1074,30 +1183,33 @@ async function syncFirmwareSourceBranch(input: {
     generatedAt: new Date(input.nowMs).toISOString(),
     variant,
   });
-  const installationToken = await installationTokenForFirmware(
+  const installationToken = yield* installationTokenForFirmware(
     input.env,
     input.installationTokenClient,
     connection.installationId,
   );
   const client = input.githubClientFactory(installationToken.token);
-  await ensureDefaultBranchWorkflowFiles(client, row, plan);
-  const commit = await syncBranchCommit(client, row, branchName, plan);
+  yield* ensureDefaultBranchWorkflowFiles(client, row, plan);
+  const commit = yield* syncBranchCommit(client, row, branchName, plan);
   const now = new Date(input.nowMs);
-  const branchRow = await upsertFirmwareBranch(input.ctx, row, {
+  const syncInputJson = yield* Schema.encodeEffect(
+    Schema.fromJsonString(GitHubFirmwareSyncInputSchema),
+  )(input.body).pipe(
+    Effect.mapError((cause) => platformError("github-firmware.encode-sync-input", cause)),
+  );
+  const branchRow = yield* upsertFirmwareBranch(input.ctx, row, {
     branchName,
     lastCommitSha: commit.sha,
     lastSourceHash: plan.sourceHash,
     lastStatus: "synced",
     sourceSavePointId: variant.sourceSavePointId ?? null,
-    syncInputJson: Schema.encodeSync(Schema.fromJsonString(GitHubFirmwareSyncInputSchema))(
-      input.body,
-    ),
+    syncInputJson,
     deleteRequested: false,
     updatedAt: now,
     variantId: variant.id,
     variantName: variant.name ?? variant.id,
   });
-  const repositoryRow = await updateFirmwareRepository(input.ctx, row, {
+  const repositoryRow = yield* updateFirmwareRepository(input.ctx, row, {
     firmwareFamily: input.body.profile.firmware,
     lastCommitSha: commit.sha,
     lastSourceHash: plan.sourceHash,
@@ -1120,180 +1232,208 @@ async function syncFirmwareSourceBranch(input: {
     repositoryRow,
     sourceHash: plan.sourceHash,
     workflowPaths: plan.workflowFiles.workflowPaths,
-  };
-}
+  } satisfies FirmwareSourceBranchSync;
+});
 
-export async function reconcileGitHubFirmwareBranch(input: {
-  client: GitHubRestClientLike;
-  nowMs: number;
-  repository: GitHubFirmwareRepositoryTarget;
-  syncInput: unknown;
-}): Promise<ReconcileGitHubFirmwareBranchResult> {
-  const body = firmwareSyncBodySchema.parse(input.syncInput) as GitHubFirmwareSyncInput;
-  assertNoBlockingFirmwareDiagnostics(body.source);
-  const desired = deriveFirmwareGitHubRepository(body.profile, {
-    owner: input.repository.owner,
-    private: true,
-    repositoryName: input.repository.repo,
-  });
-  const variant = firmwareGitHubVariantForProfile(body.profile, body.variant);
-  const branchName = firmwareGitHubBranchForVariant(variant);
-  const source = sourceBundleFromInput(body.source);
-  const plan = firmwareSourceBundleToGitHubUpserts(source, desired, {
-    branch: branchName,
-    commitMessage: `Reconcile ${variant.name ?? variant.id} firmware source (${source.sourceHash.slice(0, 12)})`,
-    generatedAt: new Date(input.nowMs).toISOString(),
-    variant,
-  });
-  await ensureDefaultBranchWorkflowFiles(input.client, input.repository, plan);
-  const commit = await syncBranchCommit(input.client, input.repository, branchName, plan);
-  return {
-    branchName,
-    commitSha: commit.sha,
-    sourceHash: plan.sourceHash,
-    workflowPath: desired.pathLayout.defaultWorkflowPath,
-  };
-}
-
-async function cleanupFirmwareRepository(input: {
-  body: GitHubFirmwareCleanupInput;
-  ctx: AuthEndpointContext;
-  env: GitHubFirmwareAppEnv;
-  githubClientFactory: (token: string) => GitHubRestClientLike;
-  installationTokenClient: GitHubAppInstallationTokenClientLike;
-  nowMs: number;
-  userId: string;
-}): Promise<GitHubFirmwareCleanupResponse> {
-  const context = await resolveFirmwareCleanupContext(input);
-  if (!context.repository) {
-    throw APIError.from("NOT_FOUND", {
-      code: "GITHUB_FIRMWARE_REPOSITORY_NOT_FOUND",
-      message: "No managed firmware repository exists for this profile.",
+export const reconcileGitHubFirmwareBranch = Effect.fn("github-firmware.reconcile-branch")(
+  function* (input: {
+    client: GitHubRestClientLike;
+    nowMs: number;
+    repository: GitHubFirmwareRepositoryTarget;
+    syncInput: unknown;
+  }) {
+    const body = yield* parseBodyEffect(firmwareSyncBodySchema, input.syncInput);
+    yield* noBlockingFirmwareDiagnosticsEffect(body.source);
+    const desired = deriveFirmwareGitHubRepository(body.profile, {
+      owner: input.repository.owner,
+      private: true,
+      repositoryName: input.repository.repo,
     });
-  }
-
-  const repository = context.repository;
-  const fullName = `${repository.owner}/${repository.repo}`;
-  const installationToken = await installationTokenForFirmware(
-    input.env,
-    input.installationTokenClient,
-    context.connection.installationId,
-  );
-  const client = input.githubClientFactory(installationToken.token);
-
-  if (input.body.action === "branch") {
-    const branch = context.branch;
-    if (!branch) {
-      throw APIError.from("NOT_FOUND", {
-        code: "GITHUB_FIRMWARE_BRANCH_NOT_FOUND",
-        message: "No generated firmware branch exists for this variant.",
-      });
-    }
-    if (!branch.branchName.startsWith("kbui/") || branch.branchName === repository.defaultBranch) {
-      throw APIError.from("FORBIDDEN", {
-        code: "GITHUB_FIRMWARE_BRANCH_NOT_MANAGED",
-        message: "Only generated kbui branches can be removed.",
-      });
-    }
-
-    try {
-      await client.deleteRef(repository.owner, repository.repo, `heads/${branch.branchName}`);
-    } catch (error) {
-      if (!(error instanceof GitHubRestApiError) || error.code !== "GITHUB_NOT_FOUND") throw error;
-    }
-    await adapterFor(input.ctx).deleteMany({
-      model: "githubFirmwareBranch",
-      where: [{ field: "id", value: branch.id }],
+    const variant = firmwareGitHubVariantForProfile(body.profile, body.variant);
+    const branchName = firmwareGitHubBranchForVariant(variant);
+    const source = sourceBundleFromInput(body.source);
+    const plan = firmwareSourceBundleToGitHubUpserts(source, desired, {
+      branch: branchName,
+      commitMessage: `Reconcile ${variant.name ?? variant.id} firmware source (${source.sourceHash.slice(0, 12)})`,
+      generatedAt: new Date(input.nowMs).toISOString(),
+      variant,
     });
+    yield* ensureDefaultBranchWorkflowFiles(input.client, input.repository, plan);
+    const commit = yield* syncBranchCommit(input.client, input.repository, branchName, plan);
     return {
-      action: "branch",
-      branchName: branch.branchName,
+      branchName,
+      commitSha: commit.sha,
+      sourceHash: plan.sourceHash,
+      workflowPath: desired.pathLayout.defaultWorkflowPath,
+    } satisfies ReconcileGitHubFirmwareBranchResult;
+  },
+);
+
+const cleanupFirmwareRepository = Effect.fn("github-firmware.cleanup-repository")(
+  function* (input: {
+    body: GitHubFirmwareCleanupInput;
+    ctx: AuthEndpointContext;
+    env: GitHubFirmwareAppEnv;
+    githubClientFactory: (token: string) => GitHubRestClientLike;
+    installationTokenClient: GitHubAppInstallationTokenClientLike;
+    nowMs: number;
+    userId: string;
+  }) {
+    const context = yield* resolveFirmwareCleanupContext(input);
+    if (!context.repository) {
+      return yield* Effect.fail(
+        APIError.from("NOT_FOUND", {
+          code: "GITHUB_FIRMWARE_REPOSITORY_NOT_FOUND",
+          message: "No managed firmware repository exists for this profile.",
+        }),
+      );
+    }
+
+    const repository = context.repository;
+    const fullName = `${repository.owner}/${repository.repo}`;
+    const installationToken = yield* installationTokenForFirmware(
+      input.env,
+      input.installationTokenClient,
+      context.connection.installationId,
+    );
+    const client = input.githubClientFactory(installationToken.token);
+
+    if (input.body.action === "branch") {
+      const branch = context.branch;
+      if (!branch) {
+        return yield* Effect.fail(
+          APIError.from("NOT_FOUND", {
+            code: "GITHUB_FIRMWARE_BRANCH_NOT_FOUND",
+            message: "No generated firmware branch exists for this variant.",
+          }),
+        );
+      }
+      if (
+        !branch.branchName.startsWith("kbui/") ||
+        branch.branchName === repository.defaultBranch
+      ) {
+        return yield* Effect.fail(
+          APIError.from("FORBIDDEN", {
+            code: "GITHUB_FIRMWARE_BRANCH_NOT_MANAGED",
+            message: "Only generated kbui branches can be removed.",
+          }),
+        );
+      }
+
+      yield* client.deleteRef(repository.owner, repository.repo, `heads/${branch.branchName}`).pipe(
+        Effect.catchIf(
+          (error) => error.code === "GITHUB_NOT_FOUND",
+          () => Effect.succeed(null),
+        ),
+      );
+      yield* adapterRequestEffect("github-firmware.delete-branch-row", () =>
+        adapterFor(input.ctx).deleteMany({
+          model: "githubFirmwareBranch",
+          where: [{ field: "id", value: branch.id }],
+        }),
+      );
+      return {
+        action: "branch" as const,
+        branchName: branch.branchName,
+        deleted: true,
+        repositoryFullName: fullName,
+      } satisfies GitHubFirmwareCleanupResponse;
+    }
+
+    if (repository.relationship !== "managed") {
+      return yield* Effect.fail(
+        APIError.from("FORBIDDEN", {
+          code: "GITHUB_FIRMWARE_REPOSITORY_ADOPTED",
+          message: "Adopted repositories are never deleted by kbui.",
+        }),
+      );
+    }
+    if (input.body.confirmation !== fullName) {
+      return yield* Effect.fail(
+        APIError.from("BAD_REQUEST", {
+          code: "GITHUB_FIRMWARE_REPOSITORY_CONFIRMATION_REQUIRED",
+          message: `Type ${fullName} exactly to delete this managed repository.`,
+        }),
+      );
+    }
+
+    yield* client.deleteRepository(repository.owner, repository.repo);
+    yield* adapterRequestEffect("github-firmware.delete-repository-row", () =>
+      adapterFor(input.ctx).deleteMany({
+        model: "githubFirmwareRepository",
+        where: [{ field: "id", value: repository.id }],
+      }),
+    );
+    return {
+      action: "repository" as const,
+      branchName: null,
       deleted: true,
       repositoryFullName: fullName,
-    };
-  }
+    } satisfies GitHubFirmwareCleanupResponse;
+  },
+);
 
-  if (repository.relationship !== "managed") {
-    throw APIError.from("FORBIDDEN", {
-      code: "GITHUB_FIRMWARE_REPOSITORY_ADOPTED",
-      message: "Adopted repositories are never deleted by kbui.",
-    });
-  }
-  if (input.body.confirmation !== fullName) {
-    throw APIError.from("BAD_REQUEST", {
-      code: "GITHUB_FIRMWARE_REPOSITORY_CONFIRMATION_REQUIRED",
-      message: `Type ${fullName} exactly to delete this managed repository.`,
-    });
-  }
-
-  await client.deleteRepository(repository.owner, repository.repo);
-  await adapterFor(input.ctx).deleteMany({
-    model: "githubFirmwareRepository",
-    where: [{ field: "id", value: repository.id }],
-  });
-  return {
-    action: "repository",
-    branchName: null,
-    deleted: true,
-    repositoryFullName: fullName,
-  };
-}
-
-async function downloadFirmwareArtifact(input: {
+const downloadFirmwareArtifact = Effect.fn("github-firmware.download-artifact")(function* (input: {
   body: GitHubFirmwareArtifactDownloadInput;
   ctx: AuthEndpointContext;
   env: GitHubFirmwareAppEnv;
   githubClientFactory: (token: string) => GitHubRestClientLike;
   installationTokenClient: GitHubAppInstallationTokenClientLike;
   userId: string;
-}): Promise<GitHubFirmwareArtifactDownloadResponse> {
-  const run = await findFirmwareRunByRequestId(input.ctx, input.body.requestId);
+}) {
+  const run = yield* findFirmwareRunByRequestId(input.ctx, input.body.requestId);
   if (!run) {
-    throw APIError.from("NOT_FOUND", {
-      code: "GITHUB_FIRMWARE_RUN_NOT_FOUND",
-      message: "GitHub firmware build run was not found.",
-    });
+    return yield* Effect.fail(
+      APIError.from("NOT_FOUND", {
+        code: "GITHUB_FIRMWARE_RUN_NOT_FOUND",
+        message: "GitHub firmware build run was not found.",
+      }),
+    );
   }
-  const repository = await findFirmwareRepositoryByIdForUser(
+  const repository = yield* findFirmwareRepositoryByIdForUser(
     input.ctx,
     input.userId,
     run.repositoryId,
   );
   if (!repository || !run.runId) {
-    throw APIError.from("BAD_REQUEST", {
-      code: "GITHUB_FIRMWARE_RUN_NOT_READY",
-      message: "The durable build event has not attached an artifact to this run yet.",
-    });
+    return yield* Effect.fail(
+      APIError.from("BAD_REQUEST", {
+        code: "GITHUB_FIRMWARE_RUN_NOT_READY",
+        message: "The durable build event has not attached an artifact to this run yet.",
+      }),
+    );
   }
-  const connection = await findConnection(input.ctx, input.userId);
+  const connection = yield* findConnection(input.ctx, input.userId);
   if (!connection || connection.installationId !== repository.installationId) {
-    throw APIError.from("UNAUTHORIZED", {
-      code: "GITHUB_FIRMWARE_APP_NOT_CONNECTED",
-      message: "Install the GitHub App before downloading firmware artifacts.",
-    });
+    return yield* Effect.fail(
+      APIError.from("UNAUTHORIZED", {
+        code: "GITHUB_FIRMWARE_APP_NOT_CONNECTED",
+        message: "Install the GitHub App before downloading firmware artifacts.",
+      }),
+    );
   }
 
-  const installationToken = await installationTokenForFirmware(
+  const installationToken = yield* installationTokenForFirmware(
     input.env,
     input.installationTokenClient,
     connection.installationId,
   );
   const client = input.githubClientFactory(installationToken.token);
   const runId = Number(run.runId);
-  const artifacts = (
-    await client.listWorkflowRunArtifacts(repository.owner, repository.repo, runId, {
-      per_page: 100,
-    })
-  ).artifacts;
+  const artifacts = yield* client
+    .listWorkflowRunArtifacts(repository.owner, repository.repo, runId, { per_page: 100 })
+    .pipe(Effect.map((response) => response.artifacts));
   const artifact = artifacts.find((item) => String(item.id) === input.body.artifactId);
   if (!artifact) {
-    throw APIError.from("NOT_FOUND", {
-      code: "GITHUB_FIRMWARE_ARTIFACT_NOT_FOUND",
-      message: "GitHub firmware artifact was not found for this run.",
-    });
+    return yield* Effect.fail(
+      APIError.from("NOT_FOUND", {
+        code: "GITHUB_FIRMWARE_ARTIFACT_NOT_FOUND",
+        message: "GitHub firmware artifact was not found for this run.",
+      }),
+    );
   }
 
-  const archive = await client.downloadArtifactZip(
+  const archive = yield* client.downloadArtifactZip(
     repository.owner,
     repository.repo,
     Number(input.body.artifactId),
@@ -1306,10 +1446,10 @@ async function downloadFirmwareArtifact(input: {
     fileName: archive.fileName ?? `${artifact.name}.zip`,
     sizeBytes: archive.sizeBytes,
     zipBase64: bytesToBase64(archive.bytes),
-  };
-}
+  } satisfies GitHubFirmwareArtifactDownloadResponse;
+});
 
-async function ensureFirmwareRepository(
+const ensureFirmwareRepository = Effect.fn("github-firmware.ensure-repository")(function* (
   input: {
     body: GitHubFirmwareSyncInput;
     ctx: AuthEndpointContext;
@@ -1329,13 +1469,15 @@ async function ensureFirmwareRepository(
     repositoryName: input.body.repositoryName,
   });
   if (!desired.owner) {
-    throw APIError.from("BAD_REQUEST", {
-      code: "GITHUB_FIRMWARE_REPOSITORY_OWNER_MISSING",
-      message: "GitHub account login was not available for repository setup.",
-    });
+    return yield* Effect.fail(
+      APIError.from("BAD_REQUEST", {
+        code: "GITHUB_FIRMWARE_REPOSITORY_OWNER_MISSING",
+        message: "GitHub account login was not available for repository setup.",
+      }),
+    );
   }
 
-  const existing = await findFirmwareRepository(
+  const existing = yield* findFirmwareRepository(
     input.ctx,
     input.userId,
     desired.owner,
@@ -1343,7 +1485,7 @@ async function ensureFirmwareRepository(
   );
   if (existing) return { desired, row: existing };
 
-  const userToken = await userTokenForRepositorySetup({
+  const userToken = yield* userTokenForRepositorySetup({
     config: input.config,
     connection,
     ctx: input.ctx,
@@ -1352,28 +1494,30 @@ async function ensureFirmwareRepository(
     oauthClient: input.oauthClient,
   });
   const client = input.githubClientFactory(userToken);
-  const repo = await createOrReadFirmwareRepository(client, desired);
+  const repo = yield* createOrReadFirmwareRepository(client, desired);
   const now = new Date(input.nowMs);
-  const row = (await adapterFor(input.ctx).create({
-    model: "githubFirmwareRepository",
-    data: {
-      createdAt: now,
-      defaultBranch: repo.default_branch || desired.defaultBranch,
-      firmwareFamily: input.body.profile.firmware,
-      fork: false,
-      installationId: connection.installationId,
-      owner: repo.owner.login,
-      private: repo.private,
-      provider: "github",
-      relationship: desired.relationship,
-      repo: repo.name,
-      repoId: String(repo.id),
-      repositoryKind: desired.kind,
-      updatedAt: now,
-      userId: input.userId,
-      workflowPath: desired.pathLayout.defaultWorkflowPath,
-    },
-  })) as GitHubFirmwareRepositoryRow;
+  const row = yield* adapterRequestEffect("github-firmware.create-repository-row", () =>
+    adapterFor(input.ctx).create({
+      model: "githubFirmwareRepository",
+      data: {
+        createdAt: now,
+        defaultBranch: repo.default_branch || desired.defaultBranch,
+        firmwareFamily: input.body.profile.firmware,
+        fork: false,
+        installationId: connection.installationId,
+        owner: repo.owner.login,
+        private: repo.private,
+        provider: "github",
+        relationship: desired.relationship,
+        repo: repo.name,
+        repoId: String(repo.id),
+        repositoryKind: desired.kind,
+        updatedAt: now,
+        userId: input.userId,
+        workflowPath: desired.pathLayout.defaultWorkflowPath,
+      },
+    }),
+  ).pipe(Effect.map((value) => value as GitHubFirmwareRepositoryRow));
 
   return {
     desired: {
@@ -1385,85 +1529,96 @@ async function ensureFirmwareRepository(
     },
     row,
   };
-}
+});
 
-async function userTokenForRepositorySetup(input: {
-  config: ReturnType<typeof githubFirmwareAppConfigFromEnv>;
-  connection: GitHubFirmwareAppConnectionRow;
-  ctx: AuthEndpointContext;
-  env: GitHubFirmwareAppEnv;
-  nowMs: number;
-  oauthClient: GitHubAppOAuthClient;
-}) {
-  const tokenSecrets = githubAppUserTokenSecretsFor(input.env);
-  const tokenSecret = tokenSecrets[0] ?? null;
-  if (!tokenSecret) {
-    throw APIError.from("SERVICE_UNAVAILABLE", {
-      code: "GITHUB_FIRMWARE_USER_TOKEN_SECRET_MISSING",
-      message: "GitHub App user-token storage is not configured.",
-    });
-  }
-  if (input.connection.userAccessTokenCiphertext && input.connection.userAccessTokenIv) {
-    const expiresAtMs = dateMs(input.connection.userAccessTokenExpiresAt);
-    if (expiresAtMs === 0 || expiresAtMs > input.nowMs + 60_000) {
-      return decryptStoredGitHubToken(tokenSecrets, (candidate) =>
-        decryptGitHubAppUserAccessToken(
-          {
-            accessTokenCiphertext: input.connection.userAccessTokenCiphertext!,
-            accessTokenIv: input.connection.userAccessTokenIv!,
-          },
-          candidate,
-        ),
+const userTokenForRepositorySetup = Effect.fn("github-firmware.user-token-for-repository")(
+  function* (input: {
+    config: ReturnType<typeof githubFirmwareAppConfigFromEnv>;
+    connection: GitHubFirmwareAppConnectionRow;
+    ctx: AuthEndpointContext;
+    env: GitHubFirmwareAppEnv;
+    nowMs: number;
+    oauthClient: GitHubAppOAuthClient;
+  }) {
+    const tokenSecrets = githubAppUserTokenSecretsFor(input.env);
+    const tokenSecret = tokenSecrets[0] ?? null;
+    if (!tokenSecret) {
+      return yield* Effect.fail(
+        APIError.from("SERVICE_UNAVAILABLE", {
+          code: "GITHUB_FIRMWARE_USER_TOKEN_SECRET_MISSING",
+          message: "GitHub App user-token storage is not configured.",
+        }),
       );
     }
-  }
+    const accessTokenCiphertext = input.connection.userAccessTokenCiphertext;
+    const accessTokenIv = input.connection.userAccessTokenIv;
+    if (accessTokenCiphertext && accessTokenIv) {
+      const expiresAtMs = dateMs(input.connection.userAccessTokenExpiresAt);
+      if (expiresAtMs === 0 || expiresAtMs > input.nowMs + 60_000) {
+        return yield* decryptStoredGitHubTokenEffect(tokenSecrets, (candidate) =>
+          decryptGitHubAppUserAccessTokenEffect(
+            { accessTokenCiphertext, accessTokenIv },
+            candidate,
+          ),
+        );
+      }
+    }
 
-  if (
-    !input.config.clientId ||
-    !input.config.clientSecret ||
-    !input.connection.userRefreshTokenCiphertext ||
-    !input.connection.userRefreshTokenIv ||
-    dateMs(input.connection.userRefreshTokenExpiresAt) <= input.nowMs
-  ) {
-    throw APIError.from("UNAUTHORIZED", {
-      code: "GITHUB_FIRMWARE_USER_TOKEN_EXPIRED",
-      message: "GitHub App user authorization expired. Reconnect the app.",
-    });
-  }
+    const clientId = input.config.clientId;
+    const clientSecret = input.config.clientSecret;
+    const refreshTokenCiphertext = input.connection.userRefreshTokenCiphertext;
+    const refreshTokenIv = input.connection.userRefreshTokenIv;
+    if (
+      !clientId ||
+      !clientSecret ||
+      !refreshTokenCiphertext ||
+      !refreshTokenIv ||
+      dateMs(input.connection.userRefreshTokenExpiresAt) <= input.nowMs
+    ) {
+      return yield* Effect.fail(
+        APIError.from("UNAUTHORIZED", {
+          code: "GITHUB_FIRMWARE_USER_TOKEN_EXPIRED",
+          message: "GitHub App user authorization expired. Reconnect the app.",
+        }),
+      );
+    }
 
-  const refreshToken = await decryptStoredGitHubToken(tokenSecrets, (candidate) =>
-    decryptGitHubAppUserRefreshToken(
-      {
-        refreshTokenCiphertext: input.connection.userRefreshTokenCiphertext!,
-        refreshTokenIv: input.connection.userRefreshTokenIv!,
-      },
-      candidate,
-    ),
-  );
-  const refreshed = await input.oauthClient.refreshUserToken({
-    clientId: input.config.clientId,
-    clientSecret: input.config.clientSecret,
-    refreshToken,
-  });
-  const encrypted = await encryptGitHubAppUserToken(refreshed, tokenSecret, input.nowMs);
-  await adapterFor(input.ctx).update({
-    model: "githubFirmwareAppConnection",
-    where: [{ field: "userId", value: input.connection.userId }],
-    update: {
-      userAccessTokenCiphertext: encrypted.accessTokenCiphertext,
-      userAccessTokenExpiresAt: encrypted.accessTokenExpiresAt,
-      userAccessTokenIv: encrypted.accessTokenIv,
-      userRefreshTokenCiphertext: encrypted.refreshTokenCiphertext,
-      userRefreshTokenExpiresAt: encrypted.refreshTokenExpiresAt,
-      userRefreshTokenIv: encrypted.refreshTokenIv,
-      userTokenType: encrypted.tokenType,
-      updatedAt: new Date(input.nowMs),
-    },
-  });
-  return refreshed.accessToken;
-}
+    const refreshToken = yield* decryptStoredGitHubTokenEffect(tokenSecrets, (candidate) =>
+      decryptGitHubAppUserRefreshTokenEffect({ refreshTokenCiphertext, refreshTokenIv }, candidate),
+    );
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const refreshed = yield* restore(
+          input.oauthClient.refreshUserToken({ clientId, clientSecret, refreshToken }),
+        );
+        const encrypted = yield* encryptGitHubAppUserTokenEffect(
+          refreshed,
+          tokenSecret,
+          input.nowMs,
+        );
+        yield* adapterRequestEffect("github-firmware.persist-refreshed-user-token", () =>
+          adapterFor(input.ctx).update({
+            model: "githubFirmwareAppConnection",
+            where: [{ field: "userId", value: input.connection.userId }],
+            update: {
+              userAccessTokenCiphertext: encrypted.accessTokenCiphertext,
+              userAccessTokenExpiresAt: encrypted.accessTokenExpiresAt,
+              userAccessTokenIv: encrypted.accessTokenIv,
+              userRefreshTokenCiphertext: encrypted.refreshTokenCiphertext,
+              userRefreshTokenExpiresAt: encrypted.refreshTokenExpiresAt,
+              userRefreshTokenIv: encrypted.refreshTokenIv,
+              userTokenType: encrypted.tokenType,
+              updatedAt: new Date(input.nowMs),
+            },
+          }),
+        );
+        return refreshed.accessToken;
+      }),
+    );
+  },
+);
 
-function assertNoBlockingFirmwareDiagnostics(source: GitHubFirmwareSourceBundleInput) {
+function noBlockingFirmwareDiagnosticsEffect(source: GitHubFirmwareSourceBundleInput) {
   const blocking = (source.diagnostics ?? []).filter(
     (diagnostic): diagnostic is { message?: unknown; severity: "error" } =>
       typeof diagnostic === "object" &&
@@ -1471,69 +1626,70 @@ function assertNoBlockingFirmwareDiagnostics(source: GitHubFirmwareSourceBundleI
       "severity" in diagnostic &&
       diagnostic.severity === "error",
   );
-  if (blocking.length === 0) return;
+  if (blocking.length === 0) return Effect.void;
   const firstMessage = blocking
     .map((diagnostic) => diagnostic.message)
     .find((message): message is string => typeof message === "string" && message.trim().length > 0);
-  throw APIError.from("BAD_REQUEST", {
-    code: "FIRMWARE_SOURCE_BLOCKED",
-    message:
-      firstMessage ??
-      `Firmware source has ${blocking.length} blocking diagnostic${blocking.length === 1 ? "" : "s"}.`,
-  });
+  return Effect.fail(
+    APIError.from("BAD_REQUEST", {
+      code: "FIRMWARE_SOURCE_BLOCKED",
+      message:
+        firstMessage ??
+        `Firmware source has ${blocking.length} blocking diagnostic${blocking.length === 1 ? "" : "s"}.`,
+    }),
+  );
 }
 
-async function decryptStoredGitHubToken(
+function decryptStoredGitHubTokenEffect(
   secrets: readonly string[],
-  decrypt: (secret: string) => Promise<string>,
+  decrypt: (secret: string) => Effect.Effect<string, PlatformError>,
 ) {
-  let lastError: unknown;
-  for (const secret of secrets) {
-    try {
-      return await decrypt(secret);
-    } catch (error) {
-      lastError = error;
-    }
+  const [first, ...rest] = secrets;
+  if (!first) {
+    return Effect.fail(
+      platformError(
+        "github-firmware.decrypt-user-token",
+        "GitHub App user-token decryption key is unavailable.",
+      ),
+    );
   }
-  throw lastError ?? new Error("GitHub App user-token decryption key is unavailable.");
+  return Effect.firstSuccessOf([decrypt(first), ...rest.map(decrypt)]);
 }
 
-async function createOrReadFirmwareRepository(
-  client: GitHubRestClientLike,
-  desired: FirmwareGitHubDesiredRepository,
-) {
-  try {
-    return await client.createRepositoryForAuthenticatedUser({
-      auto_init: true,
-      description: desired.description,
-      name: desired.name,
-      private: desired.private,
-    });
-  } catch (error) {
-    if (
-      error instanceof GitHubRestApiError &&
-      ["GITHUB_VALIDATION_FAILED", "GITHUB_CONFLICT"].includes(error.code)
-    ) {
-      if (!desired.owner) throw error;
-      return client.getRepository(desired.owner, desired.name);
-    }
-    throw error;
-  }
-}
+const createOrReadFirmwareRepository = Effect.fn("github-firmware.create-or-read-repository")(
+  function* (client: GitHubRestClientLike, desired: FirmwareGitHubDesiredRepository) {
+    return yield* client
+      .createRepositoryForAuthenticatedUser({
+        auto_init: true,
+        description: desired.description,
+        name: desired.name,
+        private: desired.private,
+      })
+      .pipe(
+        Effect.catchIf(
+          (error) => error.code === "GITHUB_VALIDATION_FAILED" || error.code === "GITHUB_CONFLICT",
+          (error) =>
+            desired.owner ? client.getRepository(desired.owner, desired.name) : Effect.fail(error),
+        ),
+      );
+  },
+);
 
-async function installationTokenForFirmware(
+const installationTokenForFirmware = Effect.fn("github-firmware.installation-token")(function* (
   env: GitHubFirmwareAppEnv,
   client: GitHubAppInstallationTokenClientLike,
   installationId: string,
-): Promise<GitHubAppInstallationAccessToken> {
+) {
   const auth = githubAppInstallationAuthConfigFromEnv(env);
   if (!auth.configured) {
-    throw APIError.from("SERVICE_UNAVAILABLE", {
-      code: "GITHUB_FIRMWARE_INSTALLATION_AUTH_NOT_CONFIGURED",
-      message: "GitHub App ID and private key are required for firmware branch sync.",
-    });
+    return yield* Effect.fail(
+      APIError.from("SERVICE_UNAVAILABLE", {
+        code: "GITHUB_FIRMWARE_INSTALLATION_AUTH_NOT_CONFIGURED",
+        message: "GitHub App ID and private key are required for firmware branch sync.",
+      }),
+    );
   }
-  return client.createInstallationAccessToken(auth, {
+  return yield* client.createInstallationAccessToken(auth, {
     installationId,
     permissions: {
       actions: "write",
@@ -1542,22 +1698,22 @@ async function installationTokenForFirmware(
       workflows: "write",
     },
   });
-}
+});
 
-async function syncBranchCommit(
+const syncBranchCommit = Effect.fn("github-firmware.sync-branch-commit")(function* (
   client: GitHubRestClientLike,
   repository: GitHubFirmwareRepositoryTarget,
   branchName: string,
   plan: ReturnType<typeof firmwareSourceBundleToGitHubUpserts>,
-): Promise<GitHubCommit> {
-  const branchRef = await ensureBranchRef(client, repository, branchName);
-  const headCommit = await client.getCommit(
+) {
+  const branchRef = yield* ensureBranchRef(client, repository, branchName);
+  const headCommit = yield* client.getCommit(
     repository.owner,
     repository.repo,
     branchRef.object.sha,
   );
   const baseTree = headCommit.commit?.tree?.sha;
-  const tree = await client.createTree(repository.owner, repository.repo, {
+  const tree = yield* client.createTree(repository.owner, repository.repo, {
     ...(baseTree ? { base_tree: baseTree } : {}),
     tree: plan.files.map((file) => ({
       content: file.content,
@@ -1566,179 +1722,198 @@ async function syncBranchCommit(
       type: "blob" as const,
     })),
   });
-  const commit = await client.createCommit(repository.owner, repository.repo, {
+  const commit = yield* client.createCommit(repository.owner, repository.repo, {
     message: plan.commitMessage,
     parents: [branchRef.object.sha],
     tree: tree.sha,
   });
-  await client.updateRef(repository.owner, repository.repo, `heads/${branchName}`, {
+  yield* client.updateRef(repository.owner, repository.repo, `heads/${branchName}`, {
     sha: commit.sha,
   });
   return commit;
-}
+});
 
-async function ensureDefaultBranchWorkflowFiles(
-  client: GitHubRestClientLike,
-  repository: GitHubFirmwareRepositoryTarget,
-  plan: ReturnType<typeof firmwareSourceBundleToGitHubUpserts>,
-) {
-  const workflowFiles = plan.files.filter((file) => file.path.startsWith(".github/workflows/"));
-  for (const file of workflowFiles) {
-    const content = bytesToBase64(new TextEncoder().encode(file.content));
-    let existingSha: string | undefined;
-    try {
-      const existing = await client.getContentMetadata(
-        repository.owner,
-        repository.repo,
-        file.path,
-        {
-          ref: repository.defaultBranch,
-        },
-      );
-      if (!Array.isArray(existing)) {
-        existingSha = existing.sha;
-        if (
-          existing.encoding === "base64" &&
-          existing.content?.replace(/\s/g, "") === content.replace(/\s/g, "")
-        ) {
-          continue;
-        }
-      }
-    } catch (error) {
-      if (!(error instanceof GitHubRestApiError) || error.code !== "GITHUB_NOT_FOUND") throw error;
-    }
+const ensureDefaultBranchWorkflowFiles = Effect.fn("github-firmware.ensure-default-workflow-files")(
+  function* (
+    client: GitHubRestClientLike,
+    repository: GitHubFirmwareRepositoryTarget,
+    plan: ReturnType<typeof firmwareSourceBundleToGitHubUpserts>,
+  ) {
+    const workflowFiles = plan.files.filter((file) => file.path.startsWith(".github/workflows/"));
+    yield* Effect.forEach(
+      workflowFiles,
+      (file) =>
+        Effect.gen(function* () {
+          const content = bytesToBase64(new TextEncoder().encode(file.content));
+          const existing = yield* client
+            .getContentMetadata(repository.owner, repository.repo, file.path, {
+              ref: repository.defaultBranch,
+            })
+            .pipe(
+              Effect.catchIf(
+                (error) => error.code === "GITHUB_NOT_FOUND",
+                () => Effect.succeed(null),
+              ),
+            );
+          const existingFile = existing && "sha" in existing ? existing : null;
+          if (
+            existingFile?.encoding === "base64" &&
+            existingFile.content?.replace(/\s/g, "") === content.replace(/\s/g, "")
+          ) {
+            return;
+          }
 
-    await client.putFileContents(repository.owner, repository.repo, file.path, {
-      branch: repository.defaultBranch,
-      content,
-      message: `Update kbui ${repository.firmwareFamily.toUpperCase()} build workflow`,
-      ...(existingSha ? { sha: existingSha } : {}),
-    });
-  }
-}
+          yield* client.putFileContents(repository.owner, repository.repo, file.path, {
+            branch: repository.defaultBranch,
+            content,
+            message: `Update kbui ${repository.firmwareFamily.toUpperCase()} build workflow`,
+            ...(existingFile ? { sha: existingFile.sha } : {}),
+          });
+        }),
+      { discard: true },
+    );
+  },
+);
 
-async function ensureBranchRef(
+const ensureBranchRef = Effect.fn("github-firmware.ensure-branch-ref")(function* (
   client: GitHubRestClientLike,
   repository: GitHubFirmwareRepositoryTarget,
   branchName: string,
-): Promise<GitHubGitRef> {
-  try {
-    return await client.getRef(repository.owner, repository.repo, `heads/${branchName}`);
-  } catch (error) {
-    if (!(error instanceof GitHubRestApiError) || error.code !== "GITHUB_NOT_FOUND") throw error;
-  }
-
-  const defaultRef = await client.getRef(
-    repository.owner,
-    repository.repo,
-    `heads/${repository.defaultBranch}`,
+) {
+  return yield* client.getRef(repository.owner, repository.repo, `heads/${branchName}`).pipe(
+    Effect.catchIf(
+      (error) => error.code === "GITHUB_NOT_FOUND",
+      () =>
+        Effect.gen(function* () {
+          const defaultRef = yield* client.getRef(
+            repository.owner,
+            repository.repo,
+            `heads/${repository.defaultBranch}`,
+          );
+          return yield* client.createRef(repository.owner, repository.repo, {
+            ref: `refs/heads/${branchName}`,
+            sha: defaultRef.object.sha,
+          });
+        }),
+    ),
   );
-  return client.createRef(repository.owner, repository.repo, {
-    ref: `refs/heads/${branchName}`,
-    sha: defaultRef.object.sha,
-  });
-}
+});
 
-async function findFirmwareRepository(
+const findFirmwareRepository = Effect.fn("github-firmware.find-repository")(function* (
   ctx: AuthEndpointContext,
   userId: string,
   owner: string,
   repo: string,
 ) {
-  return (await adapterFor(ctx).findOne({
-    model: "githubFirmwareRepository",
-    where: [
-      { field: "userId", value: userId },
-      { field: "owner", value: owner },
-      { field: "repo", value: repo },
-    ],
-  })) as GitHubFirmwareRepositoryRow | null;
-}
+  return yield* adapterRequestEffect("github-firmware.find-repository", () =>
+    adapterFor(ctx).findOne({
+      model: "githubFirmwareRepository",
+      where: [
+        { field: "userId", value: userId },
+        { field: "owner", value: owner },
+        { field: "repo", value: repo },
+      ],
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareRepositoryRow | null));
+});
 
-async function findFirmwareRepositoryByIdForUser(
-  ctx: AuthEndpointContext,
-  userId: string,
-  repositoryId: string,
-) {
-  return (await adapterFor(ctx).findOne({
-    model: "githubFirmwareRepository",
-    where: [
-      { field: "id", value: repositoryId },
-      { field: "userId", value: userId },
-    ],
-  })) as GitHubFirmwareRepositoryRow | null;
-}
+const findFirmwareRepositoryByIdForUser = Effect.fn("github-firmware.find-repository-by-id")(
+  function* (ctx: AuthEndpointContext, userId: string, repositoryId: string) {
+    return yield* adapterRequestEffect("github-firmware.find-repository-by-id", () =>
+      adapterFor(ctx).findOne({
+        model: "githubFirmwareRepository",
+        where: [
+          { field: "id", value: repositoryId },
+          { field: "userId", value: userId },
+        ],
+      }),
+    ).pipe(Effect.map((row) => row as GitHubFirmwareRepositoryRow | null));
+  },
+);
 
-async function findFirmwareBranchByVariant(
+const findFirmwareBranchByVariant = Effect.fn("github-firmware.find-branch-by-variant")(function* (
   ctx: AuthEndpointContext,
   repositoryId: string,
   variantId: string,
 ) {
-  return (await adapterFor(ctx).findOne({
-    model: "githubFirmwareBranch",
-    where: [
-      { field: "repositoryId", value: repositoryId },
-      { field: "variantId", value: variantId },
-    ],
-  })) as GitHubFirmwareBranchRow | null;
-}
+  return yield* adapterRequestEffect("github-firmware.find-branch-by-variant", () =>
+    adapterFor(ctx).findOne({
+      model: "githubFirmwareBranch",
+      where: [
+        { field: "repositoryId", value: repositoryId },
+        { field: "variantId", value: variantId },
+      ],
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareBranchRow | null));
+});
 
-async function findFirmwareRunByRequestId(ctx: AuthEndpointContext, requestId: string) {
-  return (await adapterFor(ctx).findOne({
-    model: "githubFirmwareRun",
-    where: [{ field: "requestId", value: requestId }],
-  })) as GitHubFirmwareRunRow | null;
-}
+const findFirmwareRunByRequestId = Effect.fn("github-firmware.find-run-by-request-id")(function* (
+  ctx: AuthEndpointContext,
+  requestId: string,
+) {
+  return yield* adapterRequestEffect("github-firmware.find-run-by-request-id", () =>
+    adapterFor(ctx).findOne({
+      model: "githubFirmwareRun",
+      where: [{ field: "requestId", value: requestId }],
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareRunRow | null));
+});
 
-async function resolveFirmwareCleanupContext(input: {
-  body: GitHubFirmwareCleanupInput;
-  ctx: AuthEndpointContext;
-  env: GitHubFirmwareAppEnv;
-  githubClientFactory: (token: string) => GitHubRestClientLike;
-  installationTokenClient: GitHubAppInstallationTokenClientLike;
-  nowMs: number;
-  userId: string;
-}) {
-  const config = githubFirmwareAppConfigFromEnv(input.env);
-  if (!config.configured) {
-    throw APIError.from("SERVICE_UNAVAILABLE", {
-      code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
-      message: "GitHub App firmware builds are not configured.",
+const resolveFirmwareCleanupContext = Effect.fn("github-firmware.resolve-cleanup-context")(
+  function* (input: {
+    body: GitHubFirmwareCleanupInput;
+    ctx: AuthEndpointContext;
+    env: GitHubFirmwareAppEnv;
+    githubClientFactory: (token: string) => GitHubRestClientLike;
+    installationTokenClient: GitHubAppInstallationTokenClientLike;
+    nowMs: number;
+    userId: string;
+  }) {
+    const config = githubFirmwareAppConfigFromEnv(input.env);
+    if (!config.configured) {
+      return yield* Effect.fail(
+        APIError.from("SERVICE_UNAVAILABLE", {
+          code: "GITHUB_FIRMWARE_APP_NOT_CONFIGURED",
+          message: "GitHub App firmware builds are not configured.",
+        }),
+      );
+    }
+
+    const connection = yield* findConnection(input.ctx, input.userId);
+    if (!connection) {
+      return yield* Effect.fail(
+        APIError.from("UNAUTHORIZED", {
+          code: "GITHUB_FIRMWARE_APP_NOT_CONNECTED",
+          message: "Install the GitHub App before reading firmware builds.",
+        }),
+      );
+    }
+
+    const owner = connection.accountLogin ?? undefined;
+    const desired = deriveFirmwareGitHubRepository(input.body.profile, {
+      owner,
+      repositoryName: input.body.repositoryName,
     });
-  }
+    if (!desired.owner) return { branch: null, connection, repository: null };
 
-  const connection = await findConnection(input.ctx, input.userId);
-  if (!connection) {
-    throw APIError.from("UNAUTHORIZED", {
-      code: "GITHUB_FIRMWARE_APP_NOT_CONNECTED",
-      message: "Install the GitHub App before reading firmware builds.",
-    });
-  }
+    const repository = yield* findFirmwareRepository(
+      input.ctx,
+      input.userId,
+      desired.owner,
+      desired.name,
+    );
+    if (!repository) return { branch: null, connection, repository: null };
 
-  const owner = connection.accountLogin ?? undefined;
-  const desired = deriveFirmwareGitHubRepository(input.body.profile, {
-    owner,
-    repositoryName: input.body.repositoryName,
-  });
-  if (!desired.owner) return { branch: null, connection, repository: null };
+    const branch = yield* findFirmwareBranchByVariant(
+      input.ctx,
+      repository.id,
+      firmwareGitHubVariantForProfile(input.body.profile, input.body.variant).id,
+    );
+    return { branch, connection, repository };
+  },
+);
 
-  const repository = await findFirmwareRepository(
-    input.ctx,
-    input.userId,
-    desired.owner,
-    desired.name,
-  );
-  if (!repository) return { branch: null, connection, repository: null };
-
-  const branch = await findFirmwareBranchByVariant(
-    input.ctx,
-    repository.id,
-    firmwareGitHubVariantForProfile(input.body.profile, input.body.variant).id,
-  );
-  return { branch, connection, repository };
-}
-
-async function upsertFirmwareBranch(
+const upsertFirmwareBranch = Effect.fn("github-firmware.upsert-branch")(function* (
   ctx: AuthEndpointContext,
   repository: GitHubFirmwareRepositoryRow,
   data: Omit<Partial<GitHubFirmwareBranchRow>, "id" | "repositoryId"> & {
@@ -1748,49 +1923,57 @@ async function upsertFirmwareBranch(
     variantName: string;
   },
 ) {
-  const existing = (await adapterFor(ctx).findOne({
-    model: "githubFirmwareBranch",
-    where: [
-      { field: "repositoryId", value: repository.id },
-      { field: "variantId", value: data.variantId },
-    ],
-  })) as GitHubFirmwareBranchRow | null;
+  const existing = yield* adapterRequestEffect("github-firmware.find-branch-for-upsert", () =>
+    adapterFor(ctx).findOne({
+      model: "githubFirmwareBranch",
+      where: [
+        { field: "repositoryId", value: repository.id },
+        { field: "variantId", value: data.variantId },
+      ],
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareBranchRow | null));
 
-  if (existing) return updateFirmwareBranch(ctx, existing, data);
+  if (existing) return yield* updateFirmwareBranch(ctx, existing, data);
 
-  return (await adapterFor(ctx).create({
-    model: "githubFirmwareBranch",
-    data: {
-      ...data,
-      createdAt: data.updatedAt,
-      repositoryId: repository.id,
-    },
-  })) as GitHubFirmwareBranchRow;
-}
+  return yield* adapterRequestEffect("github-firmware.create-branch", () =>
+    adapterFor(ctx).create({
+      model: "githubFirmwareBranch",
+      data: {
+        ...data,
+        createdAt: data.updatedAt,
+        repositoryId: repository.id,
+      },
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareBranchRow));
+});
 
-async function updateFirmwareBranch(
+const updateFirmwareBranch = Effect.fn("github-firmware.update-branch")(function* (
   ctx: AuthEndpointContext,
   branch: GitHubFirmwareBranchRow,
   update: Partial<GitHubFirmwareBranchRow>,
 ) {
-  return (await adapterFor(ctx).update({
-    model: "githubFirmwareBranch",
-    where: [{ field: "id", value: branch.id }],
-    update,
-  })) as GitHubFirmwareBranchRow;
-}
+  return yield* adapterRequestEffect("github-firmware.update-branch", () =>
+    adapterFor(ctx).update({
+      model: "githubFirmwareBranch",
+      where: [{ field: "id", value: branch.id }],
+      update,
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareBranchRow));
+});
 
-async function updateFirmwareRepository(
+const updateFirmwareRepository = Effect.fn("github-firmware.update-repository")(function* (
   ctx: AuthEndpointContext,
   repository: GitHubFirmwareRepositoryRow,
   update: Partial<GitHubFirmwareRepositoryRow>,
 ) {
-  return (await adapterFor(ctx).update({
-    model: "githubFirmwareRepository",
-    where: [{ field: "id", value: repository.id }],
-    update,
-  })) as GitHubFirmwareRepositoryRow;
-}
+  return yield* adapterRequestEffect("github-firmware.update-repository", () =>
+    adapterFor(ctx).update({
+      model: "githubFirmwareRepository",
+      where: [{ field: "id", value: repository.id }],
+      update,
+    }),
+  ).pipe(Effect.map((row) => row as GitHubFirmwareRepositoryRow));
+});
 
 function sourceBundleFromInput(input: GitHubFirmwareSyncInput["source"]): FirmwareSourceBundle {
   return {

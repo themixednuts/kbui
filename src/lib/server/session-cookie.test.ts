@@ -1,6 +1,6 @@
 import { base64Url } from "@better-auth/utils/base64";
 import { createHMAC } from "@better-auth/utils/hmac";
-import { Effect } from "effect";
+import { Effect, Logger, References } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { readSessionFromCookieCache } from "./session-cookie";
@@ -46,6 +46,31 @@ describe("readSessionFromCookieCache", () => {
       "this-is-not-a-valid-hmac-signature",
     );
     expect(await run(requestWithCookie(`${secureCookieName}=${value}`))).toBeNull();
+  });
+
+  it("logs a verification exception before falling back to a cache miss", async () => {
+    const messages: unknown[] = [];
+    const logger = Logger.make((options) => {
+      messages.push(...(Array.isArray(options.message) ? options.message : [options.message]));
+    });
+    const request = new Proxy(requestWithCookie(`${secureCookieName}=malformed`), {
+      get(target, property, receiver) {
+        if (property === "headers") throw new Error("headers unavailable");
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const result = await Effect.runPromise(
+      readSessionFromCookieCache(request, env).pipe(
+        Effect.provideService(References.MinimumLogLevel, "Debug"),
+        Effect.provide(Logger.layer([logger])),
+      ),
+    );
+
+    expect(result).toBeNull();
+    expect(messages).toContain(
+      "Session cookie cache verification failed; falling back to AuthAgent",
+    );
   });
 
   it("verifies and returns a validly-signed session snapshot", async () => {

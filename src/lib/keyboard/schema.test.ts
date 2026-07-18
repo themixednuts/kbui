@@ -1,9 +1,17 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
+import { BoundaryDecodeError } from "$lib/effect/errors";
 import {
   cloneDevice,
   decodeDeviceProfileFromStorage,
+  decodeDeviceProfileFromStorageEffect,
+  decodeDeviceProfileFromStorageOrNull,
+  decodeSavePointFromStorageEffect,
+  decodeWorkspaceForkFromStorageEffect,
   encodeDeviceProfileForStorage,
+  encodeSavePointForStorage,
+  encodeWorkspaceForkForStorage,
   normalizeDeviceKeycodes,
   normalizeQmkKeycode,
   profileFromDetection,
@@ -138,6 +146,64 @@ describe("QMK keycode decoding", () => {
     );
   });
 
+  it("decodes legacy stored profiles without an origin", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { origin: _origin, ...stored } = encodeDeviceProfileForStorage(sampleKeyboard);
+        const profile = yield* decodeDeviceProfileFromStorageEffect(stored);
+
+        expect(profile.origin).toBe("imported");
+        expect(profile.id).toBe(sampleKeyboard.id);
+      }),
+    ));
+
+  it("decodes legacy stored profiles missing additive feature collections", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const {
+          macros: _macros,
+          combos: _combos,
+          tapDances: _tapDances,
+          keyOverrides: _keyOverrides,
+          ...stored
+        } = encodeDeviceProfileForStorage(sampleKeyboard);
+        const profile = yield* decodeDeviceProfileFromStorageEffect(stored);
+
+        expect(profile.macros).toEqual([]);
+        expect(profile.combos).toEqual([]);
+        expect(profile.tapDances).toEqual([]);
+        expect(profile.keyOverrides).toEqual([]);
+        expect(profile.layers[0]?.bindings["k0-0"]?.code).toBeTruthy();
+      }),
+    ));
+
+  it("returns null instead of throwing for malformed render-path profiles", () => {
+    const stored = encodeDeviceProfileForStorage(sampleKeyboard);
+
+    expect(decodeDeviceProfileFromStorageOrNull(stored)?.id).toBe(sampleKeyboard.id);
+    expect(decodeDeviceProfileFromStorageOrNull({ ...stored, matrix: null })).toBeNull();
+    expect(decodeDeviceProfileFromStorageOrNull("not a profile")).toBeNull();
+  });
+
+  it("rejects malformed stored profiles with a boundary decode error", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const stored = encodeDeviceProfileForStorage(sampleKeyboard);
+        const error = yield* Effect.flip(
+          decodeDeviceProfileFromStorageEffect({
+            ...stored,
+            matrix: { rows: "five", cols: stored.matrix.cols },
+          }),
+        );
+
+        expect(error).toBeInstanceOf(BoundaryDecodeError);
+        expect(error).toMatchObject({
+          _tag: "BoundaryDecodeError",
+          operation: "keyboard.decode-stored-device-profile",
+        });
+      }),
+    ));
+
   it("keeps custom keycode strings when there is no canonical QMK code", () => {
     const stored = encodeDeviceProfileForStorage({
       ...sampleKeyboard,
@@ -155,4 +221,70 @@ describe("QMK keycode decoding", () => {
     expect(stored.layers[0].bindings["k0-0"]?.code).toBe("UM(7)");
     expect(decodeDeviceProfileFromStorage(stored).layers[0].bindings["k0-0"]?.code).toBe("UM(7)");
   });
+
+  it("decodes persisted save point and workspace fork metadata", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const createdAt = "2026-07-18T12:00:00.000Z";
+        const savePoint = yield* decodeSavePointFromStorageEffect(
+          encodeSavePointForStorage({
+            id: "sp-1",
+            variantId: "main",
+            message: "Baseline",
+            createdAt,
+            authorMeta: { name: "Test" },
+            snapshot: sampleKeyboard,
+          }),
+        );
+        const fork = yield* decodeWorkspaceForkFromStorageEffect(
+          encodeWorkspaceForkForStorage({
+            id: "fork-1",
+            name: "Experiment",
+            baseProfileId: sampleKeyboard.id,
+            createdAt,
+            device: sampleKeyboard,
+            sourceVariantId: "main",
+          }),
+        );
+
+        expect(savePoint.snapshot.layers[0]?.bindings["k0-0"]?.code).toBeTruthy();
+        expect(fork.device.id).toBe(sampleKeyboard.id);
+      }),
+    ));
+
+  it("rejects malformed save point and workspace fork metadata", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const [savePointError, forkError] = yield* Effect.all([
+          Effect.flip(
+            decodeSavePointFromStorageEffect({
+              id: 42,
+              variantId: "main",
+              message: "Bad",
+              createdAt: "not-a-date",
+              authorMeta: { name: "Test" },
+              snapshot: encodeDeviceProfileForStorage(sampleKeyboard),
+            }),
+          ),
+          Effect.flip(
+            decodeWorkspaceForkFromStorageEffect({
+              id: "fork-1",
+              name: "Bad",
+              baseProfileId: sampleKeyboard.id,
+              createdAt: "not-a-date",
+              device: encodeDeviceProfileForStorage(sampleKeyboard),
+            }),
+          ),
+        ]);
+
+        expect(savePointError).toMatchObject({
+          _tag: "BoundaryDecodeError",
+          operation: "keyboard.decode-stored-save-point",
+        });
+        expect(forkError).toMatchObject({
+          _tag: "BoundaryDecodeError",
+          operation: "keyboard.decode-stored-workspace-fork",
+        });
+      }),
+    ));
 });

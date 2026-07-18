@@ -1,4 +1,15 @@
-import { Cause, Effect } from "effect";
+import { Cause, Effect, ManagedRuntime } from "effect";
+
+import { qmkTargetCacheLayer } from "$lib/server/keyboards/qmk-target";
+
+const workerRuntime = ManagedRuntime.make(qmkTargetCacheLayer);
+export type WorkerServices = ManagedRuntime.ManagedRuntime.Services<typeof workerRuntime>;
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    void workerRuntime.dispose();
+  });
+}
 
 /**
  * The only Promise bridge used by Cloudflare/SvelteKit entry points. Framework
@@ -6,8 +17,11 @@ import { Cause, Effect } from "effect";
  * Failures are logged with their full Cause and then propagated unchanged so
  * Cloudflare retries, Workflows, and Queues can self-heal.
  */
-export function runWorkerEffect<A, E>(operation: string, effect: Effect.Effect<A, E>): Promise<A> {
-  return Effect.runPromise(
+export function runWorkerEffect<A, E>(
+  operation: string,
+  effect: Effect.Effect<A, E, WorkerServices>,
+): Promise<A> {
+  return workerRuntime.runPromise(
     effect.pipe(
       Effect.tapCause((cause) =>
         Effect.sync(() => {

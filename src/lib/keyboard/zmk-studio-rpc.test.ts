@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import { behaviorDetails } from "./zmk-binding";
@@ -5,7 +6,11 @@ import {
   ZmkStudioDeframer,
   ErrorConditions,
   ZmkStudioRpcClient,
+  ZmkStudioRpcClosedError,
+  ZmkStudioRpcDecodeError,
   ZmkStudioRpcMetaError,
+  ZmkStudioRpcNoResponseError,
+  ZmkStudioRpcTimeoutError,
   decodeZmkStudioRequestMessage,
   decodeZmkStudioResponseMessage,
   deframeZmkStudioPayload,
@@ -14,6 +19,7 @@ import {
   frameZmkStudioPayload,
   zmkStudioFrameBytes,
   zmkStudioMetaErrorResponse,
+  zmkStudioNoResponse,
   zmkStudioProtoNotificationFor,
   zmkStudioProtoRequestFor,
   zmkStudioProtoResponseFor,
@@ -253,14 +259,77 @@ describe("ZMK Studio framed protobuf RPC", () => {
     expect(notifications).toContainEqual({ lockState: "unlocked", type: "lock_state_changed" });
   });
 
-  it("surfaces protobuf meta errors", async () => {
+  it("surfaces tagged protobuf meta errors", async () => {
     const transport = createScriptedTransport((request, respond) => {
       respond(zmkStudioMetaErrorResponse(request.requestId, ErrorConditions.UNLOCK_REQUIRED));
     });
     const client = new ZmkStudioRpcClient(transport, { timeoutMs: 500 });
 
-    await expect(client.call({ type: "get_keymap" })).rejects.toBeInstanceOf(ZmkStudioRpcMetaError);
+    const error = await Effect.runPromise(Effect.flip(client.callEffect({ type: "get_keymap" })));
     await client.close();
+
+    expect(error).toBeInstanceOf(ZmkStudioRpcMetaError);
+    expect(error).toMatchObject({
+      _tag: "ZmkStudioRpcMetaError",
+      condition: ErrorConditions.UNLOCK_REQUIRED,
+    });
+  });
+
+  it("tags no-response, timeout, and closed-connection failures", async () => {
+    const noResponseClient = new ZmkStudioRpcClient(
+      createScriptedTransport((request, respond) =>
+        respond(zmkStudioNoResponse(request.requestId)),
+      ),
+      { timeoutMs: 500 },
+    );
+    const noResponseError = await Effect.runPromise(
+      Effect.flip(noResponseClient.callEffect({ type: "get_device_info" })),
+    );
+    await noResponseClient.close();
+
+    const timeoutClient = new ZmkStudioRpcClient(
+      createScriptedTransport(() => undefined),
+      {
+        timeoutMs: 10,
+      },
+    );
+    const timeoutError = await Effect.runPromise(
+      Effect.flip(timeoutClient.callEffect({ type: "get_lock_state" })),
+    );
+    await timeoutClient.close();
+
+    const closedClient = new ZmkStudioRpcClient(createScriptedTransport(() => undefined));
+    await closedClient.close();
+    const closedError = await Effect.runPromise(
+      Effect.flip(closedClient.callEffect({ type: "get_keymap" })),
+    );
+
+    expect(noResponseError).toBeInstanceOf(ZmkStudioRpcNoResponseError);
+    expect(noResponseError._tag).toBe("ZmkStudioRpcNoResponseError");
+    expect(timeoutError).toBeInstanceOf(ZmkStudioRpcTimeoutError);
+    expect(timeoutError).toMatchObject({ _tag: "ZmkStudioRpcTimeoutError", requestId: 1 });
+    expect(closedError).toBeInstanceOf(ZmkStudioRpcClosedError);
+    expect(closedError._tag).toBe("ZmkStudioRpcClosedError");
+  });
+
+  it("tags mismatched RPC responses as decode failures", async () => {
+    const client = new ZmkStudioRpcClient(
+      createScriptedTransport((request, respond) => {
+        respond({ requestResponse: { requestId: request.requestId } });
+      }),
+      { timeoutMs: 500 },
+    );
+
+    const error = await Effect.runPromise(
+      Effect.flip(client.callEffect({ type: "get_device_info" })),
+    );
+    await client.close();
+
+    expect(error).toBeInstanceOf(ZmkStudioRpcDecodeError);
+    expect(error).toMatchObject({
+      _tag: "ZmkStudioRpcDecodeError",
+      operation: "zmk-studio.decode-response",
+    });
   });
 
   it("drives the existing mock ZMK handlers through the framed protobuf pipeline", async () => {

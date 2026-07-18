@@ -1,7 +1,8 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  createGitHubAppJwt,
+  createGitHubAppJwtEffect,
   GitHubAppInstallationTokenClient,
   githubAppInstallationAuthConfigFromEnv,
   normalizeGitHubAppPrivateKey,
@@ -30,25 +31,27 @@ describe("GitHub App installation tokens", () => {
       });
     };
     const client = new GitHubAppInstallationTokenClient({
-      createJwt: async () => "app.jwt",
+      createJwt: () => Effect.succeed("app.jwt"),
       fetchImpl: fetchMock,
     });
 
-    const token = await client.createInstallationAccessToken(
-      {
-        appId: "4232738",
-        configured: true,
-        privateKey: "private-key",
-      },
-      {
-        installationId: "144856631",
-        permissions: {
-          actions: "write",
-          contents: "write",
-          workflows: "write",
+    const token = await Effect.runPromise(
+      client.createInstallationAccessToken(
+        {
+          appId: "4232738",
+          configured: true,
+          privateKey: "private-key",
         },
-        repositories: ["kbui-firmware"],
-      },
+        {
+          installationId: "144856631",
+          permissions: {
+            actions: "write",
+            contents: "write",
+            workflows: "write",
+          },
+          repositories: ["kbui-firmware"],
+        },
+      ),
     );
 
     const [input, init] = calls[0] ?? [];
@@ -69,6 +72,33 @@ describe("GitHub App installation tokens", () => {
     });
     expect(token.token).toBe("ghs_installation_token");
     expect(token.repositories?.[0]?.full_name).toBe("themixednuts/kbui-firmware");
+  });
+
+  it("classifies a non-JSON HTTP failure before decoding the token body", async () => {
+    const client = new GitHubAppInstallationTokenClient({
+      createJwt: () => Effect.succeed("app.jwt"),
+      fetchImpl: async () =>
+        new Response("<html>Service unavailable</html>", {
+          status: 503,
+          headers: { "content-type": "text/html" },
+        }),
+    });
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        client.createInstallationAccessToken(
+          {
+            appId: "4232738",
+            configured: true,
+            privateKey: "private-key",
+          },
+          { installationId: "144856631" },
+        ),
+      ),
+    );
+
+    expect(error.operation).toBe("github-app.request-installation-token");
+    expect(error.message).toBe("GitHub App installation token request failed.");
   });
 
   it("normalizes escaped PEM values from .dev.vars", () => {
@@ -100,11 +130,13 @@ describe("GitHub App installation tokens", () => {
     const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
     const privateKey = pkcs8ToPem(new Uint8Array(pkcs8));
 
-    const jwt = await createGitHubAppJwt({
-      appId: "4232738",
-      nowMs: () => new Date("2026-07-06T12:00:00.000Z").getTime(),
-      privateKey,
-    });
+    const jwt = await Effect.runPromise(
+      createGitHubAppJwtEffect({
+        appId: "4232738",
+        nowMs: () => new Date("2026-07-06T12:00:00.000Z").getTime(),
+        privateKey,
+      }),
+    );
     const [header, payload, signature] = jwt.split(".");
 
     expect(JSON.parse(base64UrlDecode(header ?? ""))).toMatchObject({
@@ -130,11 +162,13 @@ describe("GitHub App installation tokens", () => {
       type: "pkcs1",
     }) as string;
 
-    const jwt = await createGitHubAppJwt({
-      appId: "4232738",
-      nowMs: () => new Date("2026-07-06T12:00:00.000Z").getTime(),
-      privateKey: pkcs1Pem,
-    });
+    const jwt = await Effect.runPromise(
+      createGitHubAppJwtEffect({
+        appId: "4232738",
+        nowMs: () => new Date("2026-07-06T12:00:00.000Z").getTime(),
+        privateKey: pkcs1Pem,
+      }),
+    );
 
     expect(pkcs1Pem).toContain("BEGIN RSA PRIVATE KEY");
     expect(jwt.split(".")).toHaveLength(3);

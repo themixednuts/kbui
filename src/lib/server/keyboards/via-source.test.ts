@@ -1,11 +1,9 @@
 import { strToU8, zipSync } from "fflate";
+import { ConfigProvider, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-// $env/dynamic/private is a virtual SvelteKit module; mock it directly so each
-// test can configure (or omit) a GitHub token explicitly instead of depending
-// on ambient process.env state.
-const mockEnv = vi.hoisted(() => ({}) as Record<string, string | undefined>);
-vi.mock("$env/dynamic/private", () => ({ env: mockEnv }));
+import { QmkTargetCache, qmkTargetCacheLayer } from "./qmk-target";
 
 // Minimal VIA v3 definition: one keymap row producing two keys plus the
 // mandatory USB identity. parseViaDefinition ignores anything else.
@@ -26,24 +24,43 @@ function viaZipball(root: string) {
   });
 }
 
-// Each test needs a fresh module instance because via-source.ts memoizes the
-// catalog build (and its resolved ref) at module scope.
+function requestUrl(input: RequestInfo | URL) {
+  if (typeof input === "string") return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+// Each test needs a fresh module instance because via-source.ts owns isolate-
+// local Effect Cache handles for the catalog and detail metadata.
 async function freshViaSource() {
   vi.resetModules();
   return import("./via-source");
 }
 
-describe("loadViaKeyboardDetail", () => {
+function provideConfig<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  values: Record<string, string | undefined> = {},
+) {
+  return effect.pipe(
+    Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(values)),
+  );
+}
+
+function runViaEffect<A, E>(
+  effect: Effect.Effect<A, E, QmkTargetCache>,
+  values: Record<string, string | undefined> = {},
+) {
+  return Effect.runPromise(provideConfig(effect, values).pipe(Effect.provide(qmkTargetCacheLayer)));
+}
+
+describe("VIA catalog source", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete mockEnv.VIA_GITHUB_TOKEN;
-    delete mockEnv.GITHUB_TOKEN;
   });
 
-  it("returns the VIA entry without building the QMK USB index and degrades QMK metadata gracefully", async () => {
+  it("returns the VIA entry without building the QMK USB index and retries failed QMK metadata on the next request", async () => {
     const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
       requestedUrls.push(url);
 
       if (url.startsWith("https://codeload.github.com/the-via/keyboards/legacy.zip/")) {
@@ -64,14 +81,21 @@ describe("loadViaKeyboardDetail", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { loadViaKeyboardDetail } = await freshViaSource();
-    const detail = await loadViaKeyboardDetail("test/board");
+    const { loadViaKeyboardDetailEffect } = await freshViaSource();
+    const first = await runViaEffect(loadViaKeyboardDetailEffect("test/board"));
+    const second = await runViaEffect(loadViaKeyboardDetailEffect("test/board"));
 
-    expect(detail.id).toBe("test/board");
-    expect(detail.name).toBe("Test Board");
-    expect(detail.keys).toHaveLength(2);
+    expect(first.id).toBe("test/board");
+    expect(first.name).toBe("Test Board");
+    expect(first.keys).toHaveLength(2);
     // QMK resolution failed, but the VIA entry is still returned with no metadata.
-    expect(detail.firmwareMetadata).toBeUndefined();
+    expect(first.firmwareMetadata).toBeUndefined();
+    expect(second.firmwareMetadata).toBeUndefined();
+    // Failed metadata has a zero cache TTL, so the next detail request gets a
+    // real retry instead of a 15-minute negative cache entry.
+    expect(
+      requestedUrls.filter((url) => url.includes("keyboards.qmk.fm/v1/keyboards/")),
+    ).toHaveLength(2);
     // The expensive USB-index catalog was never requested.
     expect(requestedUrls.some((url) => url.includes("keyboards.qmk.fm/v1/keyboards.json"))).toBe(
       false,
@@ -81,7 +105,7 @@ describe("loadViaKeyboardDetail", () => {
   it("without a GitHub token, fetches the archive from codeload and derives the revision from its root directory", async () => {
     const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
       requestedUrls.push(url);
 
       if (url.startsWith("https://codeload.github.com/the-via/keyboards/legacy.zip/")) {
@@ -91,7 +115,9 @@ describe("loadViaKeyboardDetail", () => {
       // unauthenticated core API's shared 60 req/hr limit routinely 403s. The
       // tokenless catalog build must never touch api.github.com at all.
       if (url.includes("api.github.com")) {
-        throw new Error(`regression: unauthenticated catalog build hit the GitHub REST API: ${url}`);
+        throw new Error(
+          `regression: unauthenticated catalog build hit the GitHub REST API: ${url}`,
+        );
       }
       if (url.includes("keyboards.qmk.fm/v1/keyboards.json")) {
         throw new Error("regression: detail path rebuilt the QMK USB index");
@@ -103,8 +129,8 @@ describe("loadViaKeyboardDetail", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { loadViaKeyboardDetail } = await freshViaSource();
-    const detail = await loadViaKeyboardDetail("test/board");
+    const { loadViaKeyboardDetailEffect } = await freshViaSource();
+    const detail = await runViaEffect(loadViaKeyboardDetailEffect("test/board"));
 
     expect(detail.id).toBe("test/board");
     // The commit sha is read off the archive's `the-via-keyboards-<sha>/` root
@@ -119,10 +145,9 @@ describe("loadViaKeyboardDetail", () => {
   });
 
   it("with a GitHub token configured, resolves the revision via the commits API and fetches the pinned zipball", async () => {
-    mockEnv.VIA_GITHUB_TOKEN = "test-token";
     const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
       requestedUrls.push(url);
 
       if (url === "https://api.github.com/repos/the-via/keyboards/commits/master") {
@@ -146,8 +171,10 @@ describe("loadViaKeyboardDetail", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { loadViaKeyboardDetail } = await freshViaSource();
-    const detail = await loadViaKeyboardDetail("test/board");
+    const { loadViaKeyboardDetailEffect } = await freshViaSource();
+    const detail = await runViaEffect(loadViaKeyboardDetailEffect("test/board"), {
+      VIA_GITHUB_TOKEN: "test-token",
+    });
 
     expect(detail.sourceRevision).toBe("pinnedsha1234567");
     expect(
@@ -158,14 +185,14 @@ describe("loadViaKeyboardDetail", () => {
   });
 
   it("falls back to the codeload archive when the authenticated revision lookup fails", async () => {
-    mockEnv.VIA_GITHUB_TOKEN = "test-token";
     const requestedUrls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
+      const url = requestUrl(input);
       requestedUrls.push(url);
 
       if (url === "https://api.github.com/repos/the-via/keyboards/commits/master") {
-        // A rate-limited (non-retryable) failure of the commits API call.
+        // A permanent failure is not retried, and codeload is a truthful
+        // tokenless fallback for the current branch archive.
         return new Response("forbidden", { status: 403 });
       }
       if (url.startsWith("https://codeload.github.com/the-via/keyboards/legacy.zip/")) {
@@ -184,9 +211,84 @@ describe("loadViaKeyboardDetail", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { loadViaKeyboardDetail } = await freshViaSource();
-    const detail = await loadViaKeyboardDetail("test/board");
+    const { loadViaKeyboardDetailEffect } = await freshViaSource();
+    const detail = await runViaEffect(loadViaKeyboardDetailEffect("test/board"), {
+      VIA_GITHUB_TOKEN: "test-token",
+    });
 
     expect(detail.sourceRevision).toBe("fedcba9");
+    expect(
+      requestedUrls.filter(
+        (url) => url === "https://api.github.com/repos/the-via/keyboards/commits/master",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("bounds retries, leaves failures uncached, and succeeds on the next load", async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (!url.startsWith("https://codeload.github.com/the-via/keyboards/legacy.zip/")) {
+        return new Response("not found", { status: 404 });
+      }
+      attempts += 1;
+      return attempts <= 4
+        ? new Response("temporarily unavailable", { status: 503 })
+        : new Response(viaZipball("the-via-keyboards-bead123"), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { loadViaKeyboardCatalogEffect, ViaCatalogFetchError } = await freshViaSource();
+    const load = provideConfig(loadViaKeyboardCatalogEffect());
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const firstFiber = yield* Effect.forkChild(Effect.result(load));
+        yield* TestClock.adjust("5 minutes");
+        const first = yield* Fiber.join(firstFiber);
+        const second = yield* load;
+        return { first, second };
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+
+    expect(result.first._tag).toBe("Failure");
+    if (result.first._tag === "Failure") {
+      expect(result.first.failure).toBeInstanceOf(ViaCatalogFetchError);
+    }
+    expect(attempts).toBe(5);
+    expect(result.second.ref).toBe("bead123");
+  });
+
+  it("deduplicates concurrent catalog loads and refreshes only after the TTL", async () => {
+    let archiveRequests = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (!url.startsWith("https://codeload.github.com/the-via/keyboards/legacy.zip/")) {
+        return new Response("not found", { status: 404 });
+      }
+      archiveRequests += 1;
+      const root =
+        archiveRequests === 1 ? "the-via-keyboards-abc1234" : "the-via-keyboards-def5678";
+      return new Response(viaZipball(root), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { loadViaKeyboardCatalogEffect } = await freshViaSource();
+    const load = provideConfig(loadViaKeyboardCatalogEffect());
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const [first, concurrent] = yield* Effect.all([load, load], { concurrency: 2 });
+        yield* TestClock.adjust("14 minutes");
+        const beforeExpiry = yield* load;
+        yield* TestClock.adjust("2 minutes");
+        const afterExpiry = yield* load;
+        return { first, concurrent, beforeExpiry, afterExpiry };
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+
+    expect(result.first.ref).toBe("abc1234");
+    expect(result.concurrent.ref).toBe("abc1234");
+    expect(result.beforeExpiry.ref).toBe("abc1234");
+    expect(result.afterExpiry.ref).toBe("def5678");
+    expect(archiveRequests).toBe(2);
   });
 });

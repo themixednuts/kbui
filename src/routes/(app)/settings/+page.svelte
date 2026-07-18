@@ -13,13 +13,22 @@
   import { Effect } from "effect";
   import { onMount, untrack } from "svelte";
 
-  import { Accent, EditorLayout, runApp, TargetOS, Theme } from "$lib/app";
+  import { Accent, EditorLayout, TargetOS, Theme } from "$lib/app";
+  import {
+    decodeAuthClientErrorEffect,
+    decodeGitHubFirmwareAppConnectResponseEffect,
+    decodeGitHubFirmwareAppStatusEffect,
+    decodeGitHubFirmwareBuildResponseEffect,
+    decodeGitHubFirmwareCleanupResponseEffect,
+    decodeGitHubFirmwareSyncResponseEffect,
+    decodeMonkeytypeConnectionStatusEffect,
+  } from "$lib/app/auth-client-boundary";
   import {
     authClientErrorMessage,
     createFirmwareGithubSyncInput,
     firmwareGithubVariantInput,
-    type AuthClientError,
   } from "$lib/app/firmware-github-actions";
+  import { forkApp, startScopedApp } from "$lib/app/runtime";
   import { authClient } from "$lib/auth-client";
   import { DEFAULT_MONKEYTYPE_MODE, DEFAULT_MONKEYTYPE_MODE2 } from "$lib/monkeytype/types";
   import type {
@@ -440,23 +449,29 @@
     zmkTargetQuery = profile.name;
   });
 
-  onMount(() => {
-    void runApp(
-      "Load accent",
-      Accent.loadAndApply.pipe(
-        Effect.tap((loaded) => Effect.sync(() => loaded && (accentId = loaded))),
+  onMount(() =>
+    startScopedApp(
+      "settings.initialize",
+      Effect.all(
+        [
+          Accent.loadAndApply.pipe(
+            Effect.tap((loaded) => Effect.sync(() => loaded && (accentId = loaded))),
+            Effect.catch((error) =>
+              Effect.sync(() => capturePreferenceError("Load accent", clientErrorMessage(error, "Could not load accent"))),
+            ),
+          ),
+          Theme.loadAndApply.pipe(
+            Effect.tap((loaded) => Effect.sync(() => loaded && (themeId = loaded))),
+            Effect.catch((error) =>
+              Effect.sync(() => capturePreferenceError("Load theme", clientErrorMessage(error, "Could not load theme"))),
+            ),
+          ),
+          profile.firmware === "qmk" ? loadQmkCatalogEffect() : Effect.void,
+        ],
+        { concurrency: 3, discard: true },
       ),
-      capturePreferenceError,
-    );
-    void runApp(
-      "Load theme",
-      Theme.loadAndApply.pipe(
-        Effect.tap((loaded) => Effect.sync(() => loaded && (themeId = loaded))),
-      ),
-      capturePreferenceError,
-    );
-    if (profile.firmware === "qmk") void loadQmkCatalog();
-  });
+    ),
+  );
 
   $effect(() => {
     if (!shell.monkeytype.connected) {
@@ -483,15 +498,21 @@
       return;
     }
 
-    untrack(() => {
+    return untrack(() => {
+      const effects = [];
       if (extensionLoadedFor !== userId) {
         extensionLoadedFor = userId;
-        void refreshExtensionDevices(false);
+        effects.push(refreshExtensionDevicesEffect(false));
       }
       if (firmwareGithubLoadedFor !== userId) {
         firmwareGithubLoadedFor = userId;
-        void refreshFirmwareGithubStatus(false);
+        effects.push(refreshFirmwareGithubStatusEffect(false));
       }
+      if (effects.length === 0) return;
+      return startScopedApp(
+        "settings.load-account-integrations",
+        Effect.all(effects, { concurrency: 2, discard: true }),
+      );
     });
   });
 
@@ -499,7 +520,8 @@
     if (!monkeytypeSignedIn) return;
     if (extensionChoiceKey === extensionSyncedChoiceKey) return;
     extensionSyncedChoiceKey = extensionChoiceKey;
-    void syncExtensionChoices(extensionChoices);
+    const choices = extensionChoices;
+    return startScopedApp("extension.sync-keyboard-choices", syncExtensionChoicesEffect(choices));
   });
 
   function updateTiming(key: "tappingTerm" | "debounce", value: number) {
@@ -534,25 +556,26 @@
     });
   }
 
-  function loadQmkCatalog() {
-    if (qmkCatalogItems.length > 0 || firmwareTargetResolving) return;
-    firmwareTargetResolving = true;
-    firmwareTargetError = null;
-    void runApp(
-      "firmware-target.load-qmk-catalog",
-      hostEffect("firmware-target.load-qmk-catalog", () => getViaKeyboardIndex()).pipe(
-        Effect.tap((catalog) => Effect.sync(() => (qmkCatalogItems = catalog.items))),
-        Effect.catch((error) =>
-          Effect.sync(
-            () =>
-              (firmwareTargetError =
-                error instanceof Error
-                  ? error.message
-                  : "Could not load the VIA/QMK target catalog."),
-          ),
+  function loadQmkCatalogEffect() {
+    if (qmkCatalogItems.length > 0 || firmwareTargetResolving) return Effect.void;
+    return Effect.gen(function* () {
+      firmwareTargetResolving = true;
+      firmwareTargetError = null;
+      const catalog = yield* hostEffect("firmware-target.load-qmk-catalog", () =>
+        getViaKeyboardIndex(),
+      );
+      qmkCatalogItems = catalog.items;
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(
+          () =>
+            (firmwareTargetError =
+              error instanceof Error
+                ? error.message
+                : "Could not load the VIA/QMK target catalog."),
         ),
-        Effect.ensuring(Effect.sync(() => (firmwareTargetResolving = false))),
       ),
+      Effect.ensuring(Effect.sync(() => (firmwareTargetResolving = false))),
     );
   }
 
@@ -562,7 +585,7 @@
     firmwareTargetResolving = true;
     firmwareTargetNotice = null;
     firmwareTargetError = null;
-    void runApp(
+    forkApp(
       "firmware-target.select-qmk",
       Effect.gen(function* () {
       const entry = yield* hostEffect("firmware-target.qmk-detail", () =>
@@ -628,7 +651,7 @@
     firmwareTargetResolving = true;
     firmwareTargetNotice = null;
     firmwareTargetError = null;
-    void runApp(
+    forkApp(
       "firmware-target.find-zmk",
       Effect.gen(function* () {
       const resolved = yield* hostEffect("firmware-target.find-zmk", () =>
@@ -728,16 +751,11 @@
               targetConfirmed: zmkTargetConfirmed,
             },
           };
-    void runApp(
+    forkApp(
       "firmware-target.save",
       Effect.gen(function* () {
         workbench.updateFirmwareMetadata(next);
-        yield* hostEffect("firmware-target.flush", () => workbench.flushPersistence());
-        if (workbench.persistenceError) {
-          return yield* Effect.fail(
-            platformError("firmware-target.persistence", workbench.persistenceError),
-          );
-        }
+        yield* workbench.flushPersistenceEffect();
         firmwareTargetNotice = "Firmware target saved locally.";
       }).pipe(
         Effect.catch((error) =>
@@ -790,7 +808,7 @@
   function updateAccent(next: Accent.AccentId) {
     accentId = next;
     preferenceError = null;
-    void runApp("Save accent", Accent.saveAndApply(next), capturePreferenceError);
+    forkApp("Save accent", Accent.saveAndApply(next), capturePreferenceError);
   }
 
   function updateEditorLayout(next: EditorLayout.EditorLayoutId) {
@@ -800,7 +818,7 @@
   function updateTheme(next: Theme.ThemeId) {
     themeId = next;
     preferenceError = null;
-    void runApp("Save theme", Theme.saveAndApply(next), capturePreferenceError);
+    forkApp("Save theme", Theme.saveAndApply(next), capturePreferenceError);
   }
 
   function connectMonkeytype(event: SubmitEvent) {
@@ -814,7 +832,7 @@
     monkeytypeBusy = true;
     monkeytypeError = null;
 
-    void runApp(
+    forkApp(
       "monkeytype.connect",
       Effect.gen(function* () {
       const preset = monkeytypePresets.find((option) => option.value === monkeytypePreset);
@@ -826,12 +844,17 @@
           mode2: preset?.mode2 ?? DEFAULT_MONKEYTYPE_MODE2,
         }),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("monkeytype.decode-connect-error", cause)),
+      );
       if (error) {
         monkeytypeError = clientErrorMessage(error, "Monkeytype connect failed");
         return;
       }
-      shell.setMonkeytypeStatus(result.data);
+      const status = yield* decodeMonkeytypeConnectionStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("monkeytype.decode-connect", cause)),
+      );
+      shell.setMonkeytypeStatus(status);
       monkeytypeApeKey = "";
       }).pipe(
         Effect.catch((error) =>
@@ -848,18 +871,23 @@
     if (!shell.monkeytype.connected || monkeytypeBusy) return;
     monkeytypeBusy = true;
     monkeytypeError = null;
-    void runApp(
+    forkApp(
       "monkeytype.refresh",
       Effect.gen(function* () {
       const result = yield* hostEffect("monkeytype.refresh", () =>
         authClient.monkeytype.refresh({ force: true }),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("monkeytype.decode-refresh-error", cause)),
+      );
       if (error) {
         monkeytypeError = clientErrorMessage(error, "Monkeytype refresh failed");
         return;
       }
-      shell.setMonkeytypeStatus(result.data);
+      const status = yield* decodeMonkeytypeConnectionStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("monkeytype.decode-refresh", cause)),
+      );
+      shell.setMonkeytypeStatus(status);
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(
@@ -875,18 +903,23 @@
     if (!shell.monkeytype.connected || monkeytypeBusy) return;
     monkeytypeBusy = true;
     monkeytypeError = null;
-    void runApp(
+    forkApp(
       "monkeytype.disconnect",
       Effect.gen(function* () {
       const result = yield* hostEffect("monkeytype.disconnect", () =>
         authClient.monkeytype.disconnect(),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("monkeytype.decode-disconnect-error", cause)),
+      );
       if (error) {
         monkeytypeError = clientErrorMessage(error, "Monkeytype disconnect failed");
         return;
       }
-      shell.setMonkeytypeStatus(result.data);
+      const status = yield* decodeMonkeytypeConnectionStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("monkeytype.decode-disconnect", cause)),
+      );
+      shell.setMonkeytypeStatus(status);
       monkeytypeApeKey = "";
       monkeytypeUsername = "";
       monkeytypePreset = `${DEFAULT_MONKEYTYPE_MODE}:${DEFAULT_MONKEYTYPE_MODE2}`;
@@ -912,7 +945,7 @@
     extensionBusy = true;
     extensionError = null;
     extensionNotice = null;
-    void runApp(
+    forkApp(
       "extension.create-pairing-code",
       Effect.gen(function* () {
       extensionPairing = yield* hostEffect("extension.create-pairing-code", () =>
@@ -959,7 +992,7 @@
   }
 
   function refreshExtensionDevices(showBusy = true) {
-    void runApp("extension.refresh-devices", refreshExtensionDevicesEffect(showBusy));
+    forkApp("extension.refresh-devices", refreshExtensionDevicesEffect(showBusy));
   }
 
   function revokeExtension(id: string) {
@@ -967,7 +1000,7 @@
     extensionRevokingId = id;
     extensionError = null;
     extensionNotice = null;
-    void runApp(
+    forkApp(
       "extension.revoke-device",
       Effect.gen(function* () {
       yield* hostEffect("extension.revoke-device", () => revokeExtensionDevice(id));
@@ -988,59 +1021,56 @@
     );
   }
 
-  function syncExtensionChoices(choices: KeyboardChoicesResponse) {
-    void runApp(
-      "extension.sync-keyboard-choices",
-      hostEffect("extension.sync-keyboard-choices", () =>
-        syncExtensionKeyboardChoices(choices),
-      ).pipe(
-        Effect.catch((error) =>
-          Effect.sync(
-            () =>
-              (extensionError = clientErrorMessage(
-                error,
-                "Extension keyboard choices could not be synced.",
-              )),
-          ),
+  function syncExtensionChoicesEffect(choices: KeyboardChoicesResponse) {
+    return hostEffect("extension.sync-keyboard-choices", () =>
+      syncExtensionKeyboardChoices(choices),
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.sync(
+          () =>
+            (extensionError = clientErrorMessage(
+              error,
+              "Extension keyboard choices could not be synced.",
+            )),
         ),
       ),
     );
   }
 
-  function refreshFirmwareGithubStatus(showBusy = true) {
-    if (!monkeytypeSignedIn) return;
-    if (showBusy) firmwareGithubBusy = true;
-    firmwareGithubError = null;
-    void runApp(
-      "firmware-github.status",
-      Effect.gen(function* () {
+  function refreshFirmwareGithubStatusEffect(showBusy = true) {
+    if (!monkeytypeSignedIn) return Effect.void;
+    return Effect.gen(function* () {
+      if (showBusy) firmwareGithubBusy = true;
+      firmwareGithubError = null;
       const result = yield* hostEffect("firmware-github.status", () =>
         authClient.firmwareGithub.status(),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-status-error", cause)),
+      );
       if (error) {
         firmwareGithubError = clientErrorMessage(error, "GitHub App status could not be loaded.");
         return;
       }
-      firmwareGithubStatus = result.data;
-      if (!result.data?.connected) {
-        firmwareGithubSyncResult = null;
-      }
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(
-            () =>
-              (firmwareGithubError = clientErrorMessage(
-                error,
-                "GitHub App status could not be loaded.",
-              )),
-          ),
+      const status = yield* decodeGitHubFirmwareAppStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-status", cause)),
+      );
+      firmwareGithubStatus = status;
+      if (!status.connected) firmwareGithubSyncResult = null;
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(
+          () =>
+            (firmwareGithubError = clientErrorMessage(
+              error,
+              "GitHub App status could not be loaded.",
+            )),
         ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (showBusy) firmwareGithubBusy = false;
-          }),
-        ),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (showBusy) firmwareGithubBusy = false;
+        }),
       ),
     );
   }
@@ -1055,22 +1085,23 @@
 
     firmwareGithubBusy = true;
     firmwareGithubError = null;
-    void runApp(
+    forkApp(
       "firmware-github.connect",
       Effect.gen(function* () {
       const result = yield* hostEffect("firmware-github.connect", () =>
         authClient.firmwareGithub.connect(),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-connect-error", cause)),
+      );
       if (error) {
         firmwareGithubError = clientErrorMessage(error, "GitHub App connect failed.");
         return;
       }
-      if (!result.data) {
-        firmwareGithubError = "GitHub App connect did not return a redirect URL.";
-        return;
-      }
-      globalThis.location.assign(result.data.installUrl);
+      const connection = yield* decodeGitHubFirmwareAppConnectResponseEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-connect", cause)),
+      );
+      globalThis.location.assign(connection.installUrl);
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(
@@ -1088,18 +1119,22 @@
     firmwareGithubBusy = true;
     firmwareGithubError = null;
     firmwareGithubNotice = null;
-    void runApp(
+    forkApp(
       "firmware-github.disconnect",
       Effect.gen(function* () {
       const result = yield* hostEffect("firmware-github.disconnect", () =>
         authClient.firmwareGithub.disconnect(),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-disconnect-error", cause)),
+      );
       if (error) {
         firmwareGithubError = clientErrorMessage(error, "GitHub App disconnect failed.");
         return;
       }
-      firmwareGithubStatus = result.data;
+      firmwareGithubStatus = yield* decodeGitHubFirmwareAppStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-disconnect", cause)),
+      );
       firmwareGithubSyncResult = null;
       firmwareGithubNotice = "Disconnected. Managed repositories and generated branches were preserved.";
       }).pipe(
@@ -1131,7 +1166,7 @@
     firmwareGithubBusy = true;
     firmwareGithubError = null;
     firmwareGithubNotice = null;
-    void runApp(
+    forkApp(
       "firmware-github.cleanup",
       Effect.gen(function* () {
       const result = yield* hostEffect("firmware-github.cleanup", () =>
@@ -1144,15 +1179,20 @@
           variant: syncInput.variant,
         }),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-cleanup-error", cause)),
+      );
       if (error) {
         firmwareGithubError = clientErrorMessage(error, "GitHub firmware cleanup failed.");
         return;
       }
+      const cleanup = yield* decodeGitHubFirmwareCleanupResponseEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-cleanup", cause)),
+      );
       firmwareGithubNotice =
         action === "repository"
-          ? `Deleted managed repository ${result.data?.repositoryFullName}.`
-          : `Removed generated branch ${result.data?.branchName}.`;
+          ? `Deleted managed repository ${cleanup.repositoryFullName}.`
+          : `Removed generated branch ${cleanup.branchName}.`;
       firmwareGithubDeleteConfirmation = "";
       firmwareGithubSyncResult = null;
       }).pipe(
@@ -1200,13 +1240,15 @@
     firmwareGithubBusy = true;
     firmwareGithubError = null;
     firmwareGithubNotice = null;
-    void runApp(
+    forkApp(
       "firmware-github.sync",
       Effect.gen(function* () {
       const result = yield* hostEffect("firmware-github.sync", () =>
         build ? authClient.firmwareGithub.build(input) : authClient.firmwareGithub.sync(input),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-sync-error", cause)),
+      );
       if (error) {
         firmwareGithubError = clientErrorMessage(
           error,
@@ -1214,16 +1256,14 @@
         );
         return;
       }
-      if (!result.data) {
-        firmwareGithubError = build
-          ? "GitHub firmware build did not return a result."
-          : "GitHub firmware sync did not return a result.";
-        return;
-      }
-      firmwareGithubSyncResult = result.data;
+      const synced = yield* (build
+        ? decodeGitHubFirmwareBuildResponseEffect(result.data)
+        : decodeGitHubFirmwareSyncResponseEffect(result.data)
+      ).pipe(Effect.mapError((cause) => platformError("firmware-github.decode-sync", cause)));
+      firmwareGithubSyncResult = synced;
       firmwareGithubNotice = build
-        ? `Build dispatched on ${result.data.branch.branchName}.`
-        : `Synced ${result.data.files} files to ${result.data.branch.branchName}.`;
+        ? `Build dispatched on ${synced.branch.branchName}.`
+        : `Synced ${synced.files} files to ${synced.branch.branchName}.`;
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(
@@ -1478,7 +1518,7 @@
                   query={qmkCatalogQuery}
                   onQueryChange={(next) => (qmkCatalogQuery = next)}
                   selectedId={qmkCatalogSelectedId}
-                  onSelectedIdChange={(next) => void selectQmkCatalogEntry(next)}
+                  onSelectedIdChange={selectQmkCatalogEntry}
                   options={qmkCatalogOptions}
                   placeholder="Search keyboard"
                   placeholderOption={
@@ -1578,7 +1618,7 @@
                     onkeydown={(event) => {
                       if (event.key !== "Enter") return;
                       event.preventDefault();
-                      void findZmkTargets();
+                      findZmkTargets();
                     }}
                   />
                   <Button

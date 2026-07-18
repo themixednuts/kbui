@@ -3,13 +3,13 @@
   import { goto } from "$app/navigation";
   import { ArrowRight, FolderOpen, Usb } from "@lucide/svelte";
   import { Effect } from "effect";
-  import { runApp } from "$lib/app";
+  import { runApp, type AppServices } from "$lib/app/runtime";
   import { Button } from "$lib/components/ui";
   import {
-    connectZmkStudioAndActivate,
-    connectViaAndActivate,
-    continueWithoutDevice,
-    importViaJsonAndActivate,
+    connectZmkStudioAndActivateEffect,
+    connectViaAndActivateEffect,
+    continueWithoutDeviceEffect,
+    importViaJsonAndActivateEffect,
   } from "$lib/app/connect-flow";
   import { createViaCatalogResolver } from "$lib/app/via-catalog-resolver";
   import { getShellContext } from "$lib/app/shell-store.svelte";
@@ -92,7 +92,7 @@
     });
   }
 
-  function runAction(action: BusyAction, task: Effect.Effect<string, unknown>) {
+  function runAction(action: BusyAction, task: Effect.Effect<string, unknown, AppServices>) {
     if (busyAction) return;
 
     busyAction = action;
@@ -107,6 +107,9 @@
         Effect.catch((error) =>
           Effect.sync(() => {
             message = error instanceof Error ? error.message : "Connect action failed.";
+            if (!shell.connected) {
+              shell.setConnectionError(message, shell.device.transport);
+            }
           }),
         ),
         Effect.ensuring(Effect.sync(() => (busyAction = null))),
@@ -117,15 +120,13 @@
   function connectDevice() {
     runAction(
       "real",
-      hostEffect("connect.via", () =>
-        connectViaAndActivate({
-          connectOptions: { resolveMatrixHint: viaCatalog.matrixHintFor },
-          resolveBaseProfile: viaCatalog.baseProfileForConnection,
-          shell,
-          transport: createWebHidViaTransport(currentFilters()),
-          workbench,
-        }),
-      ).pipe(Effect.map((result) => result.message)),
+      connectViaAndActivateEffect({
+        connectOptions: { resolveMatrixHint: viaCatalog.matrixHintFor },
+        resolveBaseProfile: viaCatalog.baseProfileForConnection,
+        shell,
+        transport: createWebHidViaTransport(currentFilters()),
+        workbench,
+      }).pipe(Effect.map((result) => result.message)),
     );
   }
 
@@ -137,15 +138,13 @@
 
     runAction(
       "zmk-ble",
-      hostEffect("connect.zmk-ble", () =>
-        connectZmkStudioAndActivate({
-          resolveFirmwareMetadata: (profile) =>
-            resolveZmkTarget({ deviceName: profile.name, manufacturer: profile.vendor }),
-          shell,
-          transport: createWebBluetoothZmkStudioTransport(),
-          workbench,
-        }),
-      ).pipe(
+      connectZmkStudioAndActivateEffect({
+        resolveFirmwareMetadata: (profile) =>
+          resolveZmkTarget({ deviceName: profile.name, manufacturer: profile.vendor }),
+        shell,
+        transport: createWebBluetoothZmkStudioTransport(),
+        workbench,
+      }).pipe(
         Effect.map(
           (result) =>
             `${result.message}. Real BLE is hardware-unverified until tested with a ZMK Studio board.`,
@@ -162,15 +161,13 @@
 
     runAction(
       "zmk-usb",
-      hostEffect("connect.zmk-usb", () =>
-        connectZmkStudioAndActivate({
-          resolveFirmwareMetadata: (profile) =>
-            resolveZmkTarget({ deviceName: profile.name, manufacturer: profile.vendor }),
-          shell,
-          transport: createWebSerialZmkStudioTransport(),
-          workbench,
-        }),
-      ).pipe(
+      connectZmkStudioAndActivateEffect({
+        resolveFirmwareMetadata: (profile) =>
+          resolveZmkTarget({ deviceName: profile.name, manufacturer: profile.vendor }),
+        shell,
+        transport: createWebSerialZmkStudioTransport(),
+        workbench,
+      }).pipe(
         Effect.map(
           (result) =>
             `${result.message}. Real USB serial is hardware-unverified until tested with a ZMK Studio board.`,
@@ -196,9 +193,12 @@
           try: () => JSON.parse(text) as unknown,
           catch: (cause) => platformError("connect.parse-via-json", cause),
         });
-        const result = yield* hostEffect("connect.import-via-json", () =>
-          importViaJsonAndActivate({ fileName: file.name, json, shell, workbench }),
-        );
+        const result = yield* importViaJsonAndActivateEffect({
+          fileName: file.name,
+          json,
+          shell,
+          workbench,
+        });
         return result.message;
       }).pipe(Effect.ensuring(Effect.sync(() => (input.value = "")))),
     );
@@ -208,7 +208,7 @@
     event.preventDefault();
     runAction(
       "local",
-      hostEffect("connect.local-only", () => continueWithoutDevice({ shell, workbench })).pipe(
+      continueWithoutDeviceEffect({ shell, workbench }).pipe(
         Effect.map((result) => result.message),
       ),
     );

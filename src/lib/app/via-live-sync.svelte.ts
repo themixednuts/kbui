@@ -1,8 +1,9 @@
 import { getContext, setContext } from "svelte";
-import { Effect, Semaphore } from "effect";
+import { Effect, Exit, Scope } from "effect";
 
 import type { EditorStore } from "$lib/app/editor-store.svelte";
-import { forkApp, runApp } from "$lib/app/runtime";
+import { makeLiveSyncLaneQueue, type LiveSyncLaneQueue } from "$lib/app/live-sync-lifecycle";
+import { forkApp, runApp, runAppSync } from "$lib/app/runtime";
 import type { ShellStore } from "$lib/app/shell-store.svelte";
 import { platformError } from "$lib/effect/errors";
 import {
@@ -115,6 +116,7 @@ export interface LiveSyncView {
   title: string;
   destroy: () => void;
   flush: () => Promise<void>;
+  flushEffect: () => Effect.Effect<void>;
   pause: () => void;
   processChanges: (connection?: ConnectionState | null) => void;
   resume: () => void;
@@ -216,20 +218,28 @@ export class ViaLiveSyncEngine {
   readonly localOnlySummary = $derived.by(() => summarizeLiveSyncLocalOnly(this.localOnlyChanges));
 
   private readonly writeKeycode: NonNullable<ViaLiveSyncOptions["writeKeycode"]>;
-  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly pendingWrites = new Map<string, PendingWrite>();
+  private readonly lifecycleScope = Scope.makeUnsafe();
+  private readonly lanes: LiveSyncLaneQueue<PendingWrite>;
   private readonly failedSignatures = new Map<string, string>();
-  private readonly writeSemaphore = Semaphore.makeUnsafe(1);
   private lastConnectionRevision = 0;
+  private destroyed = false;
 
   constructor(options: ViaLiveSyncOptions) {
     this.debounceMs = options.debounceMs ?? 160;
     this.editor = options.editor;
     this.shell = options.shell;
     this.writeKeycode = options.writeKeycode ?? writeViaKeycode;
+    this.lanes = runAppSync(
+      makeLiveSyncLaneQueue({
+        debounceMs: this.debounceMs,
+        processBatch: (batch: readonly PendingWrite[]) => this.drainBatchEffect(batch),
+      }).pipe(Effect.provideService(Scope.Scope, this.lifecycleScope)),
+    );
   }
 
   processChanges(connection = this.shell.liveConnection) {
+    if (this.destroyed) return;
+
     if (this.lastConnectionRevision !== this.shell.connectionRevision) {
       this.failedSignatures.clear();
       this.lastConnectionRevision = this.shell.connectionRevision;
@@ -243,7 +253,7 @@ export class ViaLiveSyncEngine {
       !this.canWrite(connection) ||
       this.paused
     ) {
-      this.clearTimers();
+      this.lanes.clear();
       return;
     }
 
@@ -268,7 +278,7 @@ export class ViaLiveSyncEngine {
 
   pause() {
     this.paused = true;
-    this.clearTimers();
+    this.lanes.clear();
   }
 
   resume() {
@@ -287,17 +297,18 @@ export class ViaLiveSyncEngine {
   }
 
   destroy() {
-    this.clearTimers();
-    this.pendingWrites.clear();
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.lanes.clear();
+    forkApp("via-live-sync.destroy", Scope.close(this.lifecycleScope, Exit.succeed(undefined)));
   }
 
   flush() {
-    return runApp(
-      "via-live-sync.flush",
-      Effect.sleep(`${this.debounceMs + 10} millis`).pipe(
-        Effect.andThen(this.writeSemaphore.withPermit(Effect.void)),
-      ),
-    );
+    return runApp("via-live-sync.flush", this.flushEffect());
+  }
+
+  flushEffect() {
+    return this.destroyed ? Effect.void : this.lanes.flushEffect();
   }
 
   private computeStatus(): ViaLiveSyncStatus {
@@ -320,30 +331,23 @@ export class ViaLiveSyncEngine {
     const target = change.liveWrite;
     if (!target) return;
 
-    const previousTimer = this.timers.get(target.laneKey);
-    if (previousTimer) clearTimeout(previousTimer);
-
-    this.pendingWrites.set(target.laneKey, {
+    this.setLaneStatus(change, "pending");
+    this.lanes.schedule(target.laneKey, {
       change,
       connection,
       connectionRevision: this.shell.connectionRevision,
     });
-    this.setLaneStatus(change, "pending");
-
-    const timer = setTimeout(() => {
-      this.timers.delete(target.laneKey);
-      this.enqueueWrite(target.laneKey);
-    }, this.debounceMs);
-    this.timers.set(target.laneKey, timer);
   }
 
-  private enqueueWrite(laneKey: string) {
-    const pending = this.pendingWrites.get(laneKey);
-    if (!pending) return;
-    this.pendingWrites.delete(laneKey);
-    this.setLaneStatus(pending.change, "syncing");
-
-    forkApp("via-live-sync.write", this.writeSemaphore.withPermit(this.writeOneEffect(pending)));
+  private drainBatchEffect(batch: readonly PendingWrite[]) {
+    return Effect.forEach(
+      batch,
+      (pending) =>
+        Effect.sync(() => this.setLaneStatus(pending.change, "syncing")).pipe(
+          Effect.andThen(this.writeOneEffect(pending)),
+        ),
+      { discard: true },
+    );
   }
 
   private writeOneEffect(pending: PendingWrite) {
@@ -377,11 +381,11 @@ export class ViaLiveSyncEngine {
 
       const latestBinding = currentBinding(this.editor, target);
       if (bindingSignature(latestBinding) === target.signature) {
-        yield* Effect.tryPromise({
-          try: () =>
-            this.editor.markBindingSyncedToBase(target.layerId, target.keyId, latestBinding),
-          catch: (cause) => platformError("via-live-sync.advance-base", cause),
-        });
+        yield* this.editor.markBindingSyncedToBaseEffect(
+          target.layerId,
+          target.keyId,
+          latestBinding,
+        );
         this.setLaneStatus(pending.change, "synced");
       } else {
         this.removeLaneStatus(target.laneKey);
@@ -457,19 +461,10 @@ export class ViaLiveSyncEngine {
     for (const laneKey of Object.keys(this.laneStatuses)) {
       if (!liveLanes.has(laneKey)) {
         this.failedSignatures.delete(laneKey);
-        this.pendingWrites.delete(laneKey);
-        const timer = this.timers.get(laneKey);
-        if (timer) clearTimeout(timer);
-        this.timers.delete(laneKey);
+        this.lanes.cancel(laneKey);
         this.removeLaneStatus(laneKey);
       }
     }
-  }
-
-  private clearTimers() {
-    for (const timer of this.timers.values()) clearTimeout(timer);
-    this.timers.clear();
-    this.pendingWrites.clear();
   }
 }
 

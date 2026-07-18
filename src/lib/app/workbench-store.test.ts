@@ -1,5 +1,7 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
+import { runApp } from "$lib/app/runtime";
 import { diffProfiles } from "$lib/keyboard/changes";
 import { macroBindingCode, tapDanceBindingCode } from "$lib/keyboard/logic-bindings";
 import { splitDemoKeyboard, starterBoardProfile } from "$lib/keyboard/sample-boards";
@@ -58,8 +60,8 @@ describe("workbench store profile provenance", () => {
     draft.layers[0].bindings["k2-4"] = { code: "KC_B" };
 
     const workbench = new WorkbenchStore({
-      loadDevice: async () => base,
-      loadDraft: async () => draft,
+      loadDevice: () => Effect.succeed(base),
+      loadDraft: () => Effect.succeed(draft),
       persist: false,
     });
 
@@ -130,7 +132,7 @@ describe("workbench store profile provenance", () => {
 
     const workbench = new WorkbenchStore({
       autoHydrate: false,
-      loadDraft: async (id) => (id === connected.id ? draft : undefined),
+      loadDraft: (id) => Effect.succeed(id === connected.id ? draft : undefined),
       persist: false,
     });
 
@@ -152,6 +154,28 @@ describe("workbench store profile provenance", () => {
     expect(workbench.profile.id).toBe(splitDemoKeyboard.id);
     expect(workbench.profile.origin).toBe("starter");
     expect(profileDisplayName(workbench.profile)).toBe("Local split keyboard");
+  });
+});
+
+describe("workbench store Effect API", () => {
+  it("reconciles version history through the composable Effect API", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    const remote = {
+      ...workbench.versionGraphSnapshot(),
+      revision: 3,
+      updatedAt: "2026-07-18T12:00:00.000Z",
+    };
+
+    const merged = await runApp(
+      "test.workbench.reconcile-version-graph",
+      workbench.reconcileVersionGraphEffect(remote),
+    );
+
+    expect(merged).toMatchObject({ revision: 3, updatedAt: remote.updatedAt });
+    expect(workbench.versionGraphSnapshot()).toMatchObject({
+      revision: 3,
+      updatedAt: remote.updatedAt,
+    });
   });
 });
 

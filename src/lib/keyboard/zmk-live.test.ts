@@ -1,6 +1,7 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
-import { profileFromConnectedZmkStudio } from "$lib/app/connect-flow";
+import { profileFromConnectedZmkStudioEffect } from "$lib/app/connect-flow";
 
 import { cloneDevice } from "./schema";
 import { createMockZmkStudioTransport } from "./transport-mock-zmk";
@@ -8,7 +9,7 @@ import { classifyZmkProfileChanges } from "./zmk-live";
 
 async function connectedZmkProfile() {
   const connection = await createMockZmkStudioTransport().connect();
-  const profile = await profileFromConnectedZmkStudio(connection);
+  const profile = await Effect.runPromise(profileFromConnectedZmkStudioEffect(connection));
   return { connection, profile };
 }
 

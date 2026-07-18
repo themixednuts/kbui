@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -10,110 +11,124 @@ import {
   type PairDeviceResponse,
 } from "$lib/typing-runs/contracts";
 import {
-  createPairingTokenFromEnvironment,
-  getKeyboardChoicesFromEnvironment,
-  ingestTypingRunFromEnvironment,
-  pairExtensionDeviceFromEnvironment,
-  resolveExtensionDeviceTokenFromEnvironment,
-  revokeExtensionDeviceFromEnvironment,
-  setKeyboardChoicesFromEnvironment,
+  createPairingTokenFromEnvironmentEffect,
+  getKeyboardChoicesFromEnvironmentEffect,
+  ingestTypingRunFromEnvironmentEffect,
+  pairExtensionDeviceFromEnvironmentEffect,
+  resolveExtensionDeviceTokenFromEnvironmentEffect,
+  revokeExtensionDeviceFromEnvironmentEffect,
+  setKeyboardChoicesFromEnvironmentEffect,
 } from "$lib/typing-runs/service";
 
+function itEffect(name: string, body: () => Effect.Effect<void, unknown>) {
+  it(name, () => Effect.runPromise(body()));
+}
+
 describe("TypingRunsAgent RPC service", () => {
-  it("pairs a token once and rejects reuse", async () => {
-    const agent = new FakeTypingRunsAgent();
-    const env = envFor(agent);
+  itEffect("pairs a token once and rejects reuse", () =>
+    Effect.gen(function* () {
+      const agent = new FakeTypingRunsAgent();
+      const env = envFor(agent);
 
-    const pairing = await createPairingTokenFromEnvironment(env, "user-1", {
-      createdAt: "2026-07-04T12:00:00.000Z",
-    });
-    const first = await pairExtensionDeviceFromEnvironment(env, {
-      code: pairing.code,
-      installId: "install-1",
-      extensionVersion: "0.1.0",
-      pairedAt: "2026-07-04T12:01:00.000Z",
-    });
-    const second = await pairExtensionDeviceFromEnvironment(env, {
-      code: pairing.code,
-      installId: "install-1",
-      extensionVersion: "0.1.0",
-      pairedAt: "2026-07-04T12:02:00.000Z",
-    });
+      const pairing = yield* createPairingTokenFromEnvironmentEffect(env, "user-1", {
+        createdAt: "2026-07-04T12:00:00.000Z",
+      });
+      const first = yield* pairExtensionDeviceFromEnvironmentEffect(env, {
+        code: pairing.code,
+        installId: "install-1",
+        extensionVersion: "0.1.0",
+        pairedAt: "2026-07-04T12:01:00.000Z",
+      });
+      const second = yield* pairExtensionDeviceFromEnvironmentEffect(env, {
+        code: pairing.code,
+        installId: "install-1",
+        extensionVersion: "0.1.0",
+        pairedAt: "2026-07-04T12:02:00.000Z",
+      });
 
-    expect(first?.userId).toBe("user-1");
-    expect(first?.deviceToken).toBe("device-token-1");
-    expect(second).toBeNull();
-  });
+      expect(first?.userId).toBe("user-1");
+      expect(first?.deviceToken).toBe("device-token-1");
+      expect(second).toBeNull();
+    }),
+  );
 
-  it("rejects expired pairing tokens", async () => {
-    const agent = new FakeTypingRunsAgent();
-    const env = envFor(agent);
-    const pairing = await createPairingTokenFromEnvironment(env, "user-1", {
-      createdAt: "2026-07-04T12:00:00.000Z",
-    });
+  itEffect("rejects expired pairing tokens", () =>
+    Effect.gen(function* () {
+      const agent = new FakeTypingRunsAgent();
+      const env = envFor(agent);
+      const pairing = yield* createPairingTokenFromEnvironmentEffect(env, "user-1", {
+        createdAt: "2026-07-04T12:00:00.000Z",
+      });
 
-    const result = await pairExtensionDeviceFromEnvironment(env, {
-      code: pairing.code,
-      installId: "install-1",
-      extensionVersion: "0.1.0",
-      pairedAt: "2026-07-04T12:20:00.000Z",
-    });
+      const result = yield* pairExtensionDeviceFromEnvironmentEffect(env, {
+        code: pairing.code,
+        installId: "install-1",
+        extensionVersion: "0.1.0",
+        pairedAt: "2026-07-04T12:20:00.000Z",
+      });
 
-    expect(result).toBeNull();
-  });
+      expect(result).toBeNull();
+    }),
+  );
 
-  it("mints, resolves, and revokes device tokens", async () => {
-    const agent = new FakeTypingRunsAgent();
-    const env = envFor(agent);
-    const pairing = await createPairingTokenFromEnvironment(env, "user-1", {
-      createdAt: "2026-07-04T12:00:00.000Z",
-    });
-    const paired = await pairExtensionDeviceFromEnvironment(env, {
-      code: pairing.code,
-      installId: "install-1",
-      extensionVersion: "0.1.0",
-      pairedAt: "2026-07-04T12:01:00.000Z",
-    });
+  itEffect("mints, resolves, and revokes device tokens", () =>
+    Effect.gen(function* () {
+      const agent = new FakeTypingRunsAgent();
+      const env = envFor(agent);
+      const pairing = yield* createPairingTokenFromEnvironmentEffect(env, "user-1", {
+        createdAt: "2026-07-04T12:00:00.000Z",
+      });
+      const paired = yield* pairExtensionDeviceFromEnvironmentEffect(env, {
+        code: pairing.code,
+        installId: "install-1",
+        extensionVersion: "0.1.0",
+        pairedAt: "2026-07-04T12:01:00.000Z",
+      });
 
-    expect(await resolveExtensionDeviceTokenFromEnvironment(env, paired?.deviceToken ?? "")).toBe(
-      "user-1",
-    );
-    await revokeExtensionDeviceFromEnvironment(env, "user-1", paired?.device.id ?? "");
-    expect(await resolveExtensionDeviceTokenFromEnvironment(env, paired?.deviceToken ?? "")).toBe(
-      null,
-    );
-  });
+      expect(
+        yield* resolveExtensionDeviceTokenFromEnvironmentEffect(env, paired?.deviceToken ?? ""),
+      ).toBe("user-1");
+      yield* revokeExtensionDeviceFromEnvironmentEffect(env, "user-1", paired?.device.id ?? "");
+      expect(
+        yield* resolveExtensionDeviceTokenFromEnvironmentEffect(env, paired?.deviceToken ?? ""),
+      ).toBeNull();
+    }),
+  );
 
-  it("stores keyboard choices for extension pickers", async () => {
-    const agent = new FakeTypingRunsAgent();
-    const env = envFor(agent);
-    const choices: KeyboardChoicesResponse = {
-      keyboards: [{ keyboardId: "kb-1", displayName: "Workbench 65" }],
-      layouts: [{ layoutId: "main:kb-1", displayName: "main", layerNames: ["Base", "Fn"] }],
-    };
+  itEffect("stores keyboard choices for extension pickers", () =>
+    Effect.gen(function* () {
+      const agent = new FakeTypingRunsAgent();
+      const env = envFor(agent);
+      const choices: KeyboardChoicesResponse = {
+        keyboards: [{ keyboardId: "kb-1", displayName: "Workbench 65" }],
+        layouts: [{ layoutId: "main:kb-1", displayName: "main", layerNames: ["Base", "Fn"] }],
+      };
 
-    await setKeyboardChoicesFromEnvironment(env, "user-1", choices);
+      yield* setKeyboardChoicesFromEnvironmentEffect(env, "user-1", choices);
 
-    expect(await getKeyboardChoicesFromEnvironment(env, "user-1")).toEqual(choices);
-  });
+      expect(yield* getKeyboardChoicesFromEnvironmentEffect(env, "user-1")).toEqual(choices);
+    }),
+  );
 
-  it("ingests runs idempotently", async () => {
-    const agent = new FakeTypingRunsAgent();
-    const env = envFor(agent);
-    const capture = sampleCapture();
+  itEffect("ingests runs idempotently", () =>
+    Effect.gen(function* () {
+      const agent = new FakeTypingRunsAgent();
+      const env = envFor(agent);
+      const capture = sampleCapture();
 
-    const first = await ingestTypingRunFromEnvironment(env, "user-1", {
-      capture,
-      idempotencyKey: "run-1",
-    });
-    const second = await ingestTypingRunFromEnvironment(env, "user-1", {
-      capture,
-      idempotencyKey: "run-1",
-    });
+      const first = yield* ingestTypingRunFromEnvironmentEffect(env, "user-1", {
+        capture,
+        idempotencyKey: "run-1",
+      });
+      const second = yield* ingestTypingRunFromEnvironmentEffect(env, "user-1", {
+        capture,
+        idempotencyKey: "run-1",
+      });
 
-    expect(first).toEqual({ status: "stored", correlationState: "pending" });
-    expect(second).toEqual({ status: "duplicate", correlationState: "pending" });
-  });
+      expect(first).toEqual({ status: "stored", correlationState: "pending" });
+      expect(second).toEqual({ status: "duplicate", correlationState: "pending" });
+    }),
+  );
 });
 
 class FakeTypingRunsAgent {

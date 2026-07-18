@@ -1,8 +1,11 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
+import { BoundaryDecodeError } from "$lib/effect/errors";
 import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import type { SavePoint, WorkspaceFork } from "$lib/keyboard/schema";
 import {
+  decodeWorkbenchVersionGraphEffect,
   emptyWorkbenchVersionGraph,
   mergeWorkbenchVersionGraphs,
   normalizeWorkbenchVersionGraph,
@@ -77,4 +80,37 @@ describe("workbench version graph", () => {
     expect(graph.savePoints.map((point) => point.id)).toEqual(["sp-new", "sp-old"]);
     expect(graph.selectedSavePointId).toBe("sp-new");
   });
+
+  it("decodes persisted graph metadata and nested variants", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const graph = yield* decodeWorkbenchVersionGraphEffect({
+          ...emptyWorkbenchVersionGraph(),
+          forks: [fork("fork-1", "main", "2026-07-01T10:00:00.000Z")],
+          savePoints: [savePoint("sp-1", "fork-1", "2026-07-01T11:00:00.000Z")],
+          updatedAt: "2026-07-01T11:00:00Z",
+        });
+
+        expect(graph.forks[0]?.device.id).toBeTruthy();
+        expect(graph.updatedAt).toBe("2026-07-01T11:00:00.000Z");
+      }),
+    ));
+
+  it("rejects malformed graph metadata with a tagged boundary error", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(
+          decodeWorkbenchVersionGraphEffect({
+            ...emptyWorkbenchVersionGraph(),
+            revision: -1,
+          }),
+        );
+
+        expect(error).toBeInstanceOf(BoundaryDecodeError);
+        expect(error).toMatchObject({
+          _tag: "BoundaryDecodeError",
+          operation: "workbench.decode-version-graph",
+        });
+      }),
+    ));
 });

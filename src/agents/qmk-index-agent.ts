@@ -1,15 +1,15 @@
 import { Agent } from "agents";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { KeyboardCatalogEntry } from "$lib/keyboard/catalog";
 import { platformError } from "$lib/effect/errors";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import { QMK_INDEX_AGENT_NAME } from "$lib/server/keyboards/qmk-index-name";
 import {
-  buildQmkUsbIndex,
-  qmkGithubHeaders,
+  createQmkUsbIndexEffect,
+  QmkCatalogRecordsJsonSchema,
+  resolvePinnedQmkRefEffect,
   resolveQmkIdentityFromRecords,
-  resolveQmkRepositoryRef,
   usbIdentityKey,
   type QmkCatalogRecord,
 } from "$lib/server/keyboards/qmk-target";
@@ -113,10 +113,9 @@ export class QmkIndexAgent extends Agent<Cloudflare.Env, QmkIndexAgentState> {
         `[0];
         if (!row) return undefined;
 
-        const records = yield* Effect.try({
-          try: () => JSON.parse(row.records) as QmkCatalogRecord[],
-          catch: (cause) => platformError("qmk-index.parse-records", cause),
-        });
+        const records = yield* Schema.decodeUnknownEffect(QmkCatalogRecordsJsonSchema)(
+          row.records,
+        ).pipe(Effect.mapError((cause) => platformError("qmk-index.parse-records", cause)));
         return resolveQmkIdentityFromRecords(
           records,
           input,
@@ -139,17 +138,18 @@ export class QmkIndexAgent extends Agent<Cloudflare.Env, QmkIndexAgentState> {
       Effect.gen({ self: this }, function* () {
         yield* Effect.sync(() => this.ensureTables());
 
-        const index = yield* Effect.tryPromise({
-          try: () => buildQmkUsbIndex(),
-          catch: (cause) => platformError("qmk-index.build-usb-index", cause),
-        });
+        const index = yield* createQmkUsbIndexEffect();
 
         // The repository ref is best-effort: a GitHub rate-limit must not throw
         // away a freshly built index. Fall back to the default branch ref.
-        const ref = yield* Effect.tryPromise({
-          try: () => resolveQmkRepositoryRef(qmkGithubHeaders(this.githubToken())),
-          catch: (cause) => platformError("qmk-index.resolve-ref", cause),
-        }).pipe(Effect.catch(() => Effect.succeed("master")));
+        const ref = yield* resolvePinnedQmkRefEffect(this.githubToken()).pipe(
+          Effect.tapError((error) =>
+            Effect.logInfo("QMK index repository ref unavailable; using default branch").pipe(
+              Effect.annotateLogs({ operation: error.operation, status: error.status }),
+            ),
+          ),
+          Effect.catchTag("QmkCatalogFetchError", () => Effect.succeed("master")),
+        );
 
         yield* Effect.sync(() => this.persistIndex(index.lastUpdated, ref, index.items));
       }).pipe(
@@ -205,11 +205,7 @@ export class QmkIndexAgent extends Agent<Cloudflare.Env, QmkIndexAgentState> {
     this.refreshState();
   }
 
-  private persistIndex(
-    dataVersion: string,
-    ref: string,
-    items: Map<string, QmkCatalogRecord[]>,
-  ) {
+  private persistIndex(dataVersion: string, ref: string, items: Map<string, QmkCatalogRecord[]>) {
     void this.sql`DELETE FROM qmk_usb_index`;
     for (const [usbKey, records] of items) {
       void this.sql`

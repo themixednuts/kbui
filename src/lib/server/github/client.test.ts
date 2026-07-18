@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -22,27 +23,33 @@ describe("GitHub REST client", () => {
       fetchImpl: fetchMock.fetchImpl,
     });
 
-    await client.createRepositoryForAuthenticatedUser({
-      name: "firmware-builds",
-      description: "KBG firmware builds",
-      private: true,
-      auto_init: true,
-    });
-    await client.createRepositoryFromTemplate(
-      { owner: "zmkfirmware", repo: "unified firmware template" },
-      {
-        owner: "octo-user",
-        name: "zmk-config",
+    await Effect.runPromise(
+      client.createRepositoryForAuthenticatedUser({
+        name: "firmware-builds",
+        description: "KBG firmware builds",
         private: true,
-        include_all_branches: false,
-      },
+        auto_init: true,
+      }),
     );
-    await client.createRepositoryFork(
-      { owner: "qmk", repo: "qmk_userspace" },
-      {
-        default_branch_only: true,
-        name: "qmk-userspace-fork",
-      },
+    await Effect.runPromise(
+      client.createRepositoryFromTemplate(
+        { owner: "zmkfirmware", repo: "unified firmware template" },
+        {
+          owner: "octo-user",
+          name: "zmk-config",
+          private: true,
+          include_all_branches: false,
+        },
+      ),
+    );
+    await Effect.runPromise(
+      client.createRepositoryFork(
+        { owner: "qmk", repo: "qmk_userspace" },
+        {
+          default_branch_only: true,
+          name: "qmk-userspace-fork",
+        },
+      ),
     );
 
     const create = fetchMock.call(0);
@@ -102,24 +109,23 @@ describe("GitHub REST client", () => {
       fetchImpl: fetchMock.fetchImpl,
     });
 
-    await client.putFileContents("octo-user", "zmk-config", "config/crkbd.keymap", {
-      message: "Update keymap",
-      content: "YmFzZTY0LWtleW1hcA==",
-      sha: "old-file-sha",
-      branch: "main",
-    });
-    const dispatch = await client.dispatchWorkflow(
-      "octo-user",
-      "zmk-config",
-      ".github/workflows/firmware.yml",
-      {
+    await Effect.runPromise(
+      client.putFileContents("octo-user", "zmk-config", "config/crkbd.keymap", {
+        message: "Update keymap",
+        content: "YmFzZTY0LWtleW1hcA==",
+        sha: "old-file-sha",
+        branch: "main",
+      }),
+    );
+    const dispatch = await Effect.runPromise(
+      client.dispatchWorkflow("octo-user", "zmk-config", ".github/workflows/firmware.yml", {
         ref: "main",
         inputs: {
           board: "crkbd",
           shield: "corne_left",
           includeSettingsReset: true,
         },
-      },
+      }),
     );
 
     const putFile = fetchMock.call(0);
@@ -181,20 +187,24 @@ describe("GitHub REST client", () => {
       fetchImpl: fetchMock.fetchImpl,
     });
 
-    await client.getRef("octo-user", "zmk-config", "heads/kbui/main");
-    await client.getCommit("octo-user", "zmk-config", "parent-sha");
-    await client.createTree("octo-user", "zmk-config", {
-      base_tree: "base-tree-sha",
-      tree: [{ content: "keymap", mode: "100644", path: "config/corne.keymap", type: "blob" }],
-    });
-    await client.createCommit("octo-user", "zmk-config", {
-      message: "Sync firmware",
-      parents: ["parent-sha"],
-      tree: "new-tree-sha",
-    });
-    await client.updateRef("octo-user", "zmk-config", "heads/kbui/main", {
-      sha: "new-commit-sha",
-    });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* client.getRef("octo-user", "zmk-config", "heads/kbui/main");
+        yield* client.getCommit("octo-user", "zmk-config", "parent-sha");
+        yield* client.createTree("octo-user", "zmk-config", {
+          base_tree: "base-tree-sha",
+          tree: [{ content: "keymap", mode: "100644", path: "config/corne.keymap", type: "blob" }],
+        });
+        yield* client.createCommit("octo-user", "zmk-config", {
+          message: "Sync firmware",
+          parents: ["parent-sha"],
+          tree: "new-tree-sha",
+        });
+        yield* client.updateRef("octo-user", "zmk-config", "heads/kbui/main", {
+          sha: "new-commit-sha",
+        });
+      }),
+    );
 
     expect(fetchMock.call(0).url.pathname).toBe(
       "/repos/octo-user/zmk-config/git/ref/heads/kbui/main",
@@ -231,8 +241,12 @@ describe("GitHub REST client", () => {
       fetchImpl: fetchMock.fetchImpl,
     });
 
-    await client.deleteRef("octo-user", "kbui-userspace", "heads/kbui/main");
-    await client.deleteRepository("octo-user", "kbui-userspace");
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* client.deleteRef("octo-user", "kbui-userspace", "heads/kbui/main");
+        yield* client.deleteRepository("octo-user", "kbui-userspace");
+      }),
+    );
 
     expect(fetchMock.call(0).method).toBe("DELETE");
     expect(fetchMock.call(0).url.pathname).toBe(
@@ -327,29 +341,32 @@ describe("GitHub REST client", () => {
       fetchImpl: fetchMock.fetchImpl,
     });
 
-    await client.getRepository("octo-user", "zmk-config");
-    const metadata = await client.getContentMetadata(
-      "octo-user",
-      "zmk-config",
-      ".github/workflows/firmware.yml",
-      { ref: "feature/firmware build" },
+    await Effect.runPromise(client.getRepository("octo-user", "zmk-config"));
+    const metadata = await Effect.runPromise(
+      client.getContentMetadata("octo-user", "zmk-config", ".github/workflows/firmware.yml", {
+        ref: "feature/firmware build",
+      }),
     );
-    const runs = await client.listWorkflowRuns("octo-user", "zmk-config", {
-      branch: "main",
-      event: "workflow_dispatch",
-      status: "completed",
-      head_sha: "abc123",
-      per_page: 10,
-      page: 2,
-      exclude_pull_requests: true,
-    });
-    const artifacts = await client.listWorkflowRunArtifacts("octo-user", "zmk-config", 123, {
-      name: "firmware-uf2",
-      direction: "asc",
-      per_page: 50,
-    });
-    const run = await client.getWorkflowRun("octo-user", "zmk-config", 123);
-    const zip = await client.downloadArtifactZip("octo-user", "zmk-config", 456);
+    const runs = await Effect.runPromise(
+      client.listWorkflowRuns("octo-user", "zmk-config", {
+        branch: "main",
+        event: "workflow_dispatch",
+        status: "completed",
+        head_sha: "abc123",
+        per_page: 10,
+        page: 2,
+        exclude_pull_requests: true,
+      }),
+    );
+    const artifacts = await Effect.runPromise(
+      client.listWorkflowRunArtifacts("octo-user", "zmk-config", 123, {
+        name: "firmware-uf2",
+        direction: "asc",
+        per_page: 50,
+      }),
+    );
+    const run = await Effect.runPromise(client.getWorkflowRun("octo-user", "zmk-config", 123));
+    const zip = await Effect.runPromise(client.downloadArtifactZip("octo-user", "zmk-config", 456));
 
     expect(fetchMock.call(0).method).toBe("GET");
     expect(fetchMock.call(0).url.pathname).toBe("/repos/octo-user/zmk-config");
@@ -428,7 +445,7 @@ describe("GitHub REST client", () => {
 
     let caught: unknown;
     try {
-      await client.getRepository("octo-user", "missing-repo");
+      await Effect.runPromise(client.getRepository("octo-user", "missing-repo"));
     } catch (error) {
       caught = error;
     }
@@ -454,6 +471,27 @@ describe("GitHub REST client", () => {
 
     expect(rateLimited.code).toBe("GITHUB_RATE_LIMITED");
     expect(rateLimited.retryAt).toBe("1970-01-01T00:01:00.000Z");
+  });
+
+  it("classifies a non-JSON error response before JSON decoding", async () => {
+    const fetchMock = createFetchMock([
+      new Response("<html>Service unavailable</html>", {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }),
+    ]);
+    const client = new GitHubRestClient({
+      token: "ghu_test_token",
+      fetchImpl: fetchMock.fetchImpl,
+    });
+
+    const error = await Effect.runPromise(
+      Effect.flip(client.getRepository("octo-user", "unavailable-repo")),
+    );
+
+    expect(error.status).toBe(503);
+    expect(error.message).toBe("<html>Service unavailable</html>");
+    expect(error.body).toBe("<html>Service unavailable</html>");
   });
 });
 

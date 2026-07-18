@@ -2,32 +2,12 @@ import { Effect, Schema } from "effect";
 
 import { platformError } from "$lib/effect/errors";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
-import { decodeDeviceProfileFromStorageEffect } from "$lib/keyboard/schema";
+import { ChangeRecordSchema, decodeDeviceProfileFromStorageEffect } from "$lib/keyboard/schema";
 import type { RequestHandler } from "./$types";
 
 const snapshotBodySchema = Schema.Struct({
   profile: Schema.Unknown,
-  changes: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        after: Schema.String,
-        before: Schema.String,
-        id: Schema.String,
-        kind: Schema.Literals([
-          "binding",
-          "macro",
-          "combo",
-          "tapDance",
-          "setting",
-          "lighting",
-          "metadata",
-        ]),
-        path: Schema.String,
-        scope: Schema.String,
-        staged: Schema.Boolean,
-      }),
-    ),
-  ),
+  changes: Schema.optionalKey(Schema.Array(ChangeRecordSchema)),
 });
 
 function normalizeAgentName(input: string) {

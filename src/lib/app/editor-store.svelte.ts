@@ -489,25 +489,35 @@ export class EditorStore {
   markBindingSyncedToBase(layerId: string, keyId: string, binding?: KeyBinding) {
     return runApp(
       "editor.mark-binding-synced",
-      Effect.gen({ self: this }, function* () {
-        const base = cloneDevice(this.baseProfile);
-        const layer = base.layers.find((candidate) => candidate.id === layerId);
-        const draftLayer = this.profile.layers.find((candidate) => candidate.id === layerId);
-        const syncedBinding = binding ?? draftLayer?.bindings[keyId];
-        if (!layer || !syncedBinding) return false;
-
-        layer.bindings[keyId] = { ...syncedBinding };
-        base.updatedAt = new Date().toISOString();
-        this.baseProfile = base;
-
-        if (!this.persistEnabled || !browser) return true;
-        yield* this.cancelQueuedPersistenceEffect();
-        yield* saveLocalDeviceEffect(base);
-        yield* this.persistDraftEffect();
-        this.persistenceError = null;
-        return true;
-      }),
+      this.markBindingSyncedToBaseEffect(layerId, keyId, binding),
       (_label, message) => (this.persistenceError = message),
+    );
+  }
+
+  markBindingSyncedToBaseEffect(layerId: string, keyId: string, binding?: KeyBinding) {
+    return Effect.gen({ self: this }, function* () {
+      const base = cloneDevice(this.baseProfile);
+      const layer = base.layers.find((candidate) => candidate.id === layerId);
+      const draftLayer = this.profile.layers.find((candidate) => candidate.id === layerId);
+      const syncedBinding = binding ?? draftLayer?.bindings[keyId];
+      if (!layer || !syncedBinding) return false;
+
+      layer.bindings[keyId] = { ...syncedBinding };
+      base.updatedAt = new Date().toISOString();
+      this.baseProfile = base;
+
+      if (!this.persistEnabled || !browser) return true;
+      yield* this.cancelQueuedPersistenceEffect();
+      yield* saveLocalDeviceEffect(base);
+      yield* this.persistDraftEffect();
+      this.persistenceError = null;
+      return true;
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          this.persistenceError = error.message;
+        }),
+      ),
     );
   }
 

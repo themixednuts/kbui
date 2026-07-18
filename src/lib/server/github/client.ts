@@ -1,3 +1,5 @@
+import { Effect, Schema } from "effect";
+
 export const GITHUB_REST_API_BASE_URL = "https://api.github.com";
 export const GITHUB_REST_API_VERSION = "2026-03-10";
 export const GITHUB_REST_ACCEPT = "application/vnd.github+json";
@@ -168,7 +170,7 @@ export interface CreateGitHubTreeRequest {
 export interface GitHubTree {
   sha: string;
   url: string;
-  tree: Array<{
+  tree: ReadonlyArray<{
     mode: string;
     path: string;
     sha: string;
@@ -239,7 +241,7 @@ export interface ListGitHubWorkflowRunsQuery {
 
 export interface ListGitHubWorkflowRunsResponse {
   total_count: number;
-  workflow_runs: GitHubWorkflowRun[];
+  workflow_runs: ReadonlyArray<GitHubWorkflowRun>;
 }
 
 export interface GitHubWorkflowRun {
@@ -271,7 +273,7 @@ export interface ListGitHubWorkflowRunArtifactsQuery {
 
 export interface ListGitHubWorkflowRunArtifactsResponse {
   total_count: number;
-  artifacts: GitHubWorkflowRunArtifact[];
+  artifacts: ReadonlyArray<GitHubWorkflowRunArtifact>;
 }
 
 export interface GitHubWorkflowRunArtifact {
@@ -422,7 +424,7 @@ export class GitHubRestClient {
 
   createRepositoryForAuthenticatedUser(
     request: CreateGitHubRepositoryRequest,
-  ): Promise<GitHubRepository> {
+  ): Effect.Effect<GitHubRepository, GitHubRestApiError> {
     return this.#request<GitHubRepository>("/user/repos", gitHubRepositorySchema, {
       method: "POST",
       body: request,
@@ -432,7 +434,7 @@ export class GitHubRestClient {
   createRepositoryFromTemplate(
     template: { owner: string; repo: string },
     request: CreateGitHubRepositoryFromTemplateRequest,
-  ): Promise<GitHubRepository> {
+  ): Effect.Effect<GitHubRepository, GitHubRestApiError> {
     return this.#request<GitHubRepository>(
       `/repos/${pathSegment(template.owner)}/${pathSegment(template.repo)}/generate`,
       gitHubRepositorySchema,
@@ -446,7 +448,7 @@ export class GitHubRestClient {
   createRepositoryFork(
     source: { owner: string; repo: string },
     request: CreateGitHubRepositoryForkRequest = {},
-  ): Promise<GitHubRepository> {
+  ): Effect.Effect<GitHubRepository, GitHubRestApiError> {
     return this.#request<GitHubRepository>(
       `/repos/${pathSegment(source.owner)}/${pathSegment(source.repo)}/forks`,
       gitHubRepositorySchema,
@@ -457,7 +459,7 @@ export class GitHubRestClient {
     );
   }
 
-  getRepository(owner: string, repo: string): Promise<GitHubRepository> {
+  getRepository(owner: string, repo: string): Effect.Effect<GitHubRepository, GitHubRestApiError> {
     return this.#request<GitHubRepository>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}`,
       gitHubRepositorySchema,
@@ -469,8 +471,11 @@ export class GitHubRestClient {
     repo: string,
     filePath: string,
     options: { ref?: string } = {},
-  ): Promise<GitHubContentMetadata | GitHubContentMetadata[]> {
-    return this.#request<GitHubContentMetadata | GitHubContentMetadata[]>(
+  ): Effect.Effect<
+    GitHubContentMetadata | ReadonlyArray<GitHubContentMetadata>,
+    GitHubRestApiError
+  > {
+    return this.#request<GitHubContentMetadata | ReadonlyArray<GitHubContentMetadata>>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/contents/${repositoryPath(filePath)}`,
       Schema.Union([gitHubContentMetadataSchema, Schema.Array(gitHubContentMetadataSchema)]),
       {
@@ -479,26 +484,32 @@ export class GitHubRestClient {
     );
   }
 
-  async getContentSha(
+  getContentSha(
     owner: string,
     repo: string,
     filePath: string,
     options: { ref?: string } = {},
-  ): Promise<string> {
-    const metadata = await this.getContentMetadata(owner, repo, filePath, options);
-    if (Array.isArray(metadata)) {
-      throw new GitHubRestApiError({
-        code: "GITHUB_API_ERROR",
-        status: 200,
-        message: "Expected GitHub content metadata for a file, received a directory listing.",
-        documentationUrl: null,
-        requestId: null,
-        retryAt: null,
-        errors: null,
-        body: metadata,
-      });
-    }
-    return metadata.sha;
+  ): Effect.Effect<string, GitHubRestApiError> {
+    return this.getContentMetadata(owner, repo, filePath, options).pipe(
+      Effect.flatMap((metadata) =>
+        "sha" in metadata
+          ? Effect.succeed(metadata.sha)
+          : Effect.fail(
+              new GitHubRestApiError({
+                code: "GITHUB_API_ERROR",
+                status: 200,
+                message:
+                  "Expected GitHub content metadata for a file, received a directory listing.",
+                documentationUrl: null,
+                requestId: null,
+                retryAt: null,
+                errors: null,
+                body: metadata,
+              }),
+            ),
+      ),
+      Effect.withSpan("github.rest.get-content-sha"),
+    );
   }
 
   putFileContents(
@@ -506,7 +517,7 @@ export class GitHubRestClient {
     repo: string,
     filePath: string,
     request: PutGitHubFileContentsRequest,
-  ): Promise<PutGitHubFileContentsResponse> {
+  ): Effect.Effect<PutGitHubFileContentsResponse, GitHubRestApiError> {
     return this.#request<PutGitHubFileContentsResponse>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/contents/${repositoryPath(filePath)}`,
       putGitHubFileContentsResponseSchema,
@@ -517,14 +528,22 @@ export class GitHubRestClient {
     );
   }
 
-  getRef(owner: string, repo: string, ref: string): Promise<GitHubGitRef> {
+  getRef(
+    owner: string,
+    repo: string,
+    ref: string,
+  ): Effect.Effect<GitHubGitRef, GitHubRestApiError> {
     return this.#request<GitHubGitRef>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/ref/${refPath(ref)}`,
       gitHubGitRefSchema,
     );
   }
 
-  createRef(owner: string, repo: string, request: CreateGitHubRefRequest): Promise<GitHubGitRef> {
+  createRef(
+    owner: string,
+    repo: string,
+    request: CreateGitHubRefRequest,
+  ): Effect.Effect<GitHubGitRef, GitHubRestApiError> {
     return this.#request<GitHubGitRef>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/refs`,
       gitHubGitRefSchema,
@@ -540,7 +559,7 @@ export class GitHubRestClient {
     repo: string,
     ref: string,
     request: UpdateGitHubRefRequest,
-  ): Promise<GitHubGitRef> {
+  ): Effect.Effect<GitHubGitRef, GitHubRestApiError> {
     return this.#request<GitHubGitRef>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/refs/${refPath(ref)}`,
       gitHubGitRefSchema,
@@ -551,7 +570,7 @@ export class GitHubRestClient {
     );
   }
 
-  deleteRef(owner: string, repo: string, ref: string): Promise<null> {
+  deleteRef(owner: string, repo: string, ref: string): Effect.Effect<null, GitHubRestApiError> {
     return this.#request<null>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/refs/${refPath(ref)}`,
       Schema.Null,
@@ -559,20 +578,28 @@ export class GitHubRestClient {
     );
   }
 
-  deleteRepository(owner: string, repo: string): Promise<null> {
+  deleteRepository(owner: string, repo: string): Effect.Effect<null, GitHubRestApiError> {
     return this.#request<null>(`/repos/${pathSegment(owner)}/${pathSegment(repo)}`, Schema.Null, {
       method: "DELETE",
     });
   }
 
-  getCommit(owner: string, repo: string, ref: string): Promise<GitHubCommit> {
+  getCommit(
+    owner: string,
+    repo: string,
+    ref: string,
+  ): Effect.Effect<GitHubCommit, GitHubRestApiError> {
     return this.#request<GitHubCommit>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/commits/${pathSegment(ref)}`,
       gitHubCommitSchema,
     );
   }
 
-  createTree(owner: string, repo: string, request: CreateGitHubTreeRequest): Promise<GitHubTree> {
+  createTree(
+    owner: string,
+    repo: string,
+    request: CreateGitHubTreeRequest,
+  ): Effect.Effect<GitHubTree, GitHubRestApiError> {
     return this.#request<GitHubTree>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/trees`,
       gitHubTreeSchema,
@@ -587,7 +614,7 @@ export class GitHubRestClient {
     owner: string,
     repo: string,
     request: CreateGitHubCommitRequest,
-  ): Promise<GitHubCommit> {
+  ): Effect.Effect<GitHubCommit, GitHubRestApiError> {
     return this.#request<GitHubCommit>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/git/commits`,
       gitHubCommitSchema,
@@ -603,7 +630,7 @@ export class GitHubRestClient {
     repo: string,
     workflowId: string | number,
     request: DispatchGitHubWorkflowRequest,
-  ): Promise<DispatchGitHubWorkflowResponse> {
+  ): Effect.Effect<DispatchGitHubWorkflowResponse, GitHubRestApiError> {
     return this.#request<DispatchGitHubWorkflowResponse>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/actions/workflows/${pathSegment(
         String(workflowId),
@@ -620,7 +647,7 @@ export class GitHubRestClient {
     owner: string,
     repo: string,
     query: ListGitHubWorkflowRunsQuery = {},
-  ): Promise<ListGitHubWorkflowRunsResponse> {
+  ): Effect.Effect<ListGitHubWorkflowRunsResponse, GitHubRestApiError> {
     return this.#request<ListGitHubWorkflowRunsResponse>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/actions/runs`,
       listGitHubWorkflowRunsResponseSchema,
@@ -643,7 +670,7 @@ export class GitHubRestClient {
     owner: string,
     repo: string,
     runId: number,
-  ): Promise<GetGitHubWorkflowRunResponse> {
+  ): Effect.Effect<GetGitHubWorkflowRunResponse, GitHubRestApiError> {
     return this.#request<GetGitHubWorkflowRunResponse>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/actions/runs/${runId}`,
       gitHubWorkflowRunSchema,
@@ -655,7 +682,7 @@ export class GitHubRestClient {
     repo: string,
     runId: number,
     query: ListGitHubWorkflowRunArtifactsQuery = {},
-  ): Promise<ListGitHubWorkflowRunArtifactsResponse> {
+  ): Effect.Effect<ListGitHubWorkflowRunArtifactsResponse, GitHubRestApiError> {
     return this.#request<ListGitHubWorkflowRunArtifactsResponse>(
       `/repos/${pathSegment(owner)}/${pathSegment(repo)}/actions/runs/${runId}/artifacts`,
       listGitHubWorkflowRunArtifactsResponseSchema,
@@ -674,66 +701,62 @@ export class GitHubRestClient {
     owner: string,
     repo: string,
     artifactId: number,
-  ): Promise<GitHubArtifactZipDownload> {
-    return runWorkerEffect(
-      "github.rest.download-artifact",
-      Effect.gen({ self: this }, function* () {
-        const response = yield* this.#rawRequestEffect(
-          `/repos/${pathSegment(owner)}/${pathSegment(repo)}/actions/artifacts/${artifactId}/zip`,
-        );
-        if (!response.ok) {
-          const body = yield* readGitHubResponseBodyEffect(response);
-          return yield* Effect.fail(mapGitHubRestError(response.status, body, response.headers));
-        }
+  ): Effect.Effect<GitHubArtifactZipDownload, GitHubRestApiError> {
+    return Effect.gen({ self: this }, function* () {
+      const response = yield* this.#rawRequestEffect(
+        `/repos/${pathSegment(owner)}/${pathSegment(repo)}/actions/artifacts/${artifactId}/zip`,
+      );
+      if (!response.ok) {
+        const responseText = yield* readGitHubResponseTextEffect(response);
+        const body = decodeGitHubResponseTextLenient(response, responseText);
+        return yield* Effect.fail(mapGitHubRestError(response.status, body, response.headers));
+      }
 
-        const buffer = yield* Effect.tryPromise({
-          try: () => response.arrayBuffer(),
-          catch: (cause) => networkGitHubError("GitHub artifact body could not be read.", cause),
-        });
-        const bytes = new Uint8Array(buffer);
-        return {
-          bytes,
-          contentType: response.headers.get("content-type") ?? "application/zip",
-          fileName: fileNameFromContentDisposition(response.headers.get("content-disposition")),
-          sizeBytes: bytes.byteLength,
-        };
-      }),
-    );
+      const buffer = yield* Effect.tryPromise({
+        try: () => response.arrayBuffer(),
+        catch: (cause) => networkGitHubError("GitHub artifact body could not be read.", cause),
+      });
+      const bytes = new Uint8Array(buffer);
+      return {
+        bytes,
+        contentType: response.headers.get("content-type") ?? "application/zip",
+        fileName: fileNameFromContentDisposition(response.headers.get("content-disposition")),
+        sizeBytes: bytes.byteLength,
+      };
+    }).pipe(Effect.withSpan("github.rest.download-artifact"));
   }
 
   #request<T>(
     path: string,
-    schema: Schema.Constraint & { readonly DecodingServices: never },
+    schema: Schema.Codec<T, unknown, never, never>,
     options: GitHubRequestOptions = {},
-  ): Promise<T> {
-    return runWorkerEffect(
-      `github.rest.${options.method ?? "GET"}.${path}`,
-      Effect.gen({ self: this }, function* () {
-        const response = yield* this.#rawRequestEffect(path, options);
-        const responseBody = yield* readGitHubResponseBodyEffect(response);
-        if (!response.ok) {
-          return yield* Effect.fail(
-            mapGitHubRestError(response.status, responseBody, response.headers),
-          );
-        }
-        return yield* Schema.decodeUnknownEffect(schema)(responseBody).pipe(
-          Effect.map((value) => value as T),
-          Effect.mapError(
-            (cause) =>
-              new GitHubRestApiError({
-                code: "GITHUB_API_ERROR",
-                status: response.status,
-                message: `GitHub REST response did not match its contract: ${String(cause)}`,
-                documentationUrl: null,
-                requestId: response.headers.get("x-github-request-id"),
-                retryAt: null,
-                errors: cause,
-                body: responseBody,
-              }),
-          ),
+  ): Effect.Effect<T, GitHubRestApiError> {
+    return Effect.gen({ self: this }, function* () {
+      const response = yield* this.#rawRequestEffect(path, options);
+      const responseText = yield* readGitHubResponseTextEffect(response);
+      if (!response.ok) {
+        const responseBody = decodeGitHubResponseTextLenient(response, responseText);
+        return yield* Effect.fail(
+          mapGitHubRestError(response.status, responseBody, response.headers),
         );
-      }),
-    );
+      }
+      const responseBody = yield* decodeGitHubResponseTextEffect(response, responseText);
+      return yield* Schema.decodeUnknownEffect(schema)(responseBody).pipe(
+        Effect.mapError(
+          (cause) =>
+            new GitHubRestApiError({
+              code: "GITHUB_API_ERROR",
+              status: response.status,
+              message: `GitHub REST response did not match its contract: ${String(cause)}`,
+              documentationUrl: null,
+              requestId: response.headers.get("x-github-request-id"),
+              retryAt: null,
+              errors: cause,
+              body: responseBody,
+            }),
+        ),
+      );
+    }).pipe(Effect.withSpan(`github.rest.${options.method ?? "GET"}.${path}`));
   }
 
   #rawRequestEffect(path: string, options: GitHubRequestOptions = {}) {
@@ -761,7 +784,8 @@ export class GitHubRestClient {
       }),
       ({ body, headers, url }) =>
         Effect.tryPromise({
-          try: () => this.#fetchImpl(url, { body, headers, method: options.method ?? "GET" }),
+          try: (signal) =>
+            this.#fetchImpl(url, { body, headers, method: options.method ?? "GET", signal }),
           catch: (cause) => networkGitHubError("GitHub REST request failed.", cause),
         }),
     );
@@ -781,36 +805,44 @@ function networkGitHubError(message: string, cause: unknown) {
   });
 }
 
-function readGitHubResponseBodyEffect(response: Response) {
-  return Effect.flatMap(
-    Effect.tryPromise({
-      try: () => response.text(),
-      catch: (cause) => networkGitHubError("GitHub REST response body could not be read.", cause),
-    }),
-    (text) => {
-      if (!text) return Effect.succeed(null);
-      const contentType = response.headers.get("content-type") ?? "";
-      const trimmed = text.trimStart();
-      const isJson =
-        contentType.includes("json") || trimmed.startsWith("{") || trimmed.startsWith("[");
-      if (!isJson) return Effect.succeed(text);
-      return Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(text).pipe(
-        Effect.mapError(
-          (cause) =>
-            new GitHubRestApiError({
-              code: "GITHUB_API_ERROR",
-              status: response.status,
-              message: `GitHub REST returned malformed JSON: ${String(cause)}`,
-              documentationUrl: null,
-              requestId: response.headers.get("x-github-request-id"),
-              retryAt: null,
-              errors: cause,
-              body: text,
-            }),
-        ),
-      );
-    },
+function readGitHubResponseTextEffect(response: Response) {
+  return Effect.tryPromise({
+    try: () => response.text(),
+    catch: (cause) => networkGitHubError("GitHub REST response body could not be read.", cause),
+  });
+}
+
+function decodeGitHubResponseTextEffect(response: Response, text: string) {
+  if (!text) return Effect.succeed(null);
+  if (!isJsonResponseText(response, text)) return Effect.succeed(text);
+  return Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(text).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GitHubRestApiError({
+          code: "GITHUB_API_ERROR",
+          status: response.status,
+          message: `GitHub REST returned malformed JSON: ${String(cause)}`,
+          documentationUrl: null,
+          requestId: response.headers.get("x-github-request-id"),
+          retryAt: null,
+          errors: cause,
+          body: text,
+        }),
+    ),
   );
+}
+
+function decodeGitHubResponseTextLenient(response: Response, text: string): unknown {
+  if (!text) return null;
+  if (!isJsonResponseText(response, text)) return text;
+  const decoded = Schema.decodeUnknownResult(Schema.UnknownFromJsonString)(text);
+  return decoded._tag === "Success" ? decoded.success : text;
+}
+
+function isJsonResponseText(response: Response, text: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+  const trimmed = text.trimStart();
+  return contentType.includes("json") || trimmed.startsWith("{") || trimmed.startsWith("[");
 }
 
 export function mapGitHubRestError(
@@ -941,6 +973,3 @@ function refPath(value: string) {
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
-import { Effect, Schema } from "effect";
-
-import { runWorkerEffect } from "$lib/effect/worker-runtime";

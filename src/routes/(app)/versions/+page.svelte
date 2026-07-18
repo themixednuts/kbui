@@ -16,15 +16,20 @@
   } from "@lucide/svelte";
   import { Effect } from "effect";
 
-  import { runApp } from "$lib/app";
+  import { forkApp, startScopedApp } from "$lib/app/runtime";
   import { authClient } from "$lib/auth-client";
+  import {
+    decodeAuthClientErrorEffect,
+    decodeGitHubFirmwareAppStatusEffect,
+    decodeGitHubFirmwareBuildResponseEffect,
+    decodeGitHubFirmwareSyncResponseEffect,
+  } from "$lib/app/auth-client-boundary";
   import { getFirmwareBuildEventsContext } from "$lib/app/firmware-build-events.svelte";
   import {
     authClientErrorMessage,
     createFirmwareGithubSyncInput,
     firmwareGithubBranchLabel,
     firmwareGithubVariantInput,
-    type AuthClientError,
   } from "$lib/app/firmware-github-actions";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { planSavePointFlash } from "$lib/app/save-point-flash";
@@ -41,7 +46,6 @@
   import VersionChangesPanel from "$lib/components/versioning/VersionChangesPanel.svelte";
   import type {
     GitHubFirmwareAppStatus,
-    GitHubFirmwareBuildResponse,
     GitHubFirmwareSyncResponse,
     GitHubFirmwareVariantInput,
   } from "$lib/github-app/types";
@@ -274,7 +278,7 @@
       return;
     }
 
-    void refreshFirmwareGithubStatus(false);
+    return startScopedApp("firmware-github.status", refreshFirmwareGithubStatusEffect(false));
   });
 
   function hostEffect<A>(operation: string, task: () => PromiseLike<A>) {
@@ -289,12 +293,10 @@
 
     actionError = null;
     saving = true;
-    void runApp(
+    forkApp(
       "versions.create-save-point",
       Effect.gen(function* () {
-        const savePoint = yield* hostEffect("versions.create-save-point", () =>
-          workbench.createSavePoint(savePointMessage),
-        );
+        const savePoint = yield* workbench.createSavePointEffect(savePointMessage);
         if (!savePoint) return;
         savePointMessage = "";
         yield* hostEffect("versions.navigate-history", () => goto("/versions?tab=history"));
@@ -313,12 +315,10 @@
     actionError = null;
     restoring = true;
     const savePointId = selectedSavePoint.id;
-    void runApp(
+    forkApp(
       "versions.restore-save-point",
       Effect.gen(function* () {
-        yield* hostEffect("versions.restore-save-point", () =>
-          workbench.restoreSavePoint(savePointId),
-        );
+        yield* workbench.restoreSavePointEffect(savePointId);
         yield* hostEffect("versions.navigate-changes", () => goto("/versions?tab=changes"));
       }).pipe(
         Effect.catch((error) =>
@@ -335,11 +335,9 @@
     actionError = null;
     branching = true;
     const savePointId = selectedSavePoint.id;
-    void runApp(
+    forkApp(
       "versions.branch-save-point",
-      hostEffect("versions.branch-save-point", () =>
-        workbench.branchFromSavePoint(branchName, { savePointId }),
-      ).pipe(
+      workbench.branchFromSavePointEffect(branchName, { savePointId }).pipe(
         Effect.tap((fork) => Effect.sync(() => fork && (branchName = ""))),
         Effect.catch((error) =>
           Effect.sync(() => (actionError = messageFor(error, "Could not create variant"))),
@@ -354,9 +352,9 @@
     actionError = null;
     deleting = true;
     const savePointId = selectedSavePoint.id;
-    void runApp(
+    forkApp(
       "versions.delete-save-point",
-      hostEffect("versions.delete-save-point", () => workbench.deleteSavePoint(savePointId)).pipe(
+      workbench.deleteSavePointEffect(savePointId).pipe(
         Effect.catch((error) =>
           Effect.sync(() => (actionError = messageFor(error, "Could not delete save point"))),
         ),
@@ -374,9 +372,9 @@
     if (variantId === "main" || deleting) return;
     actionError = null;
     deleting = true;
-    void runApp(
+    forkApp(
       "versions.delete-variant",
-      hostEffect("versions.delete-variant", () => workbench.deleteVariant(variantId)).pipe(
+      workbench.deleteVariantEffect(variantId).pipe(
         Effect.catch((error) =>
           Effect.sync(() => (actionError = messageFor(error, "Could not delete variant"))),
         ),
@@ -390,7 +388,7 @@
     actionError = null;
     flashStatus = null;
 
-    void runApp(
+    forkApp(
       "versions.flash-save-point",
       Effect.gen(function* () {
       const profile = workbench.materializeSavePointProfile(selectedSavePoint.id);
@@ -407,9 +405,7 @@
       });
 
       if (plan.kind === "live-apply") {
-        yield* hostEffect("versions.load-save-point-draft", () =>
-          workbench.loadProfileAsDraft(plan.profile, { origin: "draft" }),
-        );
+        yield* workbench.loadProfileAsDraftEffect(plan.profile, { origin: "draft" });
         liveSync.processChanges(shell.liveConnection);
         flashStatus = plan.message;
         return;
@@ -438,37 +434,38 @@
     flashChanges = [];
   }
 
-  function refreshFirmwareGithubStatus(showBusy = true) {
-    if (!githubSignedIn || (showBusy && firmwareGithubBusy)) return;
-    if (showBusy) firmwareGithubBusy = true;
-    firmwareGithubError = null;
-    void runApp(
-      "firmware-github.status",
-      Effect.gen(function* () {
+  function refreshFirmwareGithubStatusEffect(showBusy = true) {
+    if (!githubSignedIn || (showBusy && firmwareGithubBusy)) return Effect.void;
+    return Effect.gen(function* () {
+      if (showBusy) firmwareGithubBusy = true;
+      firmwareGithubError = null;
       const result = yield* hostEffect("firmware-github.status", () =>
         authClient.firmwareGithub.status(),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-status-error", cause)),
+      );
       if (error) {
         firmwareGithubError = authClientErrorMessage(error, "GitHub firmware status failed.");
         return;
       }
-      firmwareGithubStatus = result.data;
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(
-            () =>
-              (firmwareGithubError = authClientErrorMessage(
-                error,
-                "GitHub firmware status failed.",
-              )),
-          ),
+      firmwareGithubStatus = yield* decodeGitHubFirmwareAppStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-status", cause)),
+      );
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(
+          () =>
+            (firmwareGithubError = authClientErrorMessage(
+              error,
+              "GitHub firmware status failed.",
+            )),
         ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (showBusy) firmwareGithubBusy = false;
-          }),
-        ),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (showBusy) firmwareGithubBusy = false;
+        }),
       ),
     );
   }
@@ -502,7 +499,9 @@
       const result = yield* hostEffect("firmware-github.sync", () =>
         build ? authClient.firmwareGithub.build(input) : authClient.firmwareGithub.sync(input),
       );
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("firmware-github.decode-sync-error", cause)),
+      );
       if (error) {
         firmwareGithubError = authClientErrorMessage(
           error,
@@ -510,20 +509,22 @@
         );
         return;
       }
-      if (!result.data) {
-        firmwareGithubError = build
-          ? "GitHub firmware build did not return a result."
-          : "GitHub firmware sync did not return a result.";
-        return;
-      }
-      firmwareGithubSyncResult = result.data;
+      let synced: GitHubFirmwareSyncResponse;
       if (build) {
-        const buildResult = result.data as GitHubFirmwareBuildResponse;
-        firmwareGithubBuildRequestId = buildResult.build.requestId;
+        const built = yield* decodeGitHubFirmwareBuildResponseEffect(result.data).pipe(
+          Effect.mapError((cause) => platformError("firmware-github.decode-build", cause)),
+        );
+        firmwareGithubBuildRequestId = built.build.requestId;
+        synced = built;
+      } else {
+        synced = yield* decodeGitHubFirmwareSyncResponseEffect(result.data).pipe(
+          Effect.mapError((cause) => platformError("firmware-github.decode-sync", cause)),
+        );
       }
+      firmwareGithubSyncResult = synced;
       firmwareGithubNotice = build
-        ? `Build dispatched on ${result.data.branch.branchName}.`
-        : `Synced ${result.data.files} files to ${result.data.branch.branchName}.`;
+        ? `Build dispatched on ${synced.branch.branchName}.`
+        : `Synced ${synced.files} files to ${synced.branch.branchName}.`;
     }).pipe(
       Effect.catch((error) =>
         Effect.sync(
@@ -544,7 +545,7 @@
   }
 
   function syncActiveFirmwareGithub(build = false) {
-    void runApp("firmware-github.sync", syncActiveFirmwareGithubEffect(build));
+    forkApp("firmware-github.sync", syncActiveFirmwareGithubEffect(build));
   }
 
   function requestFirmwareGithubSync(build = false) {

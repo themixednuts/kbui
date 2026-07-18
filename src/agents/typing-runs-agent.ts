@@ -4,19 +4,19 @@ import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlit
 import { Effect, Schema } from "effect";
 
 import {
+  decodeIdempotencyKeyEffect,
+  decodeKeyboardChoiceEffect,
+  decodeLayoutChoiceEffect,
+  decodeMonkeytypeRunCaptureEffect,
+  decodeSetKeyboardChoicesRequestEffect,
+  decodeTaggedRunsFilterEffect,
+  decodeTypingRunStatsGroupByEffect,
   idempotencyKeyForCapture,
-  normalizeIdempotencyKey,
-  normalizeMonkeytypeRunCapture,
-  normalizeSetKeyboardChoicesRequest,
-  normalizeTaggedRunsFilter,
-  normalizeTypingRunStatsGroupBy,
   type CreatePairingTokenMeta,
   type CreatePairingTokenResponse,
   type ExtensionDeviceDto,
   type IngestRunResponse,
-  type KeyboardChoice,
   type KeyboardChoicesResponse,
-  type LayoutChoice,
   type MonkeytypeRunCapture,
   type TaggedRun,
   type TypingRunStatsGroup,
@@ -254,7 +254,7 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
         yield* this.ensureReadyEffect();
         const [user, choices] = yield* Effect.all([
           normalizeEffect("user-id", () => normalizeUserId(userId)),
-          normalizeEffect("keyboard-choices", () => normalizeSetKeyboardChoicesRequest(rawChoices)),
+          decodeSetKeyboardChoicesRequestEffect(rawChoices),
         ]);
         const now = new Date();
         yield* this.databaseEffect("set-keyboard-choices", () =>
@@ -293,8 +293,8 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
             .limit(1),
         );
         const [keyboards, layouts] = yield* Effect.all([
-          parseChoiceArrayEffect(row?.keyboardsJson, normalizeKeyboardChoice),
-          parseChoiceArrayEffect(row?.layoutsJson, normalizeLayoutChoice),
+          parseChoiceArrayEffect(row?.keyboardsJson, decodeKeyboardChoiceEffect),
+          parseChoiceArrayEffect(row?.layoutsJson, decodeLayoutChoiceEffect),
         ]);
         return { keyboards, layouts };
       }),
@@ -306,20 +306,15 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
       "typing-runs.ingest-run",
       Effect.gen({ self: this }, function* () {
         yield* this.ensureReadyEffect();
-        const { capturedAt, capture, idempotencyKey, user } = yield* normalizeEffect(
-          "ingest-run",
-          () => {
-            const user = normalizeUserId(userId);
-            const capture = normalizeMonkeytypeRunCapture(rawCapture);
-            return {
-              user,
-              capture,
-              idempotencyKey: normalizeIdempotencyKey(
-                rawCapture.idempotencyKey ?? idempotencyKeyForCapture(capture),
-              ),
-              capturedAt: dateFromIso(capture.capturedAt, "capturedAt"),
-            };
-          },
+        const [user, capture] = yield* Effect.all([
+          normalizeEffect("user-id", () => normalizeUserId(userId)),
+          decodeMonkeytypeRunCaptureEffect(rawCapture),
+        ]);
+        const idempotencyKey = yield* decodeIdempotencyKeyEffect(
+          rawCapture.idempotencyKey ?? idempotencyKeyForCapture(capture),
+        );
+        const capturedAt = yield* normalizeEffect("captured-at", () =>
+          dateFromIso(capture.capturedAt, "capturedAt"),
         );
         const [existing] = yield* this.databaseEffect("find-run", () =>
           this.#db
@@ -392,7 +387,7 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
         yield* this.ensureReadyEffect();
         const [user, filter] = yield* Effect.all([
           normalizeEffect("user-id", () => normalizeUserId(userId)),
-          normalizeEffect("tagged-runs-filter", () => normalizeTaggedRunsFilter(rawFilter)),
+          decodeTaggedRunsFilterEffect(rawFilter),
         ]);
         const conditions = [eq(typingRunTag.userId, user)];
 
@@ -420,7 +415,7 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
         yield* this.ensureReadyEffect();
         const [user, groupBy] = yield* Effect.all([
           normalizeEffect("user-id", () => normalizeUserId(userId)),
-          normalizeEffect("stats-group", () => normalizeTypingRunStatsGroupBy(rawGroupBy)),
+          decodeTypingRunStatsGroupByEffect(rawGroupBy),
         ]);
         const rows = yield* this.databaseEffect("get-stats", () =>
           this.#db
@@ -722,7 +717,10 @@ function normalizeEffect<A>(operation: string, normalize: () => A) {
   });
 }
 
-function parseChoiceArrayEffect<T>(value: unknown, normalize: (value: unknown) => T) {
+function parseChoiceArrayEffect<T, E>(
+  value: unknown,
+  decode: (value: unknown) => Effect.Effect<T, E>,
+) {
   return Effect.gen(function* () {
     const source =
       typeof value === "string"
@@ -733,24 +731,8 @@ function parseChoiceArrayEffect<T>(value: unknown, normalize: (value: unknown) =
         platformError("typing-runs.decode-choice-array", "Stored choices are not an array."),
       );
     }
-    return yield* Effect.forEach(source, (item) =>
-      normalizeEffect("stored-choice", () => normalize(item)),
-    );
+    return yield* Effect.forEach(source, decode);
   });
-}
-
-function normalizeKeyboardChoice(value: unknown): KeyboardChoice {
-  const choices = normalizeSetKeyboardChoicesRequest({ keyboards: [value], layouts: [] });
-  const choice = choices.keyboards[0];
-  if (!choice) throw new Error("Stored keyboard choice is invalid.");
-  return choice;
-}
-
-function normalizeLayoutChoice(value: unknown): LayoutChoice {
-  const choices = normalizeSetKeyboardChoicesRequest({ keyboards: [], layouts: [value] });
-  const choice = choices.layouts[0];
-  if (!choice) throw new Error("Stored layout choice is invalid.");
-  return choice;
 }
 
 function normalizeUserId(userId: string): string {

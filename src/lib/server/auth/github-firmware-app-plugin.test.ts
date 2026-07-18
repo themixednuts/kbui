@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { GitHubFirmwareAppStatus } from "$lib/github-app/types";
@@ -385,14 +386,14 @@ function requestUrl(input: RequestInfo | URL) {
 
 function fakeInstallationTokenClient() {
   return {
-    async createInstallationAccessToken() {
-      return {
+    createInstallationAccessToken() {
+      return Effect.succeed({
         expiresAt: "2026-07-06T19:00:00.000Z",
         permissions: {},
         repositories: null,
         repositorySelection: "all",
         token: "ghs_installation",
-      };
+      });
     },
   };
 }
@@ -405,9 +406,9 @@ class FakeGitHubClient {
   transientWorkflowRunFailures = 0;
   workflowRunReadAttempts = 0;
 
-  async createRepositoryForAuthenticatedUser(request: { name: string; private?: boolean }) {
+  createRepositoryForAuthenticatedUser(request: { name: string; private?: boolean }) {
     this.createdRepository = { name: request.name };
-    return {
+    return Effect.succeed({
       clone_url: `https://github.com/octo-user/${request.name}.git`,
       default_branch: "main",
       full_name: `octo-user/${request.name}`,
@@ -416,29 +417,31 @@ class FakeGitHubClient {
       name: request.name,
       owner: { login: "octo-user" },
       private: request.private ?? true,
-    };
-  }
-
-  async getRepository(owner: string, repo: string) {
-    return this.createRepositoryForAuthenticatedUser({ name: repo, private: true });
-  }
-
-  async getContentMetadata(): Promise<never> {
-    throw new GitHubRestApiError({
-      body: null,
-      code: "GITHUB_NOT_FOUND",
-      documentationUrl: null,
-      errors: null,
-      message: "Not Found",
-      requestId: null,
-      retryAt: null,
-      status: 404,
     });
   }
 
-  async putFileContents(owner: string, repo: string, path: string, request: { branch?: string }) {
+  getRepository(owner: string, repo: string) {
+    return this.createRepositoryForAuthenticatedUser({ name: repo, private: true });
+  }
+
+  getContentMetadata() {
+    return Effect.fail(
+      new GitHubRestApiError({
+        body: null,
+        code: "GITHUB_NOT_FOUND",
+        documentationUrl: null,
+        errors: null,
+        message: "Not Found",
+        requestId: null,
+        retryAt: null,
+        status: 404,
+      }),
+    );
+  }
+
+  putFileContents(owner: string, repo: string, path: string, request: { branch?: string }) {
     this.defaultBranchWorkflow = { branch: request.branch ?? "main", path };
-    return {
+    return Effect.succeed({
       commit: {
         html_url: "https://github.test/commit/workflow-commit-sha",
         sha: "workflow-commit-sha",
@@ -449,112 +452,118 @@ class FakeGitHubClient {
         path,
         sha: "workflow-content-sha",
       },
-    };
+    });
   }
 
-  async getRef(owner: string, repo: string, ref: string) {
+  getRef(owner: string, repo: string, ref: string) {
     if (ref === "heads/kbui/corne/main") {
-      throw new GitHubRestApiError({
-        body: null,
-        code: "GITHUB_NOT_FOUND",
-        documentationUrl: null,
-        errors: null,
-        message: "Not Found",
-        requestId: null,
-        retryAt: null,
-        status: 404,
-      });
+      return Effect.fail(
+        new GitHubRestApiError({
+          body: null,
+          code: "GITHUB_NOT_FOUND",
+          documentationUrl: null,
+          errors: null,
+          message: "Not Found",
+          requestId: null,
+          retryAt: null,
+          status: 404,
+        }),
+      );
     }
-    return gitRef(ref, "parent-sha");
+    return Effect.succeed(gitRef(ref, "parent-sha"));
   }
 
-  async createRef(owner: string, repo: string, request: { ref: string; sha: string }) {
-    return gitRef(request.ref, request.sha);
+  createRef(owner: string, repo: string, request: { ref: string; sha: string }) {
+    return Effect.succeed(gitRef(request.ref, request.sha));
   }
 
-  async getCommit() {
-    return {
+  getCommit() {
+    return Effect.succeed({
       commit: { tree: { sha: "base-tree-sha", url: "https://api.github.test/tree" } },
       html_url: "https://github.com/octo-user/kbui-userspace/commit/parent-sha",
       sha: "parent-sha",
       url: "https://api.github.test/commit",
-    };
+    });
   }
 
-  async createTree(owner: string, repo: string, request: { tree: Array<{ path: string }> }) {
+  createTree(owner: string, repo: string, request: { tree: Array<{ path: string }> }) {
     this.createdTreePaths = request.tree.map((item) => item.path).sort();
-    return { sha: "tree-sha", tree: [], url: "https://api.github.test/tree" };
+    return Effect.succeed({ sha: "tree-sha", tree: [], url: "https://api.github.test/tree" });
   }
 
-  async createCommit() {
-    return {
+  createCommit() {
+    return Effect.succeed({
       html_url: "https://github.com/octo-user/kbui-userspace/commit/new-commit-sha",
       sha: "new-commit-sha",
       url: "https://api.github.test/commit",
-    };
+    });
   }
 
-  async updateRef(owner: string, repo: string, ref: string, request: { sha: string }) {
-    return gitRef(ref, request.sha);
+  updateRef(owner: string, repo: string, ref: string, request: { sha: string }) {
+    return Effect.succeed(gitRef(ref, request.sha));
   }
 
-  async deleteRef() {
-    return null;
+  deleteRef() {
+    return Effect.succeed(null);
   }
 
-  async deleteRepository() {
-    return null;
+  deleteRepository() {
+    return Effect.succeed(null);
   }
 
-  async dispatchWorkflow(
+  dispatchWorkflow(
     owner: string,
     repo: string,
     workflowId: string | number,
     request: { ref: string },
   ) {
     this.dispatchedWorkflow = { ref: request.ref, workflowId };
-    return {
+    return Effect.succeed({
       html_url: "https://github.com/octo-user/kbui-userspace/actions/runs/1",
       run_url: "https://api.github.com/repos/octo-user/kbui-userspace/actions/runs/1",
       workflow_run_id: 1,
-    };
+    });
   }
 
-  async getWorkflowRun() {
-    this.workflowRunReadAttempts += 1;
-    if (this.transientWorkflowRunFailures > 0) {
-      this.transientWorkflowRunFailures -= 1;
-      throw new Error("Network connection lost.");
-    }
-    return {
-      artifacts_url:
-        "https://api.github.com/repos/octo-user/kbui-userspace/actions/runs/1/artifacts",
-      conclusion: "success",
-      created_at: "2026-07-06T18:00:00.000Z",
-      display_title: "Build ZMK firmware",
-      event: "workflow_dispatch",
-      head_branch: "kbui/corne/main",
-      head_sha: "new-commit-sha",
-      html_url: "https://github.com/octo-user/kbui-userspace/actions/runs/1",
-      id: 1,
-      name: "Build ZMK firmware",
-      path: ".github/workflows/build.yml",
-      run_number: 7,
-      status: "completed",
-      updated_at: "2026-07-06T18:02:00.000Z",
-      workflow_id: 99,
-    };
+  getWorkflowRun() {
+    return Effect.gen({ self: this }, function* () {
+      this.workflowRunReadAttempts += 1;
+      if (this.transientWorkflowRunFailures > 0) {
+        this.transientWorkflowRunFailures -= 1;
+        return yield* Effect.fail(new Error("Network connection lost."));
+      }
+      return {
+        artifacts_url:
+          "https://api.github.com/repos/octo-user/kbui-userspace/actions/runs/1/artifacts",
+        conclusion: "success",
+        created_at: "2026-07-06T18:00:00.000Z",
+        display_title: "Build ZMK firmware",
+        event: "workflow_dispatch",
+        head_branch: "kbui/corne/main",
+        head_sha: "new-commit-sha",
+        html_url: "https://github.com/octo-user/kbui-userspace/actions/runs/1",
+        id: 1,
+        name: "Build ZMK firmware",
+        path: ".github/workflows/build.yml",
+        run_number: 7,
+        status: "completed",
+        updated_at: "2026-07-06T18:02:00.000Z",
+        workflow_id: 99,
+      };
+    });
   }
 
-  async listWorkflowRuns() {
-    return {
-      total_count: 1,
-      workflow_runs: [await this.getWorkflowRun()],
-    };
+  listWorkflowRuns() {
+    return this.getWorkflowRun().pipe(
+      Effect.map((run) => ({
+        total_count: 1,
+        workflow_runs: [run],
+      })),
+    );
   }
 
-  async listWorkflowRunArtifacts() {
-    return {
+  listWorkflowRunArtifacts() {
+    return Effect.succeed({
       artifacts: [
         {
           archive_download_url:
@@ -570,16 +579,16 @@ class FakeGitHubClient {
         },
       ],
       total_count: 1,
-    };
+    });
   }
 
-  async downloadArtifactZip() {
-    return {
+  downloadArtifactZip() {
+    return Effect.succeed({
       bytes: new Uint8Array([80, 75, 3, 4]),
       contentType: "application/zip",
       fileName: "firmware-uf2.zip",
       sizeBytes: 4,
-    };
+    });
   }
 }
 

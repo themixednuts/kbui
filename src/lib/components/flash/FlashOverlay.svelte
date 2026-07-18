@@ -14,7 +14,7 @@
     firmwareGithubVariantInput,
     type AuthClientError,
   } from "$lib/app/firmware-github-actions";
-  import { connectViaAndActivate } from "$lib/app/connect-flow";
+  import { connectViaAndActivateEffect } from "$lib/app/connect-flow";
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import type { LiveSyncChangeNotice } from "$lib/app/via-live-sync.svelte";
@@ -38,15 +38,16 @@
     FirmwareBuildResult,
     FirmwareObjectBundleManifest,
   } from "$lib/keyboard/firmware-build/types";
-  import { verifyGitHubArtifactSha256Digest } from "$lib/keyboard/github-artifact-digest";
+  import { verifyGitHubArtifactSha256DigestEffect } from "$lib/keyboard/github-artifact-digest";
   import { profileDisplayName, type DeviceProfile } from "$lib/keyboard/schema";
   import { createWebHidViaTransport } from "$lib/keyboard/transport";
   import {
-    createUf2FlashPlan,
+    createUf2FlashPlanEffect,
     defaultUf2VolumeHints,
     detectUf2FileSystemAccessSupport,
-    flashUf2ViaFileSystemAccess,
-    verifyUf2Reconnect,
+    flashUf2ViaFileSystemAccessEffect,
+    Uf2ValidationError,
+    verifyUf2ReconnectEffect,
     type Uf2FileSystemAccessTarget,
     type Uf2FileSystemFlashResult,
     type Uf2FlashPlan,
@@ -390,37 +391,45 @@
     uf2Log = [...uf2Log, line];
   }
 
-  function selectUf2Artifact(
+  function selectUf2ArtifactEffect(
     bytes: Uint8Array,
     fileName: string,
     sourceLabel: string,
     options: { expectedFamilyId?: number } = {},
   ) {
-    const familyId = options.expectedFamilyId ?? expectedUf2FamilyId;
-    if (familyId === undefined) {
-      throw new Error(
-        "This profile has no verified UF2 processor/family metadata. Direct flashing is blocked.",
+    return Effect.gen(function* () {
+      const familyId = options.expectedFamilyId ?? expectedUf2FamilyId;
+      if (familyId === undefined) {
+        const message =
+          "This profile has no verified UF2 processor/family metadata. Direct flashing is blocked.";
+        return yield* Effect.fail(
+          new Uf2ValidationError({
+            operation: "flash.select-uf2",
+            message,
+            cause: new Error(message),
+          }),
+        );
+      }
+      const plan = yield* createUf2FlashPlanEffect({
+        boardName: activeProfile.name,
+        expectedFamilyId: familyId,
+        expectedVolumeHints: volumeHintsFor(activeProfile),
+        fileName,
+        uf2Bytes: bytes,
+      });
+      uf2Bytes = bytes;
+      uf2Plan = plan;
+      uf2Error = null;
+      flashProgress = null;
+      flashResult = null;
+      verifyResult = null;
+      phase = "enter_bootloader";
+      appendUf2Log(
+        `${sourceLabel} ${plan.artifact.fileName} (${formatBytes(plan.artifact.size)}, ${plan.artifact.blockCount} UF2 blocks)`,
       );
-    }
-    const plan = createUf2FlashPlan({
-      boardName: activeProfile.name,
-      expectedFamilyId: familyId,
-      expectedVolumeHints: volumeHintsFor(activeProfile),
-      fileName,
-      uf2Bytes: bytes,
+      if (plan.artifact.familyIdHex) appendUf2Log(`family id ${plan.artifact.familyIdHex}`);
+      for (const warning of plan.warnings) appendUf2Log(`warning: ${warning}`);
     });
-    uf2Bytes = bytes;
-    uf2Plan = plan;
-    uf2Error = null;
-    flashProgress = null;
-    flashResult = null;
-    verifyResult = null;
-    phase = "enter_bootloader";
-    appendUf2Log(
-      `${sourceLabel} ${plan.artifact.fileName} (${formatBytes(plan.artifact.size)}, ${plan.artifact.blockCount} UF2 blocks)`,
-    );
-    if (plan.artifact.familyIdHex) appendUf2Log(`family id ${plan.artifact.familyIdHex}`);
-    for (const warning of plan.warnings) appendUf2Log(`warning: ${warning}`);
   }
 
   function rejectUf2Artifact(error: unknown) {
@@ -476,7 +485,7 @@
       "flash.load-uf2-file",
       hostEffect("flash.read-uf2-file", () => file.arrayBuffer()).pipe(
         Effect.tap((buffer) =>
-          Effect.sync(() => selectUf2Artifact(new Uint8Array(buffer), file.name, "selected")),
+          selectUf2ArtifactEffect(new Uint8Array(buffer), file.name, "selected"),
         ),
         Effect.catch((error) => Effect.sync(() => rejectUf2Artifact(error))),
         Effect.ensuring(Effect.sync(() => (input.value = ""))),
@@ -533,7 +542,7 @@
       }
 
       const bytes = build.artifact.bytes;
-      selectUf2Artifact(bytes, build.artifact.fileName, "browser build produced", {
+      yield* selectUf2ArtifactEffect(bytes, build.artifact.fileName, "browser build produced", {
         expectedFamilyId: manifest.output.uf2FamilyId,
       });
       }).pipe(
@@ -697,15 +706,16 @@
       }
       const archiveBytes = bytesFromBase64(response.data.zipBase64);
       if (response.data.digest) {
-        yield* hostEffect("flash.verify-github-artifact", () =>
-          verifyGitHubArtifactSha256Digest(archiveBytes, response.data!.digest!),
-        );
+        yield* verifyGitHubArtifactSha256DigestEffect(archiveBytes, response.data.digest);
         appendUf2Log(`verified GitHub artifact digest ${response.data.digest}`);
       } else {
         appendUf2Log("warning: GitHub did not provide an artifact digest");
       }
-      const uf2 = uf2FromGithubArtifactZip(response.data, archiveBytes);
-      selectUf2Artifact(uf2.bytes, uf2.fileName, "GitHub artifact loaded");
+      const uf2 = yield* Effect.try({
+        try: () => uf2FromGithubArtifactZip(response.data, archiveBytes),
+        catch: (cause) => platformError("flash.github-artifact-zip", cause),
+      });
+      yield* selectUf2ArtifactEffect(uf2.bytes, uf2.fileName, "GitHub artifact loaded");
       githubNotice = `Loaded ${uf2.fileName} from ${response.data.artifactName}.`;
       }).pipe(
         Effect.catch((error) =>
@@ -779,16 +789,14 @@
         picker({ mode: "readwrite" }),
       )) as Uf2FileSystemAccessTarget;
       // Real device copy/reboot timing is hardware-unverified; tests cover injected mock handles.
-      const written = yield* hostEffect("flash.copy-uf2", () =>
-        flashUf2ViaFileSystemAccess(handle, uf2Bytes!, {
-          expectedFamilyId: uf2Plan!.targetBootloader.familyId,
-          expectedVolumeHints: uf2Plan!.targetBootloader.expectedVolumeHints,
-          fileName: uf2Plan!.artifact.fileName,
-          onProgress: (progress) => {
-            flashProgress = progress;
-          },
-        }),
-      );
+      const written = yield* flashUf2ViaFileSystemAccessEffect(handle, uf2Bytes!, {
+        expectedFamilyId: uf2Plan!.targetBootloader.familyId,
+        expectedVolumeHints: uf2Plan!.targetBootloader.expectedVolumeHints,
+        fileName: uf2Plan!.artifact.fileName,
+        onProgress: (progress) => {
+          flashProgress = progress;
+        },
+      });
       flashResult = written;
       for (const line of written.log) appendUf2Log(line);
       phase = "verify";
@@ -842,40 +850,32 @@
     verifyResult = null;
     appendUf2Log("starting Connect flow verification");
 
-    const reconnect = () =>
-      runApp(
-        "flash.reconnect-device",
-        hostEffect("flash.reconnect-device", () =>
-          connectViaAndActivate({
-            baseProfile: activeProfile,
-            connectOptions: { matrixHint: activeProfile.matrix },
-            shell,
-            transport: createWebHidViaTransport(currentFilters(activeProfile)),
-            workbench,
-          }),
-        ).pipe(
-          Effect.flatMap((result) =>
-            result.connection
-              ? Effect.succeed(result.connection)
-              : Effect.fail(
-                  platformError(
-                    "flash.reconnect-device",
-                    "Connect flow did not return a connection.",
-                  ),
-                ),
-          ),
-        ),
-      );
+    const reconnect = connectViaAndActivateEffect({
+      baseProfile: activeProfile,
+      connectOptions: { matrixHint: activeProfile.matrix },
+      shell,
+      transport: createWebHidViaTransport(currentFilters(activeProfile)),
+      workbench,
+    }).pipe(
+      Effect.flatMap((result) =>
+        result.connection
+          ? Effect.succeed(result.connection)
+          : Effect.fail(
+              platformError(
+                "flash.reconnect-device",
+                "Connect flow did not return a connection.",
+              ),
+            ),
+      ),
+    );
 
     void runApp(
       "flash.verify-reconnect",
-      hostEffect("flash.verify-reconnect", () =>
-        verifyUf2Reconnect(reconnect, {
-          productId: activeProfile.productId,
-          protocol: activeProfile.protocol === "via-v3" ? "via-v3" : undefined,
-          vendorId: activeProfile.vendorId,
-        }),
-      ).pipe(
+      verifyUf2ReconnectEffect(reconnect, {
+        productId: activeProfile.productId,
+        protocol: activeProfile.protocol === "via-v3" ? "via-v3" : undefined,
+        vendorId: activeProfile.vendorId,
+      }).pipe(
         Effect.tap((verified) =>
           Effect.sync(() => {
       verifyResult = verified;

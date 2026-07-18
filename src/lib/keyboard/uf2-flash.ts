@@ -1,6 +1,5 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
-import { runApp } from "$lib/app/runtime";
 import { platformError } from "$lib/effect/errors";
 import type { KeyboardProtocol } from "./transport";
 
@@ -74,6 +73,15 @@ export interface CreateUf2FlashPlanInput {
   fileName?: string;
   uf2Bytes: Uf2Bytes;
 }
+
+export class Uf2ValidationError extends Schema.TaggedErrorClass<Uf2ValidationError>()(
+  "Uf2ValidationError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 export interface Uf2FileSystemWritableLike {
   close: () => Promise<void>;
@@ -395,6 +403,19 @@ export function createUf2FlashPlan(input: CreateUf2FlashPlanInput): Uf2FlashPlan
   };
 }
 
+export const createUf2FlashPlanEffect = Effect.fn("Uf2.createFlashPlan")(
+  (input: CreateUf2FlashPlanInput) =>
+    Effect.try({
+      try: () => createUf2FlashPlan(input),
+      catch: (cause) =>
+        new Uf2ValidationError({
+          operation: "uf2.create-flash-plan",
+          message: cause instanceof Error ? cause.message : "UF2 validation failed.",
+          cause,
+        }),
+    }),
+);
+
 function isDirectoryHandle(
   handle: Uf2FileSystemAccessTarget,
 ): handle is Uf2FileSystemDirectoryHandleLike {
@@ -410,132 +431,129 @@ function emitProgress(progress: Uf2FlashProgress[], io: Uf2FlashIo, next: Uf2Fla
   io.onProgress?.(next);
 }
 
-export function flashUf2ViaFileSystemAccess(
+export function flashUf2ViaFileSystemAccessEffect(
   fileHandleOrDir: Uf2FileSystemAccessTarget,
   uf2Bytes: Uf2Bytes,
   io: Uf2FlashIo,
-): Promise<Uf2FileSystemFlashResult> {
-  return runApp(
-    "firmware.flash-uf2",
-    Effect.gen(function* () {
-      const { bytes, fileName, log, parsed, progress } = yield* Effect.try({
-        try: () => {
-          const bytes = bytesView(uf2Bytes);
-          const parsed = parseUf2(bytes);
-          if (parsed.familyId !== io.expectedFamilyId) {
-            throw new Error(
-              `UF2 family ${parsed.familyIdHex ?? "not declared"} does not match expected ${hex32(io.expectedFamilyId)}.`,
-            );
-          }
-          const fileName = normalizedUf2FileName(io.fileName);
-          const progress: Uf2FlashProgress[] = [];
-          const log: string[] = [];
-          emitProgress(progress, io, {
-            bytesWritten: 0,
-            fileName,
-            phase: "validating",
-            totalBytes: bytes.byteLength,
-          });
-          log.push(
-            `validated ${fileName} (${bytes.byteLength} bytes, ${parsed.blockCount} UF2 blocks)`,
+) {
+  return Effect.gen(function* () {
+    const { bytes, fileName, log, parsed, progress } = yield* Effect.try({
+      try: () => {
+        const bytes = bytesView(uf2Bytes);
+        const parsed = parseUf2(bytes);
+        if (parsed.familyId !== io.expectedFamilyId) {
+          throw new Error(
+            `UF2 family ${parsed.familyIdHex ?? "not declared"} does not match expected ${hex32(io.expectedFamilyId)}.`,
           );
-          return { bytes, fileName, log, parsed, progress };
-        },
-        catch: (cause) => platformError("firmware.validate-uf2", cause),
-      });
-
-      const fileHandle = isDirectoryHandle(fileHandleOrDir)
-        ? yield* Effect.tryPromise({
-            try: () => fileHandleOrDir.getFileHandle(fileName, { create: true }),
-            catch: (cause) => platformError("firmware.open-uf2-target", cause),
-          })
-        : fileHandleOrDir;
-      if (!isFileHandle(fileHandle)) {
-        return yield* Effect.fail(
-          platformError(
-            "firmware.open-uf2-target",
-            "Selected target is not a File System Access file or directory handle.",
-          ),
+        }
+        const fileName = normalizedUf2FileName(io.fileName);
+        const progress: Uf2FlashProgress[] = [];
+        const log: string[] = [];
+        emitProgress(progress, io, {
+          bytesWritten: 0,
+          fileName,
+          phase: "validating",
+          totalBytes: bytes.byteLength,
+        });
+        log.push(
+          `validated ${fileName} (${bytes.byteLength} bytes, ${parsed.blockCount} UF2 blocks)`,
         );
-      }
-      const volumeHints = io.expectedVolumeHints ?? [];
-      if (
-        volumeHints.length > 0 &&
-        fileHandleOrDir.name &&
-        !volumeHints.some(
-          (hint) => normalizedVolumeName(hint) === normalizedVolumeName(fileHandleOrDir.name!),
-        )
-      ) {
-        return yield* Effect.fail(
-          platformError(
-            "firmware.validate-uf2-volume",
-            `Selected volume ${fileHandleOrDir.name} does not match ${volumeHints.join(", ")}.`,
-          ),
-        );
-      }
+        return { bytes, fileName, log, parsed, progress };
+      },
+      catch: (cause) => platformError("firmware.validate-uf2", cause),
+    });
 
-      let bytesWritten = 0;
-      yield* Effect.acquireUseRelease(
-        Effect.tryPromise({
-          try: () => fileHandle.createWritable(),
-          catch: (cause) => platformError("firmware.open-uf2-writable", cause),
-        }),
-        (writable) => {
-          const chunkSize = Math.max(1, Math.floor(io.chunkSize ?? 64 * 1024));
-          const offsets = Array.from(
-            { length: Math.ceil(bytes.byteLength / chunkSize) },
-            (_, index) => index * chunkSize,
-          );
-          return Effect.forEach(
-            offsets,
-            (offset) => {
-              const chunk = bytes.slice(offset, Math.min(offset + chunkSize, bytes.byteLength));
-              return Effect.andThen(
-                Effect.tryPromise({
-                  try: () => writable.write(chunk),
-                  catch: (cause) => platformError("firmware.write-uf2", cause),
-                }),
-                Effect.sync(() => {
-                  bytesWritten += chunk.byteLength;
-                  emitProgress(progress, io, {
-                    bytesWritten,
-                    fileName,
-                    phase: "writing",
-                    totalBytes: bytes.byteLength,
-                  });
-                }),
-              );
-            },
-            { concurrency: 1, discard: true },
-          );
-        },
-        (writable) =>
-          Effect.tryPromise({
-            try: () => writable.close(),
-            catch: (cause) => platformError("firmware.close-uf2-writable", cause),
-          }),
+    const fileHandle = isDirectoryHandle(fileHandleOrDir)
+      ? yield* Effect.tryPromise({
+          try: () => fileHandleOrDir.getFileHandle(fileName, { create: true }),
+          catch: (cause) => platformError("firmware.open-uf2-target", cause),
+        })
+      : fileHandleOrDir;
+    if (!isFileHandle(fileHandle)) {
+      return yield* Effect.fail(
+        platformError(
+          "firmware.open-uf2-target",
+          "Selected target is not a File System Access file or directory handle.",
+        ),
       );
+    }
+    const volumeHints = io.expectedVolumeHints ?? [];
+    if (
+      volumeHints.length > 0 &&
+      fileHandleOrDir.name &&
+      !volumeHints.some(
+        (hint) => normalizedVolumeName(hint) === normalizedVolumeName(fileHandleOrDir.name!),
+      )
+    ) {
+      return yield* Effect.fail(
+        platformError(
+          "firmware.validate-uf2-volume",
+          `Selected volume ${fileHandleOrDir.name} does not match ${volumeHints.join(", ")}.`,
+        ),
+      );
+    }
 
-      emitProgress(progress, io, {
-        bytesWritten,
-        fileName,
-        phase: "done",
-        totalBytes: bytes.byteLength,
-      });
-      log.push(`copied ${fileName} to ${fileHandleOrDir.name ?? "selected bootloader volume"}`);
-      return {
-        artifact: parsed.artifact,
-        bytesWritten,
-        fileName,
-        hardwareVerified: false,
-        log,
-        ok: true,
-        parsed,
-        progress,
-        volumeName: fileHandleOrDir.name,
-      } satisfies Uf2FileSystemFlashResult;
-    }),
-  );
+    let bytesWritten = 0;
+    yield* Effect.acquireUseRelease(
+      Effect.tryPromise({
+        try: () => fileHandle.createWritable(),
+        catch: (cause) => platformError("firmware.open-uf2-writable", cause),
+      }),
+      (writable) => {
+        const chunkSize = Math.max(1, Math.floor(io.chunkSize ?? 64 * 1024));
+        const offsets = Array.from(
+          { length: Math.ceil(bytes.byteLength / chunkSize) },
+          (_, index) => index * chunkSize,
+        );
+        return Effect.forEach(
+          offsets,
+          (offset) => {
+            const chunk = bytes.slice(offset, Math.min(offset + chunkSize, bytes.byteLength));
+            return Effect.andThen(
+              Effect.tryPromise({
+                try: () => writable.write(chunk),
+                catch: (cause) => platformError("firmware.write-uf2", cause),
+              }),
+              Effect.sync(() => {
+                bytesWritten += chunk.byteLength;
+                emitProgress(progress, io, {
+                  bytesWritten,
+                  fileName,
+                  phase: "writing",
+                  totalBytes: bytes.byteLength,
+                });
+              }),
+            );
+          },
+          { concurrency: 1, discard: true },
+        );
+      },
+      (writable) =>
+        Effect.tryPromise({
+          try: () => writable.close(),
+          catch: (cause) => platformError("firmware.close-uf2-writable", cause),
+        }),
+    );
+
+    emitProgress(progress, io, {
+      bytesWritten,
+      fileName,
+      phase: "done",
+      totalBytes: bytes.byteLength,
+    });
+    log.push(`copied ${fileName} to ${fileHandleOrDir.name ?? "selected bootloader volume"}`);
+    return {
+      artifact: parsed.artifact,
+      bytesWritten,
+      fileName,
+      hardwareVerified: false,
+      log,
+      ok: true,
+      parsed,
+      progress,
+      volumeName: fileHandleOrDir.name,
+    } satisfies Uf2FileSystemFlashResult;
+  }).pipe(Effect.withSpan("Uf2.flashFileSystemAccess"));
 }
 
 function isChromiumLike(navigatorLike: Uf2FlashSupportEnvironment["navigator"]) {
@@ -599,91 +617,85 @@ function normalizedVolumeName(value: string) {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-export function verifyUf2Reconnect(
-  reconnect: () => Promise<Uf2ReconnectConnection>,
+export function verifyUf2ReconnectEffect<E, R>(
+  reconnect: Effect.Effect<Uf2ReconnectConnection, E, R>,
   expected: Uf2ReconnectExpectation = {},
-): Promise<Uf2VerifyResult> {
-  return runApp(
-    "firmware.verify-uf2-reconnect",
-    Effect.gen(function* () {
-      const log: string[] = ["waiting for keyboard reconnect"];
-      const warnings: string[] = [];
-      const connection = yield* Effect.tryPromise({
-        try: reconnect,
-        catch: (cause) => platformError("firmware.reconnect-after-uf2", cause),
-      });
+): Effect.Effect<Uf2VerifyResult, E, R> {
+  return Effect.gen(function* () {
+    const log: string[] = ["waiting for keyboard reconnect"];
+    const warnings: string[] = [];
+    const connection = yield* reconnect;
 
-      if (connection.status !== "connected") {
-        return {
-          connection,
-          log: [...log, connection.message ?? "keyboard did not reconnect"],
-          message: connection.message ?? "Keyboard did not reconnect.",
-          ok: false,
-          warnings,
-        };
-      }
-
-      const mismatches: string[] = [];
-      if (expected.vendorId !== undefined && connection.vendorId !== expected.vendorId) {
-        mismatches.push(`vendor ${hex32(connection.vendorId ?? 0)} != ${hex32(expected.vendorId)}`);
-      }
-      if (expected.productId !== undefined && connection.productId !== expected.productId) {
-        mismatches.push(
-          `product ${hex32(connection.productId ?? 0)} != ${hex32(expected.productId)}`,
-        );
-      }
-      if (expected.deviceKey && connection.deviceKey !== expected.deviceKey) {
-        mismatches.push(`device key ${connection.deviceKey ?? "unknown"} != ${expected.deviceKey}`);
-      }
-      if (expected.protocol && connection.protocol !== expected.protocol) {
-        mismatches.push(`protocol ${connection.protocol ?? "unknown"} != ${expected.protocol}`);
-      }
-      if (
-        expected.productName &&
-        connection.productName &&
-        connection.productName !== expected.productName
-      ) {
-        warnings.push(
-          `Reconnected product name is ${connection.productName}, expected ${expected.productName}.`,
-        );
-      }
-
-      const metadata = {
-        keymapRead: Array.isArray(connection.detection?.keymap),
-        layerCount: connection.detection?.layerCount,
-        protocolVersion: connection.detection?.protocolVersion,
-      };
-      if (connection.protocol === "via-v3" && metadata.protocolVersion === undefined) {
-        warnings.push("VIA protocol metadata was not read after reconnect.");
-      }
-
-      if (mismatches.length > 0) {
-        return {
-          connection,
-          log: [...log, ...mismatches.map((item) => `mismatch: ${item}`)],
-          message: "Keyboard reconnected, but identity did not match the expected target.",
-          metadata,
-          ok: false,
-          warnings,
-        };
-      }
-
+    if (connection.status !== "connected") {
       return {
         connection,
-        log: [
-          ...log,
-          `reconnected ${connection.productName ?? "keyboard"} over ${connection.protocol ?? "unknown protocol"}`,
-          metadata.protocolVersion === undefined
-            ? "metadata read skipped"
-            : `VIA protocol ${metadata.protocolVersion}, ${metadata.layerCount ?? "unknown"} layers`,
-        ],
-        message: "Keyboard reconnected and identity matched.",
-        metadata,
-        ok: true,
+        log: [...log, connection.message ?? "keyboard did not reconnect"],
+        message: connection.message ?? "Keyboard did not reconnect.",
+        ok: false,
         warnings,
       };
-    }),
-  );
+    }
+
+    const mismatches: string[] = [];
+    if (expected.vendorId !== undefined && connection.vendorId !== expected.vendorId) {
+      mismatches.push(`vendor ${hex32(connection.vendorId ?? 0)} != ${hex32(expected.vendorId)}`);
+    }
+    if (expected.productId !== undefined && connection.productId !== expected.productId) {
+      mismatches.push(
+        `product ${hex32(connection.productId ?? 0)} != ${hex32(expected.productId)}`,
+      );
+    }
+    if (expected.deviceKey && connection.deviceKey !== expected.deviceKey) {
+      mismatches.push(`device key ${connection.deviceKey ?? "unknown"} != ${expected.deviceKey}`);
+    }
+    if (expected.protocol && connection.protocol !== expected.protocol) {
+      mismatches.push(`protocol ${connection.protocol ?? "unknown"} != ${expected.protocol}`);
+    }
+    if (
+      expected.productName &&
+      connection.productName &&
+      connection.productName !== expected.productName
+    ) {
+      warnings.push(
+        `Reconnected product name is ${connection.productName}, expected ${expected.productName}.`,
+      );
+    }
+
+    const metadata = {
+      keymapRead: Array.isArray(connection.detection?.keymap),
+      layerCount: connection.detection?.layerCount,
+      protocolVersion: connection.detection?.protocolVersion,
+    };
+    if (connection.protocol === "via-v3" && metadata.protocolVersion === undefined) {
+      warnings.push("VIA protocol metadata was not read after reconnect.");
+    }
+
+    if (mismatches.length > 0) {
+      return {
+        connection,
+        log: [...log, ...mismatches.map((item) => `mismatch: ${item}`)],
+        message: "Keyboard reconnected, but identity did not match the expected target.",
+        metadata,
+        ok: false,
+        warnings,
+      };
+    }
+
+    return {
+      connection,
+      log: [
+        ...log,
+        `reconnected ${connection.productName ?? "keyboard"} over ${connection.protocol ?? "unknown protocol"}`,
+        metadata.protocolVersion === undefined
+          ? "metadata read skipped"
+          : `VIA protocol ${metadata.protocolVersion}, ${metadata.layerCount ?? "unknown"} layers`,
+      ],
+      message: "Keyboard reconnected and identity matched.",
+      metadata,
+      ok: true,
+      warnings,
+    };
+  }).pipe(Effect.withSpan("Uf2.verifyReconnect"));
 }
 
 export function defaultUf2VolumeHints(boardName: string) {

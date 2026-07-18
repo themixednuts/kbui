@@ -1,5 +1,5 @@
 import { browser } from "$app/environment";
-import { Cause, Deferred, Effect } from "effect";
+import { Cause, Deferred, Effect, Schema } from "effect";
 
 import { runApp } from "$lib/app/runtime";
 import { platformError } from "$lib/effect/errors";
@@ -143,6 +143,80 @@ export interface ConnectionState {
   webSerialSupported: boolean;
   webUsbSupported: boolean;
   webHidSupported: boolean;
+}
+
+export class ViaReportUnavailableError extends Schema.TaggedErrorClass<ViaReportUnavailableError>()(
+  "ViaReportUnavailableError",
+  {},
+) {
+  override get message() {
+    return "WebHID reports are unavailable for this device";
+  }
+}
+
+export class ViaCommandTimeoutError extends Schema.TaggedErrorClass<ViaCommandTimeoutError>()(
+  "ViaCommandTimeoutError",
+  { command: Schema.Int },
+) {
+  override get message() {
+    return `VIA command 0x${this.command.toString(16)} timed out`;
+  }
+}
+
+export class ViaNotConnectedError extends Schema.TaggedErrorClass<ViaNotConnectedError>()(
+  "ViaNotConnectedError",
+  {},
+) {
+  override get message() {
+    return "Connect a WebHID VIA keyboard before saving to the device.";
+  }
+}
+
+export class ViaDeviceUnavailableError extends Schema.TaggedErrorClass<ViaDeviceUnavailableError>()(
+  "ViaDeviceUnavailableError",
+  {},
+) {
+  override get message() {
+    return "The WebHID device handle is unavailable. Reconnect the keyboard.";
+  }
+}
+
+export class ViaWriteValidationError extends Schema.TaggedErrorClass<ViaWriteValidationError>()(
+  "ViaWriteValidationError",
+  {
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
+
+export class ViaReadbackMismatchError extends Schema.TaggedErrorClass<ViaReadbackMismatchError>()(
+  "ViaReadbackMismatchError",
+  {
+    actualKeycode: Schema.Int,
+    expectedKeycode: Schema.Int,
+  },
+) {
+  override get message() {
+    return `VIA readback mismatch: wrote 0x${this.expectedKeycode.toString(16).padStart(4, "0")}, read 0x${this.actualKeycode.toString(16).padStart(4, "0")}.`;
+  }
+}
+
+export class ViaMatrixDefinitionRequiredError extends Schema.TaggedErrorClass<ViaMatrixDefinitionRequiredError>()(
+  "ViaMatrixDefinitionRequiredError",
+  {},
+) {
+  override get message() {
+    return "A verified keyboard definition is required before reading or writing the VIA matrix.";
+  }
+}
+
+export class ViaNoWritableLayersError extends Schema.TaggedErrorClass<ViaNoWritableLayersError>()(
+  "ViaNoWritableLayersError",
+  {},
+) {
+  override get message() {
+    return "VIA reported no writable layers.";
+  }
 }
 
 function browserTransportEnvironment(): TransportEnvironment {
@@ -407,51 +481,51 @@ function connectHidDeviceEffect(
 }
 
 function hidCommandEffect(device: MinimalHidDevice, command: number, payload: number[] = []) {
-  if (!device.sendReport || !device.addEventListener || !device.removeEventListener) {
-    return Effect.fail(new Error("WebHID reports are unavailable for this device"));
-  }
+  return Effect.gen(function* () {
+    if (!device.sendReport || !device.addEventListener || !device.removeEventListener) {
+      return yield* Effect.fail(new ViaReportUnavailableError({}));
+    }
 
-  const sendReport = device.sendReport.bind(device);
-  const addEventListener = device.addEventListener.bind(device);
-  const removeEventListener = device.removeEventListener.bind(device);
-  const request = new Uint8Array(viaReportSize);
-  request[0] = command;
-  request.set(payload.slice(0, viaReportSize - 1), 1);
+    const sendReport = device.sendReport.bind(device);
+    const addEventListener = device.addEventListener.bind(device);
+    const removeEventListener = device.removeEventListener.bind(device);
+    const request = new Uint8Array(viaReportSize);
+    request[0] = command;
+    request.set(payload.slice(0, viaReportSize - 1), 1);
 
-  return Effect.scoped(
-    Effect.gen(function* () {
-      const response = yield* Deferred.make<Uint8Array, Error>();
-      const onInputReport = (event: MinimalHidInputReportEvent) => {
-        if (event.device !== device) return;
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const response = yield* Deferred.make<Uint8Array>();
+        const onInputReport = (event: MinimalHidInputReportEvent) => {
+          if (event.device !== device) return;
 
-        const bytes = new Uint8Array(
-          event.data.buffer.slice(
-            event.data.byteOffset,
-            event.data.byteOffset + event.data.byteLength,
+          const bytes = new Uint8Array(
+            event.data.buffer.slice(
+              event.data.byteOffset,
+              event.data.byteOffset + event.data.byteLength,
+            ),
+          );
+          if (bytes[0] !== command) return;
+          Deferred.doneUnsafe(response, Effect.succeed(bytes));
+        };
+
+        yield* Effect.acquireRelease(
+          Effect.sync(() => addEventListener("inputreport", onInputReport)),
+          () => Effect.sync(() => removeEventListener("inputreport", onInputReport)),
+        );
+        yield* Effect.tryPromise({
+          try: () => sendReport(0, request),
+          catch: (cause) => platformError("via.send-report", cause),
+        });
+        return yield* Deferred.await(response).pipe(
+          Effect.timeout(800),
+          Effect.mapError((error) =>
+            Cause.isTimeoutError(error) ? new ViaCommandTimeoutError({ command }) : error,
           ),
         );
-        if (bytes[0] !== command) return;
-        Deferred.doneUnsafe(response, Effect.succeed(bytes));
-      };
-
-      yield* Effect.acquireRelease(
-        Effect.sync(() => addEventListener("inputreport", onInputReport)),
-        () => Effect.sync(() => removeEventListener("inputreport", onInputReport)),
-      );
-      yield* Effect.tryPromise({
-        try: () => sendReport(0, request),
-        catch: (cause) => platformError("via.send-report", cause),
-      });
-      return yield* Deferred.await(response).pipe(
-        Effect.timeout(800),
-        Effect.mapError((error) =>
-          Cause.isTimeoutError(error)
-            ? new Error(`VIA command 0x${command.toString(16)} timed out`)
-            : error,
-        ),
-      );
-    }),
-  );
+      }),
+    );
+  });
 }
 
 function keycodeFromResponse(response: Uint8Array) {
@@ -493,19 +567,22 @@ export function writeViaKeycode(
 export function writeViaKeycodeEffect(connection: ConnectionState, input: ViaKeycodeWriteInput) {
   return Effect.gen(function* () {
     if (connection.status !== "connected" || connection.transport !== "webhid") {
-      return yield* Effect.fail(
-        new Error("Connect a WebHID VIA keyboard before saving to the device."),
-      );
+      return yield* Effect.fail(new ViaNotConnectedError({}));
     }
 
     const device = connection.hidDevice;
     if (!device) {
-      return yield* Effect.fail(
-        new Error("The WebHID device handle is unavailable. Reconnect the keyboard."),
-      );
+      return yield* Effect.fail(new ViaDeviceUnavailableError({}));
     }
 
-    yield* Effect.try(() => assertViaKeycodeWriteInput(input));
+    yield* Effect.try({
+      try: () => assertViaKeycodeWriteInput(input),
+      catch: (cause) =>
+        new ViaWriteValidationError({
+          cause,
+          message: cause instanceof Error ? cause.message : String(cause),
+        }),
+    });
 
     yield* hidCommandEffect(device, viaCommand.dynamicKeymapSetKeycode, [
       input.layer,
@@ -524,9 +601,10 @@ export function writeViaKeycodeEffect(connection: ConnectionState, input: ViaKey
 
     if (verifiedKeycode !== input.keycode) {
       return yield* Effect.fail(
-        new Error(
-          `VIA readback mismatch: wrote 0x${input.keycode.toString(16).padStart(4, "0")}, read 0x${verifiedKeycode.toString(16).padStart(4, "0")}.`,
-        ),
+        new ViaReadbackMismatchError({
+          actualKeycode: verifiedKeycode,
+          expectedKeycode: input.keycode,
+        }),
       );
     }
 
@@ -569,11 +647,7 @@ function detectViaHidEffect(
   matrixHint?: { rows: number; cols: number },
 ): Effect.Effect<KeyboardDetection, Error> {
   if (!matrixHint) {
-    return Effect.fail(
-      new Error(
-        "A verified keyboard definition is required before reading or writing the VIA matrix.",
-      ),
-    );
+    return Effect.fail(new ViaMatrixDefinitionRequiredError({}));
   }
   return Effect.gen(function* () {
     const capabilities = new Set<Capability>(["keymap", "layers"]);
@@ -582,7 +656,7 @@ function detectViaHidEffect(
 
     const layerResponse = yield* hidCommandEffect(device, viaCommand.dynamicKeymapGetLayerCount);
     const layerCount = layerResponse[1];
-    if (!layerCount) return yield* Effect.fail(new Error("VIA reported no writable layers."));
+    if (!layerCount) return yield* Effect.fail(new ViaNoWritableLayersError({}));
 
     const macroResponse = yield* hidCommandEffect(device, viaCommand.dynamicKeymapMacroGetCount);
     if (macroResponse?.[1]) capabilities.add("macros");
@@ -762,32 +836,46 @@ function hostPromise<A>(operation: string, run: () => PromiseLike<A>) {
  * Matches by vendor id + product id + serial number (when available). If no
  * match is found, this is a no-op — we just return a fresh idle state.
  */
-export function forgetGrantedKeyboardEffect(
+export const forgetGrantedKeyboardEffect = Effect.fn("Keyboard.forgetGranted")(function* (
   identity: { vendorId?: number; productId?: number; serialNumber?: string },
   environment: TransportEnvironment = browserTransportEnvironment(),
 ) {
-  if (!environment.isBrowser) return Effect.succeed(getConnectionState(environment));
+  if (!environment.isBrowser) return getConnectionState(environment);
 
-  return Effect.tryPromise(async () => {
-    const matches = (device: { vendorId?: number; productId?: number; serialNumber?: string }) =>
-      (identity.vendorId === undefined || device.vendorId === identity.vendorId) &&
-      (identity.productId === undefined || device.productId === identity.productId) &&
-      (!identity.serialNumber || device.serialNumber === identity.serialNumber);
+  const matches = (device: { vendorId?: number; productId?: number; serialNumber?: string }) =>
+    (identity.vendorId === undefined || device.vendorId === identity.vendorId) &&
+    (identity.productId === undefined || device.productId === identity.productId) &&
+    (!identity.serialNumber || device.serialNumber === identity.serialNumber);
 
-    const hidDevices = (await environment.hid?.getDevices?.()) ?? [];
-    for (const device of hidDevices) {
-      if (matches(device) && device.forget) {
-        await device.forget();
-      }
-    }
+  const getHidDevices = environment.hid?.getDevices?.bind(environment.hid);
+  const hidDevices = getHidDevices
+    ? yield* hostPromise("keyboard.webhid.get-granted-forget", getHidDevices)
+    : [];
+  yield* Effect.forEach(
+    hidDevices,
+    (device) => {
+      const forget = device.forget?.bind(device);
+      return matches(device) && forget
+        ? hostPromise("keyboard.webhid.forget", forget)
+        : Effect.void;
+    },
+    { discard: true },
+  );
 
-    const usbDevices = (await environment.usb?.getDevices?.()) ?? [];
-    for (const device of usbDevices) {
-      if (matches(device) && device.forget) {
-        await device.forget();
-      }
-    }
+  const getUsbDevices = environment.usb?.getDevices?.bind(environment.usb);
+  const usbDevices = getUsbDevices
+    ? yield* hostPromise("keyboard.webusb.get-granted-forget", getUsbDevices)
+    : [];
+  yield* Effect.forEach(
+    usbDevices,
+    (device) => {
+      const forget = device.forget?.bind(device);
+      return matches(device) && forget
+        ? hostPromise("keyboard.webusb.forget", forget)
+        : Effect.void;
+    },
+    { discard: true },
+  );
 
-    return getConnectionState(environment);
-  });
-}
+  return getConnectionState(environment);
+});

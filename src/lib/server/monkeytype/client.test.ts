@@ -1,3 +1,5 @@
+import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -17,7 +19,7 @@ describe("Monkeytype API client", () => {
       },
     });
 
-    await client.stats("test-ape-key");
+    await Effect.runPromise(client.statsEffect("test-ape-key"));
 
     expect(authorization).toBe("ApeKey test-ape-key");
   });
@@ -36,13 +38,33 @@ describe("Monkeytype API client", () => {
         nowMs: () => 1_000,
       });
 
-      await client.stats("test-ape-key");
+      await Effect.runPromise(client.statsEffect("test-ape-key"));
 
       expect(fetchReceivers).toEqual([globalThis]);
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("bounds rejected fetch retries", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        let attempts = 0;
+        const client = new MonkeytypeApiClient({
+          fetchImpl: async () => {
+            attempts += 1;
+            throw new Error("network unavailable");
+          },
+        });
+        const fiber = yield* Effect.forkChild(Effect.flip(client.statsEffect("test-ape-key")));
+
+        yield* TestClock.adjust("1 minute");
+        const error = yield* Fiber.join(fiber);
+
+        expect(attempts).toBe(4);
+        expect(error._tag).toBe("PlatformError");
+      }).pipe(Effect.provide(TestClock.layer())),
+    ));
 
   it("normalizes ApeKey error codes and rate-limit reset headers", () => {
     const headers = new Headers({

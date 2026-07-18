@@ -14,12 +14,19 @@
     Settings2,
   } from "@lucide/svelte";
   import { Effect } from "effect";
-  import { Accent, runApp, Theme } from "$lib/app";
-  import { activateViaConnectionAndProfile } from "$lib/app/connect-flow";
+  import { Accent, Theme } from "$lib/app";
+  import { forkApp, startScopedApp } from "$lib/app/runtime";
+  import { activateViaConnectionAndProfileEffect } from "$lib/app/connect-flow";
   import { authClient } from "$lib/auth-client";
+  import {
+    decodeAuthClientErrorEffect,
+    decodeAuthRedirectDataEffect,
+    decodeAuthSessionDataEffect,
+    decodeMonkeytypeConnectionStatusEffect,
+  } from "$lib/app/auth-client-boundary";
   import { cn } from "$lib/utils.js";
   import { platformError } from "$lib/effect/errors";
-  import { onDestroy, onMount, untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Brand from "$lib/components/ui/Brand.svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import * as Popover from "$lib/components/ui/popover/index.js";
@@ -52,16 +59,6 @@
     getViaKeyboardIndex,
     resolveKeyboardIdentity,
   } from "../keyboards.remote";
-
-  type AuthSessionData = {
-    user?: ShellSessionUser | null;
-  } | null;
-  type AuthClientError = {
-    code?: string;
-    message?: string;
-    status?: number;
-    statusText?: string;
-  };
 
   const workerAuthHint = "Run `vp run dev:worker` to sign in with GitHub.";
 
@@ -135,11 +132,34 @@
     shell.closeProfile();
   });
 
-  onMount(() => {
-    void refreshSession();
-    void runApp("Load accent", Accent.loadAndApply);
-    void runApp("Load theme", Theme.loadAndApply);
-  });
+  onMount(() =>
+    startScopedApp(
+      "app-shell.lifecycle",
+      Effect.gen(function* () {
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => liveSync.destroy()).pipe(
+            Effect.andThen(workbench.flushPersistenceEffect()),
+            Effect.catchCause((cause) =>
+              Effect.logError("Could not flush workbench during teardown", cause),
+            ),
+          ),
+        );
+        yield* Effect.all(
+          [
+            refreshSessionEffect(),
+            Accent.loadAndApply.pipe(
+              Effect.catchCause((cause) => Effect.logError("Could not load accent", cause)),
+            ),
+            Theme.loadAndApply.pipe(
+              Effect.catchCause((cause) => Effect.logError("Could not load theme", cause)),
+            ),
+          ],
+          { concurrency: 3, discard: true },
+        );
+        yield* Effect.never;
+      }),
+    ),
+  );
 
   $effect(() => {
     if (!browser) return;
@@ -150,7 +170,12 @@
     }
     if (monkeytypeRequestedFor === userId) return;
     monkeytypeRequestedFor = userId;
-    void loadMonkeytypeStatus();
+    return startScopedApp(
+      "monkeytype.load-status",
+      monkeytypeStatusEffect("monkeytype.status", "Monkeytype unavailable", () =>
+        authClient.monkeytype.status(),
+      ),
+    );
   });
 
   $effect(() => {
@@ -173,19 +198,11 @@
     if (!browser || autoReconnectRequested || !workbench.hydrated) return;
     if (shell.device.status === "connected" || shell.device.status === "connecting") return;
     autoReconnectRequested = true;
-    void reconnectGrantedKeyboard();
+    return startScopedApp("keyboard.reconnect-granted", reconnectGrantedKeyboardEffect());
   });
 
   $effect(() => {
     liveSync.processChanges(shell.liveConnection);
-  });
-
-  onDestroy(() => {
-    liveSync.destroy();
-    void runApp(
-      "workbench.flush-on-destroy",
-      hostEffect("workbench.flush-on-destroy", () => workbench.flushPersistence()),
-    );
   });
 
   function hostEffect<A>(operation: string, task: () => PromiseLike<A>) {
@@ -202,23 +219,23 @@
 
     return Effect.gen(function* () {
       const result = yield* hostEffect("auth.get-session", () => authClient.getSession());
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError("auth.decode-session-error", cause)),
+      );
       if (error) {
         shell.setAuthError(authMessage(error, "Auth unavailable"));
         return;
       }
 
-      const session = result.data as AuthSessionData;
+      const session = yield* decodeAuthSessionDataEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError("auth.decode-session", cause)),
+      );
       shell.setSessionUser(session?.user);
     }).pipe(
       Effect.catch((error) =>
         Effect.sync(() => shell.setAuthError(authMessage(error, "Auth unavailable"))),
       ),
     );
-  }
-
-  function refreshSession() {
-    void runApp("auth.refresh-session", refreshSessionEffect());
   }
 
   function monkeytypeStatusEffect(
@@ -228,12 +245,17 @@
   ) {
     return Effect.gen(function* () {
       const result = yield* hostEffect(operation, request);
-      const error = result.error as AuthClientError | null | undefined;
+      const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+        Effect.mapError((cause) => platformError(`${operation}.decode-error`, cause)),
+      );
       if (error) {
         shell.setMonkeytypeError(errorMessage(error, fallback));
         return;
       }
-      shell.setMonkeytypeStatus(result.data);
+      const status = yield* decodeMonkeytypeConnectionStatusEffect(result.data).pipe(
+        Effect.mapError((cause) => platformError(`${operation}.decode-data`, cause)),
+      );
+      shell.setMonkeytypeStatus(status);
     }).pipe(
       Effect.catch((error) =>
         Effect.sync(() => shell.setMonkeytypeError(errorMessage(error, fallback))),
@@ -241,19 +263,10 @@
     );
   }
 
-  function loadMonkeytypeStatus() {
-    void runApp(
-      "monkeytype.load-status",
-      monkeytypeStatusEffect("monkeytype.status", "Monkeytype unavailable", () =>
-        authClient.monkeytype.status(),
-      ),
-    );
-  }
-
   function refreshMonkeytype() {
     if (monkeytypeBusy) return;
     monkeytypeBusy = true;
-    void runApp(
+    forkApp(
       "monkeytype.refresh",
       monkeytypeStatusEffect("monkeytype.refresh", "Monkeytype refresh failed", () =>
         authClient.monkeytype.refresh({ force: true }),
@@ -264,7 +277,7 @@
   function disconnectMonkeytype() {
     if (monkeytypeBusy) return;
     monkeytypeBusy = true;
-    void runApp(
+    forkApp(
       "monkeytype.disconnect",
       monkeytypeStatusEffect("monkeytype.disconnect", "Monkeytype disconnect failed", () =>
         authClient.monkeytype.disconnect(),
@@ -281,7 +294,7 @@
 
     authBusy = true;
 
-    void runApp(
+    forkApp(
       "auth.sign-in-github",
       Effect.gen(function* () {
         const result = yield* hostEffect("auth.sign-in-github", () =>
@@ -292,13 +305,17 @@
           }),
         );
 
-        const error = result.error as AuthClientError | null | undefined;
+        const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+          Effect.mapError((cause) => platformError("auth.decode-sign-in-error", cause)),
+        );
         if (error) {
           shell.setAuthError(authMessage(error, "GitHub sign-in failed"));
           return;
         }
 
-        const signInData = result.data as { url?: string } | null;
+        const signInData = yield* decodeAuthRedirectDataEffect(result.data).pipe(
+          Effect.mapError((cause) => platformError("auth.decode-sign-in", cause)),
+        );
         if (!signInData?.url) {
           shell.setAuthError("GitHub sign-in did not return an authorize URL.");
           return;
@@ -318,11 +335,13 @@
     if (authBusy) return;
     authBusy = true;
 
-    void runApp(
+    forkApp(
       "auth.sign-out",
       Effect.gen(function* () {
         const result = yield* hostEffect("auth.sign-out", () => authClient.signOut());
-        const error = result.error as AuthClientError | null | undefined;
+        const error = yield* decodeAuthClientErrorEffect(result.error).pipe(
+          Effect.mapError((cause) => platformError("auth.decode-sign-out-error", cause)),
+        );
         if (error) {
           shell.setAuthError(authMessage(error, "Sign out failed"));
           return;
@@ -339,13 +358,11 @@
     );
   }
 
-  function reconnectGrantedKeyboard() {
-    void runApp(
-      "keyboard.reconnect-granted",
-      Effect.gen(function* () {
-        const connection = yield* hostEffect("keyboard.detect-granted", () =>
-          detectGrantedKeyboard({ resolveMatrixHint: viaCatalog.matrixHintFor }),
-        );
+  function reconnectGrantedKeyboardEffect() {
+    return Effect.gen(function* () {
+      const connection = yield* hostEffect("keyboard.detect-granted", () =>
+        detectGrantedKeyboard({ resolveMatrixHint: viaCatalog.matrixHintFor }),
+      );
       if (!connection) return;
 
       const transport = connection.transport === "webusb" ? "WebUSB" : "WebHID";
@@ -354,28 +371,23 @@
         return;
       }
 
-        yield* hostEffect("keyboard.activate-granted", () =>
-          activateViaConnectionAndProfile({
-            connection,
-            displayTransport: transport,
-            resolveBaseProfile: viaCatalog.baseProfileForConnection,
-            shell,
-            workbench,
-          }),
-        );
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            if (!shell.connected) {
-              shell.setConnectionError(
-                error instanceof Error
-                  ? error.message
-                  : "Could not reconnect the previous keyboard.",
-                "WebHID",
-              );
-            }
-          }),
-        ),
+      yield* activateViaConnectionAndProfileEffect({
+        connection,
+        displayTransport: transport,
+        resolveBaseProfile: viaCatalog.baseProfileForConnection,
+        shell,
+        workbench,
+      });
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (!shell.connected) {
+            shell.setConnectionError(
+              error instanceof Error ? error.message : "Could not reconnect the previous keyboard.",
+              "WebHID",
+            );
+          }
+        }),
       ),
     );
   }
@@ -383,7 +395,7 @@
   function openMonkeytypeSettings(event: MouseEvent) {
     event.preventDefault();
     shell.closeProfile();
-    void runApp(
+    forkApp(
       "navigation.monkeytype-settings",
       hostEffect("navigation.monkeytype-settings", () => goto("/settings")),
     );
@@ -396,11 +408,16 @@
   function errorMessage(error: unknown, fallback: string) {
     if (error instanceof Error) return error.message || fallback;
     if (error && typeof error === "object") {
-      const authError = error as AuthClientError;
-      if (authError.message) return authError.message;
-      if (authError.statusText) return authError.statusText;
-      if (authError.status) return `Auth request failed (${authError.status})`;
-      if (authError.code) return authError.code;
+      if ("message" in error && typeof error.message === "string" && error.message) {
+        return error.message;
+      }
+      if ("statusText" in error && typeof error.statusText === "string" && error.statusText) {
+        return error.statusText;
+      }
+      if ("status" in error && typeof error.status === "number") {
+        return `Auth request failed (${error.status})`;
+      }
+      if ("code" in error && typeof error.code === "string" && error.code) return error.code;
     }
     return fallback;
   }

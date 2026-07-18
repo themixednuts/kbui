@@ -1,15 +1,21 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   activateViaConnectionAndProfile,
   connectZmkStudioAndActivate,
   connectViaAndActivate,
+  connectViaAndActivateEffect,
   continueWithoutDevice,
   importViaJsonAndActivate,
+  profileFromConnectedViaEffect,
   profileFromViaJson,
 } from "$lib/app/connect-flow";
+import { runApp } from "$lib/app/runtime";
 import { ShellStore, type ShellConnectionStatus } from "$lib/app/shell-store.svelte";
 import { WorkbenchStore } from "$lib/app/workbench-store.svelte";
+import { platformError } from "$lib/effect/errors";
+import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import { createMockViaTransport } from "$lib/keyboard/transport-mock";
 import { createMockZmkStudioTransport } from "$lib/keyboard/transport-mock-zmk";
 import type { ConnectionState, KeyboardTransport } from "$lib/keyboard/transport";
@@ -39,6 +45,20 @@ class RecordingShellStore extends ShellStore {
   override setConnectionError(message: string, transport?: string) {
     super.setConnectionError(message, transport);
     this.record();
+  }
+}
+
+class PromiseFacadeTrapWorkbenchStore extends WorkbenchStore {
+  override activateConnectedProfile(): never {
+    throw new Error("connect flow called the activateConnectedProfile Promise facade");
+  }
+
+  override replaceProfile(): never {
+    throw new Error("connect flow called the replaceProfile Promise facade");
+  }
+
+  override commitCurrentDraftAsBase(): never {
+    throw new Error("connect flow called the commitCurrentDraftAsBase Promise facade");
   }
 }
 
@@ -256,5 +276,70 @@ describe("connect flow", () => {
       status: "connected",
       transport: "WebHID",
     });
+  });
+
+  it("composes workbench Effects without calling Promise facades", async () => {
+    const connectedWorkbench = new PromiseFacadeTrapWorkbenchStore({ persist: false });
+    const connected = await runApp(
+      "test.connect-via-effect",
+      connectViaAndActivateEffect({
+        shell: new RecordingShellStore(),
+        transport: createMockViaTransport(),
+        workbench: connectedWorkbench,
+      }),
+    );
+
+    const localWorkbench = new PromiseFacadeTrapWorkbenchStore({ persist: false });
+    const local = await continueWithoutDevice({
+      shell: new RecordingShellStore(),
+      workbench: localWorkbench,
+    });
+
+    expect(connected.profile.origin).toBe("device");
+    expect(connectedWorkbench.profile.origin).toBe("device");
+    expect(local.profile.origin).toBe("starter");
+    expect(localWorkbench.profile.origin).toBe("starter");
+  });
+
+  it("reports direct activation failures without flattening them through a Promise facade", async () => {
+    const shell = new RecordingShellStore();
+    const workbench = new PromiseFacadeTrapWorkbenchStore({
+      loadDraft: () =>
+        Effect.fail(platformError("test.load-connected-draft", "Connected draft unavailable")),
+      persist: false,
+    });
+
+    await expect(
+      connectViaAndActivate({
+        shell,
+        transport: createMockViaTransport(),
+        workbench,
+      }),
+    ).rejects.toThrow(/Connected draft unavailable/);
+
+    expect(shell.device.status).toBe("error");
+    expect(shell.device.message).toBe("Connected draft unavailable");
+    expect(workbench.persistenceError).toBe("Connected draft unavailable");
+  });
+
+  it("fails missing VIA detection through the typed channel", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        profileFromConnectedViaEffect(
+          {
+            status: "connected",
+            message: "Connected without VIA metadata",
+            webBluetoothSupported: true,
+            webSerialSupported: true,
+            webUsbSupported: true,
+            webHidSupported: true,
+          },
+          starterBoardProfile(),
+        ),
+      ),
+    );
+
+    expect(error._tag).toBe("PlatformError");
+    expect(error.operation).toBe("connect.via.profile");
   });
 });

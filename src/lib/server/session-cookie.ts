@@ -40,5 +40,12 @@ export function readSessionFromCookieCache(
         isSecure,
       }) as Promise<CookieCachedSession | null>,
     catch: (cause) => platformError("hooks.cookie-cache", cause),
-  }).pipe(Effect.catch(() => Effect.succeed(null)));
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.logDebug("Session cookie cache verification failed; falling back to AuthAgent").pipe(
+        Effect.annotateLogs({ operation: error.operation }),
+      ),
+    ),
+    Effect.catch(() => Effect.succeed(null)),
+  );
 }

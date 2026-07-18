@@ -27,7 +27,7 @@ core flows (persistence, connect/activate, flash, GitHub firmware, auth).
 
 2. **`src/lib/app/connect-flow.ts:328` — nested `runApp` inside an `appRuntime` fiber.**
    `activateProfileEffect` wraps store methods that are themselves `runApp` Promise
-   facades over the *same* runtime, and `runConnectFlow` runs the whole thing through
+   facades over the _same_ runtime, and `runConnectFlow` runs the whole thing through
    `runApp` again. 2–4 nested root fibers per device connection; store errors reach the
    shell as stringified `FiberFailure`s; inner persistence is uninterruptible. Fix:
    expose the stores' existing protected `*Effect` members and `yield*` them; one
@@ -60,7 +60,7 @@ core flows (persistence, connect/activate, flash, GitHub firmware, auth).
 ## Systemic patterns behind the 73 majors
 
 **P1 — The Effect→Promise→Effect sandwich.** Modules expose only Promise facades
-(`runApp`/`runWorkerEffect`/`runSync` wrappers) and other *Effect* code re-wraps those
+(`runApp`/`runWorkerEffect`/`runSync` wrappers) and other _Effect_ code re-wraps those
 facades in `tryPromise`, entering a second runtime. Confirmed sites beyond the two
 blockers: `qmk-index-agent` → `qmk-target` Effects, `auth-agent` → `workflow-artifacts`,
 live-sync coordinator → engines → `editor-store`, all four `/api/extension` endpoints →
@@ -111,7 +111,7 @@ Queue/`Stream.debounce`/FiberMap workload; `theme.ts` already shows the idiomati
 ## Why the lint didn't catch any of this
 
 `effect-boundaries.test.ts` matches literal `Effect.runPromise(` and raw promise
-combinators. Every pattern above dodges it: ManagedRuntime *method* calls
+combinators. Every pattern above dodges it: ManagedRuntime _method_ calls
 (`appRuntime.runPromise`, `localStoreRuntime.runPromise`, `Effect.runSync`), `await`
 inside `tryPromise` bodies (the file imports `effect`, so the async-file check passes),
 and typed-channel erasure is invisible to regex entirely.

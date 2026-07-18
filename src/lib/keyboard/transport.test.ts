@@ -2,13 +2,16 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  ViaNotConnectedError,
   connectKeyboard,
   connectKeyboardEffect,
   detectGrantedKeyboard,
   detectGrantedKeyboardEffect,
+  forgetGrantedKeyboardEffect,
   getConnectionState,
   writeViaKeycodeEffect,
 } from "./transport";
+import { createWebSerialZmkStudioTransport } from "./transport-zmk-serial";
 import {
   MockHidKeyboardDevice,
   MockUsbKeyboardDevice,
@@ -276,9 +279,9 @@ describe("keyboard transports", () => {
     expect(hidDevice.validationResults.at(-1)?.commandName).toBe("dynamicKeymapGetKeycode");
   });
 
-  it("blocks VIA writes when the connection is not a live WebHID device", async () => {
-    await expect(
-      Effect.runPromise(
+  it("tags VIA writes attempted without a live WebHID device", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
         writeViaKeycodeEffect(
           {
             message: "Ready",
@@ -291,7 +294,11 @@ describe("keyboard transports", () => {
           { col: 0, keycode: 0x0028, layer: 0, row: 0 },
         ),
       ),
-    ).rejects.toThrow("Connect a WebHID VIA keyboard before saving to the device.");
+    );
+
+    expect(error).toBeInstanceOf(ViaNotConnectedError);
+    expect(error._tag).toBe("ViaNotConnectedError");
+    expect(error.message).toBe("Connect a WebHID VIA keyboard before saving to the device.");
   });
 
   it("captures VIA validation failures without mutating mock keyboard state", async () => {
@@ -320,6 +327,112 @@ describe("keyboard transports", () => {
       "VIA report must be 32 bytes, received 4",
     );
     expect(validateViaReport(unknownReport).errors).toContain("Unknown VIA command 0x7e");
+  });
+
+  it("forgets matching HID and USB grants as separate Effect steps", async () => {
+    const events: string[] = [];
+    const hidDevice = {
+      opened: false,
+      open: async () => undefined,
+      productId: 0x1234,
+      serialNumber: "MATCH",
+      vendorId: 0xabcd,
+      forget: async () => {
+        events.push("hid:forget");
+      },
+    };
+    const usbDevice = {
+      open: async () => undefined,
+      productId: 0x1234,
+      serialNumber: "MATCH",
+      vendorId: 0xabcd,
+      forget: async () => {
+        events.push("usb:forget");
+      },
+    };
+    const environment = {
+      isBrowser: true,
+      hid: {
+        getDevices: async () => {
+          events.push("hid:get");
+          return [hidDevice];
+        },
+        requestDevice: async () => [],
+      },
+      usb: {
+        getDevices: async () => {
+          events.push("usb:get");
+          return [usbDevice];
+        },
+        requestDevice: async () => usbDevice,
+      },
+    };
+
+    const state = await Effect.runPromise(
+      forgetGrantedKeyboardEffect(
+        { productId: 0x1234, serialNumber: "MATCH", vendorId: 0xabcd },
+        environment,
+      ),
+    );
+
+    expect(events).toEqual(["hid:get", "hid:forget", "usb:get", "usb:forget"]);
+    expect(state.status).toBe("idle");
+  });
+
+  it("preserves the failing device operation when revoking a grant", async () => {
+    const environment = {
+      isBrowser: true,
+      hid: {
+        getDevices: async () => [
+          {
+            forget: async () => {
+              throw new Error("revocation denied");
+            },
+            open: async () => undefined,
+            opened: false,
+            productId: 0x1234,
+            vendorId: 0xabcd,
+          },
+        ],
+        requestDevice: async () => [],
+      },
+    };
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        forgetGrantedKeyboardEffect({ productId: 0x1234, vendorId: 0xabcd }, environment),
+      ),
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PlatformError",
+      message: "revocation denied",
+      operation: "keyboard.webhid.forget",
+    });
+  });
+
+  it("turns a serial stream invariant failure into an error connection state", async () => {
+    let closed = false;
+    const transport = createWebSerialZmkStudioTransport();
+    const connection = await transport.connect({
+      environment: {
+        isBrowser: true,
+        serial: {
+          requestPort: async () => ({
+            close: async () => {
+              closed = true;
+            },
+            open: async () => undefined,
+            readable: null,
+            writable: null,
+          }),
+        },
+      },
+    });
+
+    expect(connection.status).toBe("error");
+    expect(connection.message).toContain("did not expose readable and writable streams");
+    expect(closed).toBe(true);
   });
 
   it("reports unsupported when no browser transport exists", async () => {

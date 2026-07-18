@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+
+import { platformError } from "$lib/effect/errors";
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -8,51 +12,41 @@ export interface EncryptedApeKey {
 
 type CryptoProvider = Pick<Crypto, "getRandomValues" | "subtle">;
 
-export function encryptApeKey(
+export const encryptApeKeyEffect = Effect.fn("Monkeytype.encryptApeKey")(function* (
   apeKey: string,
   secretKeyBase64: string,
   cryptoProvider: CryptoProvider = globalThis.crypto,
-): Promise<EncryptedApeKey> {
-  return runWorkerEffect(
-    "monkeytype.encrypt-apekey",
-    Effect.gen(function* () {
-      const key = yield* importSecretKeyEffect(secretKeyBase64, cryptoProvider);
-      const iv = cryptoProvider.getRandomValues(new Uint8Array(12));
-      const encrypted = yield* Effect.tryPromise({
-        try: () =>
-          cryptoProvider.subtle.encrypt({ name: "AES-GCM", iv }, key, textEncoder.encode(apeKey)),
-        catch: (cause) => platformError("monkeytype.encrypt-apekey", cause),
-      });
-      return {
-        ciphertext: bytesToBase64(new Uint8Array(encrypted)),
-        iv: bytesToBase64(iv),
-      };
-    }),
-  );
-}
+) {
+  const key = yield* importSecretKeyEffect(secretKeyBase64, cryptoProvider);
+  const iv = cryptoProvider.getRandomValues(new Uint8Array(12));
+  const encrypted = yield* Effect.tryPromise({
+    try: () =>
+      cryptoProvider.subtle.encrypt({ name: "AES-GCM", iv }, key, textEncoder.encode(apeKey)),
+    catch: (cause) => platformError("monkeytype.encrypt-apekey", cause),
+  });
+  return {
+    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+    iv: bytesToBase64(iv),
+  };
+});
 
-export function decryptApeKey(
+export const decryptApeKeyEffect = Effect.fn("Monkeytype.decryptApeKey")(function* (
   encrypted: EncryptedApeKey,
   secretKeyBase64: string,
   cryptoProvider: CryptoProvider = globalThis.crypto,
-): Promise<string> {
-  return runWorkerEffect(
-    "monkeytype.decrypt-apekey",
-    Effect.gen(function* () {
-      const key = yield* importSecretKeyEffect(secretKeyBase64, cryptoProvider);
-      const decrypted = yield* Effect.tryPromise({
-        try: () =>
-          cryptoProvider.subtle.decrypt(
-            { name: "AES-GCM", iv: base64ToBytes(encrypted.iv) },
-            key,
-            base64ToBytes(encrypted.ciphertext),
-          ),
-        catch: (cause) => platformError("monkeytype.decrypt-apekey", cause),
-      });
-      return textDecoder.decode(decrypted);
-    }),
-  );
-}
+) {
+  const key = yield* importSecretKeyEffect(secretKeyBase64, cryptoProvider);
+  const decrypted = yield* Effect.tryPromise({
+    try: () =>
+      cryptoProvider.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBytes(encrypted.iv) },
+        key,
+        base64ToBytes(encrypted.ciphertext),
+      ),
+    catch: (cause) => platformError("monkeytype.decrypt-apekey", cause),
+  });
+  return textDecoder.decode(decrypted);
+});
 
 export function assertValidMonkeytypeSecret(secretKeyBase64: string | null | undefined): string {
   if (!secretKeyBase64?.trim()) {
@@ -105,7 +99,3 @@ function bytesToBase64(bytes: Uint8Array) {
   }
   return btoa(binary);
 }
-import { Effect } from "effect";
-
-import { platformError } from "$lib/effect/errors";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";

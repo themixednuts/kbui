@@ -1,7 +1,7 @@
 import { Agent, type AgentContext } from "agents";
 import { and, desc, eq, inArray, like, ne, or, sql, type SQL } from "drizzle-orm";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   communityKeymap,
@@ -36,7 +36,7 @@ import {
   type CommunityKeymapSource,
   type CommunityMutationUser,
 } from "$lib/community/types";
-import type { StoredDeviceProfile } from "$lib/keyboard/schema";
+import { decodeCommunityStoredProfileEffect } from "$lib/community/payload";
 import { platformError } from "$lib/effect/errors";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
@@ -71,6 +71,20 @@ interface CommunityDbRow {
 }
 
 type CommunityWriteDb = Pick<DrizzleSqliteDODatabase, "delete" | "insert" | "select" | "update">;
+
+export class CommunityKeymapUnavailableError extends Schema.TaggedErrorClass<CommunityKeymapUnavailableError>()(
+  "CommunityKeymapUnavailableError",
+  {
+    id: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+function communityTransactionError(operation: string, cause: unknown) {
+  return cause instanceof CommunityKeymapUnavailableError
+    ? cause
+    : platformError(`community.${operation}-transaction`, cause);
+}
 
 export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
   initialState: CommunityState = {
@@ -162,7 +176,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
                 .where(eq(communityKeymap.id, keymap.id))
                 .run();
             }),
-          catch: (cause) => platformError("community.like-transaction", cause),
+          catch: (cause) => communityTransactionError("like", cause),
         });
       }),
     );
@@ -205,7 +219,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
                 .where(eq(communityKeymap.id, id))
                 .run();
             }),
-          catch: (cause) => platformError("community.unlike-transaction", cause),
+          catch: (cause) => communityTransactionError("unlike", cause),
         });
       }),
     );
@@ -272,7 +286,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
                 .where(eq(communityKeymap.id, keymap.id))
                 .run();
             }),
-          catch: (cause) => platformError("community.adopt-transaction", cause),
+          catch: (cause) => communityTransactionError("adopt", cause),
         });
         const detail = yield* this.getKeymapEffect(input.keymapId, user.id);
         if (!detail) {
@@ -355,7 +369,7 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
                 .where(eq(communityKeymap.id, keymap.id))
                 .run();
             }),
-          catch: (cause) => platformError("community.report-transaction", cause),
+          catch: (cause) => communityTransactionError("report", cause),
         });
       }),
     );
@@ -587,11 +601,14 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
       );
       const row = rows[0];
       if (!row) return null;
-      const viewerState = yield* this.viewerStateEffect([row.id], viewerId);
+      const [viewerState, profile] = yield* Effect.all([
+        this.viewerStateEffect([row.id], viewerId),
+        decodeCommunityStoredProfileEffect(row.payloadJson),
+      ]);
       return {
         ...rowToCard(row, viewerState),
         payloadFormat: COMMUNITY_PAYLOAD_FORMAT,
-        profile: parseStoredProfile(row.payloadJson),
+        profile,
         payloadHash: row.payloadHash,
       } satisfies CommunityKeymapDetail;
     });
@@ -618,7 +635,12 @@ export class CommunityAgent extends Agent<Cloudflare.Env, CommunityState> {
       .limit(1)
       .all();
 
-    if (!keymap) throw new Error("Community keymap is not available.");
+    if (!keymap) {
+      throw new CommunityKeymapUnavailableError({
+        id,
+        message: "Community keymap is not available.",
+      });
+    }
     return keymap;
   }
 
@@ -945,11 +967,6 @@ function parseStringRecord(value: unknown): Record<string, string> {
         typeof entry[0] === "string" && typeof entry[1] === "string",
     ),
   );
-}
-
-function parseStoredProfile(value: unknown): StoredDeviceProfile {
-  if (typeof value === "string") return JSON.parse(value) as StoredDeviceProfile;
-  return value as StoredDeviceProfile;
 }
 
 function displayNameForUser(user: CommunityMutationUser): string {

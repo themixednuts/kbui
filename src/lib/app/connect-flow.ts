@@ -1,13 +1,13 @@
 import { Effect } from "effect";
 
-import { runApp } from "$lib/app/runtime";
+import { runApp, type AppServices } from "$lib/app/runtime";
 import { protocolLabel, type WorkbenchStore } from "$lib/app/workbench-store.svelte";
 import { platformError } from "$lib/effect/errors";
 import { tryMaybePromise } from "$lib/effect/maybe-promise";
 import { profileFromCatalog, type KeyboardCatalogEntry } from "$lib/keyboard/catalog";
 import { starterBoardProfile } from "$lib/keyboard/sample-boards";
 import {
-  profileFromDetection,
+  profileFromDetectionEffect,
   withDeviceProfileOrigin,
   type Capability,
   type DeviceProfile,
@@ -184,11 +184,7 @@ function zmkLayersFromKeymap(
   });
 }
 
-export function profileFromConnectedZmkStudio(connection: ConnectionState): Promise<DeviceProfile> {
-  return runApp("connect.zmk.profile", profileFromConnectedZmkStudioEffect(connection));
-}
-
-function profileFromConnectedZmkStudioEffect(connection: ConnectionState) {
+export function profileFromConnectedZmkStudioEffect(connection: ConnectionState) {
   return Effect.gen(function* () {
     if (connection.status !== "connected") {
       return yield* Effect.fail(
@@ -325,25 +321,15 @@ function activateProfileEffect(
 ) {
   const activeProfile = withDeviceProfileOrigin(profile, origin);
   if (origin === "device") {
-    return Effect.tryPromise({
-      try: () => workbench.activateConnectedProfile(activeProfile),
-      catch: (cause) => platformError("connect.activate-device-profile", cause),
-    });
+    return workbench.activateConnectedProfileEffect(activeProfile);
   }
 
   return Effect.gen(function* () {
-    yield* Effect.tryPromise({
-      try: () =>
-        workbench.replaceProfile(activeProfile, activeProfile, {
-          hydrateDraft: false,
-          origin,
-        }),
-      catch: (cause) => platformError("connect.replace-profile", cause),
+    yield* workbench.replaceProfileEffect(activeProfile, activeProfile, {
+      hydrateDraft: false,
+      origin,
     });
-    yield* Effect.tryPromise({
-      try: () => workbench.commitCurrentDraftAsBase(),
-      catch: (cause) => platformError("connect.commit-profile", cause),
-    });
+    yield* workbench.commitCurrentDraftAsBaseEffect();
   });
 }
 
@@ -362,21 +348,27 @@ export function profileFromViaJson(fileName: string, json: unknown): DeviceProfi
   return profile;
 }
 
-export function profileFromConnectedVia(
-  connection: ConnectionState,
-  baseProfile: DeviceProfile,
-): DeviceProfile {
-  if (connection.status !== "connected") {
-    throw new Error(connection.message || "Keyboard connection did not complete.");
-  }
-  if (!connection.detection) {
-    throw new Error("The connected keyboard did not return VIA metadata.");
-  }
+export const profileFromConnectedViaEffect = Effect.fn("Connect.profileFromConnectedVia")(
+  function* (connection: ConnectionState, baseProfile: DeviceProfile) {
+    if (connection.status !== "connected") {
+      return yield* Effect.fail(
+        platformError(
+          "connect.via.profile",
+          connection.message || "Keyboard connection did not complete.",
+        ),
+      );
+    }
+    if (!connection.detection) {
+      return yield* Effect.fail(
+        platformError("connect.via.profile", "The connected keyboard did not return VIA metadata."),
+      );
+    }
 
-  const profile = profileFromDetection(baseProfile, connection.detection);
-  profile.firmwareEditIntent = "live";
-  return profile;
-}
+    const profile = yield* profileFromDetectionEffect(baseProfile, connection.detection);
+    profile.firmwareEditIntent = "live";
+    return profile;
+  },
+);
 
 export function profileFromCatalogForConnection(
   entry: KeyboardCatalogEntry,
@@ -401,42 +393,45 @@ function viaIdentificationError(connection: ConnectionState) {
   return `Could not safely identify ${productName}${usbId} from the refreshed VIA/QMK catalogs. No device changes were made.`;
 }
 
-export function connectViaAndActivate({
+export function connectViaAndActivate(options: ConnectViaOptions): Promise<ConnectFlowResult> {
+  return runConnectFlow(
+    "connect.via",
+    options.shell,
+    transportLabel(options.transport),
+    connectViaAndActivateEffect(options),
+  );
+}
+
+export function connectViaAndActivateEffect({
   baseProfile,
   connectOptions,
   resolveBaseProfile,
   shell,
   transport,
   workbench,
-}: ConnectViaOptions): Promise<ConnectFlowResult> {
-  shell.setConnecting(`Opening ${transport.label}`, transportLabel(transport));
-  return runConnectFlow(
-    "connect.via",
-    shell,
-    transportLabel(transport),
-    Effect.gen(function* () {
-      const connection = yield* Effect.tryPromise({
-        try: () => transport.connect(connectOptions),
-        catch: (cause) => platformError("connect.via.transport", cause),
-      });
-      if (connection.status !== "connected") {
-        return yield* Effect.fail(
-          platformError(
-            "connect.via.transport",
-            connection.message || "Keyboard connection failed.",
-          ),
-        );
-      }
-      return yield* activateViaConnectionAndProfileEffect({
-        connection,
-        displayTransport: transportLabel(transport),
-        resolveBaseProfile: (activeConnection) =>
-          resolveBaseProfile?.(activeConnection) ?? transport.defaultProfile ?? baseProfile,
-        shell,
-        workbench,
-      });
-    }),
-  );
+}: ConnectViaOptions) {
+  return Effect.gen(function* () {
+    yield* Effect.sync(() =>
+      shell.setConnecting(`Opening ${transport.label}`, transportLabel(transport)),
+    );
+    const connection = yield* Effect.tryPromise({
+      try: () => transport.connect(connectOptions),
+      catch: (cause) => platformError("connect.via.transport", cause),
+    });
+    if (connection.status !== "connected") {
+      return yield* Effect.fail(
+        platformError("connect.via.transport", connection.message || "Keyboard connection failed."),
+      );
+    }
+    return yield* activateViaConnectionAndProfileEffect({
+      connection,
+      displayTransport: transportLabel(transport),
+      resolveBaseProfile: (activeConnection) =>
+        resolveBaseProfile?.(activeConnection) ?? transport.defaultProfile ?? baseProfile,
+      shell,
+      workbench,
+    });
+  });
 }
 
 export function activateViaConnectionAndProfile(
@@ -450,7 +445,7 @@ export function activateViaConnectionAndProfile(
   );
 }
 
-function activateViaConnectionAndProfileEffect({
+export function activateViaConnectionAndProfileEffect({
   connection,
   displayTransport,
   resolveBaseProfile,
@@ -476,7 +471,7 @@ function activateViaConnectionAndProfileEffect({
       );
     }
 
-    const profile = profileFromConnectedVia(connection, resolvedBase);
+    const profile = yield* profileFromConnectedViaEffect(connection, resolvedBase);
     const message = connectedMessage(connection, profile);
     const transport = displayTransport ?? transportLabel(connection.transport);
 
@@ -501,128 +496,143 @@ function activateViaConnectionAndProfileEffect({
   });
 }
 
-export function connectZmkStudioAndActivate({
+export function connectZmkStudioAndActivate(
+  options: ConnectZmkStudioOptions,
+): Promise<ConnectFlowResult> {
+  return runConnectFlow(
+    "connect.zmk",
+    options.shell,
+    transportLabel(options.transport),
+    connectZmkStudioAndActivateEffect(options),
+  );
+}
+
+export function connectZmkStudioAndActivateEffect({
   connectOptions,
   shell,
   resolveFirmwareMetadata,
   transport,
   workbench,
-}: ConnectZmkStudioOptions): Promise<ConnectFlowResult> {
-  shell.setConnecting(`Opening ${transport.label}`, transportLabel(transport));
-  return runConnectFlow(
-    "connect.zmk",
-    shell,
-    transportLabel(transport),
-    Effect.gen(function* () {
-      const connection = yield* Effect.tryPromise({
-        try: () => transport.connect(connectOptions),
-        catch: (cause) => platformError("connect.zmk.transport", cause),
-      });
-      if (connection.status !== "connected") {
-        return yield* Effect.fail(
-          platformError(
-            "connect.zmk.transport",
-            connection.message || "Keyboard connection failed.",
-          ),
-        );
-      }
+}: ConnectZmkStudioOptions) {
+  return Effect.gen(function* () {
+    yield* Effect.sync(() =>
+      shell.setConnecting(`Opening ${transport.label}`, transportLabel(transport)),
+    );
+    const connection = yield* Effect.tryPromise({
+      try: () => transport.connect(connectOptions),
+      catch: (cause) => platformError("connect.zmk.transport", cause),
+    });
+    if (connection.status !== "connected") {
+      return yield* Effect.fail(
+        platformError("connect.zmk.transport", connection.message || "Keyboard connection failed."),
+      );
+    }
 
-      const profile: DeviceProfile = yield* profileFromConnectedZmkStudioEffect(connection);
-      if (resolveFirmwareMetadata) {
-        profile.firmwareMetadata = yield* Effect.tryPromise({
-          try: () => resolveFirmwareMetadata(profile),
-          catch: (cause) => platformError("connect.zmk.resolve-firmware-metadata", cause),
-        });
-        if (profile.firmwareMetadata?.zmk?.board) {
-          profile.detectionNotes = [
-            ...(profile.detectionNotes ?? []),
-            `Resolved ZMK build target ${profile.firmwareMetadata.zmk.board} from the official hardware catalog.`,
-          ];
-        }
+    const profile: DeviceProfile = yield* profileFromConnectedZmkStudioEffect(connection);
+    if (resolveFirmwareMetadata) {
+      profile.firmwareMetadata = yield* Effect.tryPromise({
+        try: () => resolveFirmwareMetadata(profile),
+        catch: (cause) => platformError("connect.zmk.resolve-firmware-metadata", cause),
+      });
+      if (profile.firmwareMetadata?.zmk?.board) {
+        profile.detectionNotes = [
+          ...(profile.detectionNotes ?? []),
+          `Resolved ZMK build target ${profile.firmwareMetadata.zmk.board} from the official hardware catalog.`,
+        ];
       }
-      const lockSuffix =
-        connection.zmkStudio?.lockState === "locked"
-          ? "; locked until you unlock on the keyboard"
-          : "";
-      const dirtySuffix = profile.detectionNotes?.some((note) => note.includes("unsaved"))
-        ? "; device had unsaved Studio changes"
+    }
+    const lockSuffix =
+      connection.zmkStudio?.lockState === "locked"
+        ? "; locked until you unlock on the keyboard"
         : "";
-      const message = `Connected ${profile.name} over ${transportLabel(connection.transport)} (ZMK Studio${lockSuffix}${dirtySuffix})`;
+    const dirtySuffix = profile.detectionNotes?.some((note) => note.includes("unsaved"))
+      ? "; device had unsaved Studio changes"
+      : "";
+    const message = `Connected ${profile.name} over ${transportLabel(connection.transport)} (ZMK Studio${lockSuffix}${dirtySuffix})`;
 
-      yield* activateProfileEffect(workbench, profile, "device");
-      shell.setConnected({
-        board: profile.name,
-        connection,
-        message,
-        productId: profile.productId,
-        protocol: protocolLabel(profile.protocol),
-        transport: transportLabel(transport),
-        vendorId: profile.vendorId,
-      });
+    yield* activateProfileEffect(workbench, profile, "device");
+    shell.setConnected({
+      board: profile.name,
+      connection,
+      message,
+      productId: profile.productId,
+      protocol: protocolLabel(profile.protocol),
+      transport: transportLabel(transport),
+      vendorId: profile.vendorId,
+    });
 
-      return {
-        connection,
-        message,
-        profile,
-        source: "device",
-      } satisfies ConnectFlowResult;
-    }),
+    return {
+      connection,
+      message,
+      profile,
+      source: "device",
+    } satisfies ConnectFlowResult;
+  });
+}
+
+export function importViaJsonAndActivate(
+  options: ImportViaJsonOptions,
+): Promise<ConnectFlowResult> {
+  return runConnectFlow(
+    "connect.import-via",
+    options.shell,
+    "VIA JSON",
+    importViaJsonAndActivateEffect(options),
   );
 }
 
-export function importViaJsonAndActivate({
+export function importViaJsonAndActivateEffect({
   fileName,
   json,
   shell,
   workbench,
-}: ImportViaJsonOptions): Promise<ConnectFlowResult> {
-  shell.setConnecting(`Importing ${fileName}`, "VIA JSON");
+}: ImportViaJsonOptions) {
+  return Effect.gen(function* () {
+    yield* Effect.sync(() => shell.setConnecting(`Importing ${fileName}`, "VIA JSON"));
+    const profile = yield* Effect.try({
+      try: () => profileFromViaJson(fileName, json),
+      catch: (cause) => platformError("connect.import-via", cause),
+    });
+    yield* activateProfileEffect(workbench, profile, "imported");
+    const message = `Imported ${profile.name} for local editing.`;
+    yield* Effect.sync(() => shell.setDisconnected(message));
+    return { message, profile, source: "import" } satisfies ConnectFlowResult;
+  });
+}
+
+export function continueWithoutDevice(options: LocalOnlyOptions): Promise<ConnectFlowResult> {
   return runConnectFlow(
-    "connect.import-via",
-    shell,
-    "VIA JSON",
-    Effect.gen(function* () {
-      const profile = yield* Effect.try({
-        try: () => profileFromViaJson(fileName, json),
-        catch: (cause) => platformError("connect.import-via", cause),
-      });
-      yield* activateProfileEffect(workbench, profile, "imported");
-      const message = `Imported ${profile.name} for local editing.`;
-      yield* Effect.sync(() => shell.setDisconnected(message));
-      return { message, profile, source: "import" } satisfies ConnectFlowResult;
-    }),
+    "connect.local",
+    options.shell,
+    "Local",
+    continueWithoutDeviceEffect(options),
   );
 }
 
-export function continueWithoutDevice({
+export function continueWithoutDeviceEffect({
   baseProfile = starterBoardProfile(),
   shell,
   workbench,
-}: LocalOnlyOptions): Promise<ConnectFlowResult> {
-  shell.setConnecting("Preparing local profile", "Local");
-  return runConnectFlow(
-    "connect.local",
-    shell,
-    "Local",
-    Effect.gen(function* () {
-      const profile = withDeviceProfileOrigin(baseProfile, "starter");
-      profile.id = profile.id.startsWith("local:") ? profile.id : `local:${profile.id}`;
-      profile.identity = undefined;
-      profile.firmwareEditIntent = "source";
-      profile.detectionNotes = ["Created a local-only profile without a connected keyboard."];
-      yield* activateProfileEffect(workbench, profile, "starter");
-      const message = `Editing ${profile.name} without a connected device.`;
-      yield* Effect.sync(() => shell.setDisconnected(message));
-      return { message, profile, source: "local" } satisfies ConnectFlowResult;
-    }),
-  );
+}: LocalOnlyOptions) {
+  return Effect.gen(function* () {
+    yield* Effect.sync(() => shell.setConnecting("Preparing local profile", "Local"));
+    const profile = withDeviceProfileOrigin(baseProfile, "starter");
+    profile.id = profile.id.startsWith("local:") ? profile.id : `local:${profile.id}`;
+    profile.identity = undefined;
+    profile.firmwareEditIntent = "source";
+    profile.detectionNotes = ["Created a local-only profile without a connected keyboard."];
+    yield* activateProfileEffect(workbench, profile, "starter");
+    const message = `Editing ${profile.name} without a connected device.`;
+    yield* Effect.sync(() => shell.setDisconnected(message));
+    return { message, profile, source: "local" } satisfies ConnectFlowResult;
+  });
 }
 
 function runConnectFlow<A>(
   operation: string,
   shell: ShellStore,
   displayTransport: string,
-  effect: Effect.Effect<A, { readonly message: string }>,
+  effect: Effect.Effect<A, { readonly message: string }, AppServices>,
 ) {
   return runApp(
     operation,

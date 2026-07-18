@@ -5,7 +5,7 @@ import { platformError } from "$lib/effect/errors";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 import { QMK_INDEX_AGENT_NAME } from "./qmk-index-name";
-import { resolveQmkKeyboardIdentity } from "./qmk-target";
+import { resolveQmkKeyboardIdentityEffect } from "./qmk-target";
 
 type KeyboardIdentityInput = {
   productId?: number;
@@ -26,23 +26,34 @@ type KeyboardIdentityInput = {
  * Without the binding (local `vp run dev` / tests) it falls back to the
  * in-process resolver, which is fine off the free-plan Worker.
  */
+export const resolveKeyboardIdentityFromEnvironmentEffect = Effect.fn(
+  "qmk-identity.resolve-from-environment",
+)(function* (env: Cloudflare.Env | undefined, input: KeyboardIdentityInput) {
+  const namespace = env?.QmkIndexAgent;
+  if (!namespace) return yield* resolveQmkKeyboardIdentityEffect(input);
+
+  return yield* Effect.tryPromise({
+    try: () => {
+      const id = namespace.idFromName(QMK_INDEX_AGENT_NAME);
+      return namespace.get(id).resolveIdentity(input);
+    },
+    catch: (cause) => platformError("qmk-identity.resolve-from-environment", cause),
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("QMK identity agent call failed; returning no match").pipe(
+        Effect.annotateLogs({ operation: error.operation }),
+      ),
+    ),
+    Effect.catchTag("PlatformError", () => Effect.succeed(undefined)),
+  );
+});
+
 export function resolveKeyboardIdentityFromEnvironment(
   env: Cloudflare.Env | undefined,
   input: KeyboardIdentityInput,
 ): Promise<KeyboardCatalogEntry | undefined> {
-  const namespace = env?.QmkIndexAgent;
-  if (!namespace) {
-    return resolveQmkKeyboardIdentity(input);
-  }
-
   return runWorkerEffect(
     "qmk-identity.resolve-from-environment",
-    Effect.tryPromise({
-      try: () => {
-        const id = namespace.idFromName(QMK_INDEX_AGENT_NAME);
-        return namespace.get(id).resolveIdentity(input);
-      },
-      catch: (cause) => platformError("qmk-identity.resolve-from-environment", cause),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined))),
+    resolveKeyboardIdentityFromEnvironmentEffect(env, input),
   );
 }

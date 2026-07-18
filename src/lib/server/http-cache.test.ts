@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  cacheControlFor,
-  isPublicCatalogRequest,
-  publicCatalogRemoteQueries,
-} from "./http-cache";
+import { cacheControlFor, isPublicCatalogRequest, publicCatalogRemoteQueries } from "./http-cache";
 
 const publicPolicy = "public, max-age=60, s-maxage=900, stale-while-revalidate=3600";
 

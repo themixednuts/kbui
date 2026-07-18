@@ -1,5 +1,6 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
+import { BoundaryDecodeError } from "$lib/effect/errors";
 import { keyLightingFromSwatchId } from "./lighting-swatches";
 import { qmkDirectKeycodes, qmkDirectKeycodeValues } from "./qmk-keycodes";
 
@@ -1068,16 +1069,74 @@ function normalizeBinding(binding: KeyBinding): KeyBinding {
   };
 }
 
-export function cloneDeviceEffect(device: DeviceProfile) {
-  return Effect.try({
-    try: () => JSON.parse(JSON.stringify(device)) as DeviceProfile,
-    catch: (error) =>
-      new Error(error instanceof Error ? error.message : "Device profile could not be cloned"),
-  });
+export function cloneDevice(device: DeviceProfile): DeviceProfile {
+  return {
+    ...device,
+    matrix: { ...device.matrix },
+    keys: device.keys.map((key) => ({ ...key })),
+    capabilities: [...device.capabilities],
+    layers: device.layers.map((layer) => ({
+      ...layer,
+      bindings: Object.fromEntries(
+        Object.entries(layer.bindings).map(([keyId, binding]) => [keyId, { ...binding }]),
+      ),
+    })),
+    macros: device.macros.map((macro) => ({ ...macro, sequence: [...macro.sequence] })),
+    combos: device.combos.map((combo) => ({
+      ...combo,
+      keys: [...combo.keys],
+      layerIds: combo.layerIds ? [...combo.layerIds] : undefined,
+    })),
+    tapDances: device.tapDances.map((tapDance) => ({ ...tapDance })),
+    keyOverrides: device.keyOverrides.map((override) => ({
+      ...override,
+      modifiers: [...override.modifiers],
+    })),
+    lighting: {
+      ...device.lighting,
+      keys: Object.fromEntries(
+        Object.entries(device.lighting.keys).map(([keyId, lighting]) => [keyId, { ...lighting }]),
+      ),
+    },
+    settings: { ...device.settings },
+    firmwareMetadata: cloneFirmwareMetadata(device.firmwareMetadata),
+    identity: device.identity ? { ...device.identity } : undefined,
+    detectionNotes: device.detectionNotes ? [...device.detectionNotes] : undefined,
+  };
 }
 
-export function cloneDevice(device: DeviceProfile): DeviceProfile {
-  return Effect.runSync(cloneDeviceEffect(device));
+export function cloneDeviceEffect(device: DeviceProfile) {
+  return Effect.sync(() => cloneDevice(device));
+}
+
+function cloneFirmwareMetadata(metadata?: FirmwareMetadata): FirmwareMetadata | undefined {
+  if (!metadata) return undefined;
+  return {
+    qmk: metadata.qmk
+      ? {
+          ...metadata.qmk,
+          alternatives: metadata.qmk.alternatives?.map((alternative) => ({ ...alternative })),
+          keyOrder: metadata.qmk.keyOrder ? [...metadata.qmk.keyOrder] : undefined,
+          uf2VolumeLabels: metadata.qmk.uf2VolumeLabels
+            ? [...metadata.qmk.uf2VolumeLabels]
+            : undefined,
+        }
+      : undefined,
+    zmk: metadata.zmk
+      ? {
+          ...metadata.zmk,
+          alternatives: metadata.zmk.alternatives?.map((alternative) => ({
+            ...alternative,
+            shields: [...alternative.shields],
+          })),
+          keyOrder: metadata.zmk.keyOrder ? [...metadata.zmk.keyOrder] : undefined,
+          shields: metadata.zmk.shields ? [...metadata.zmk.shields] : undefined,
+          uf2VolumeLabels: metadata.zmk.uf2VolumeLabels
+            ? [...metadata.zmk.uf2VolumeLabels]
+            : undefined,
+        }
+      : undefined,
+  };
 }
 
 export function withDeviceProfileOrigin(
@@ -1094,28 +1153,19 @@ export function profileDisplayName(profile: Pick<DeviceProfile, "name" | "origin
   return profile.name;
 }
 
-function isDeviceProfileOrigin(value: unknown): value is DeviceProfileOrigin {
-  return value === "device" || value === "imported" || value === "draft" || value === "starter";
+export function normalizeDeviceKeycodes(device: DeviceProfile): DeviceProfile {
+  const profile = cloneDevice(device);
+  profile.layers = profile.layers.map((layer) => ({
+    ...layer,
+    bindings: Object.fromEntries(
+      Object.entries(layer.bindings).map(([keyId, binding]) => [keyId, normalizeBinding(binding)]),
+    ),
+  }));
+  return profile;
 }
 
 export function normalizeDeviceKeycodesEffect(device: DeviceProfile) {
-  return Effect.map(cloneDeviceEffect(device), (profile) => {
-    profile.layers = profile.layers.map((layer) => ({
-      ...layer,
-      bindings: Object.fromEntries(
-        Object.entries(layer.bindings).map(([keyId, binding]) => [
-          keyId,
-          normalizeBinding(binding),
-        ]),
-      ),
-    }));
-
-    return profile;
-  });
-}
-
-export function normalizeDeviceKeycodes(device: DeviceProfile): DeviceProfile {
-  return Effect.runSync(normalizeDeviceKeycodesEffect(device));
+  return Effect.sync(() => normalizeDeviceKeycodes(device));
 }
 
 function sanitizeDeviceIdentity(identity: DeviceIdentity): DeviceIdentity {
@@ -1139,7 +1189,8 @@ type StoredLayer = Omit<Layer, "bindings"> & {
   bindings: Record<string, StoredKeyBinding>;
 };
 
-export type StoredDeviceProfile = Omit<DeviceProfile, "layers"> & {
+export type StoredDeviceProfile = Omit<DeviceProfile, "layers" | "origin"> & {
+  origin?: DeviceProfileOrigin;
   layers: StoredLayer[];
 };
 export type StoredSavePoint = Omit<SavePoint, "snapshot"> & {
@@ -1149,6 +1200,230 @@ export type StoredWorkspaceFork = Omit<WorkspaceFork, "device"> & {
   device: StoredDeviceProfile;
 };
 
+const storedKeycodeSchema = Schema.Union([Schema.String, Schema.Finite]);
+const storedKeyBindingSchema = Schema.Struct({
+  code: storedKeycodeSchema,
+  tap: Schema.optional(storedKeycodeSchema),
+  hold: Schema.optional(storedKeycodeSchema),
+  macroId: Schema.optional(Schema.String),
+  notes: Schema.optional(Schema.String),
+});
+const storedLayerSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  color: Schema.String,
+  bindings: Schema.Record(Schema.String, storedKeyBindingSchema),
+});
+const keyboardKeySchema = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  row: Schema.Finite,
+  col: Schema.Finite,
+  x: Schema.optional(Schema.Finite),
+  y: Schema.optional(Schema.Finite),
+  width: Schema.optional(Schema.Finite),
+  height: Schema.optional(Schema.Finite),
+  rotation: Schema.optional(Schema.Finite),
+  homing: Schema.optional(Schema.Boolean),
+  encoder: Schema.optional(Schema.Boolean),
+});
+const macroSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  sequence: Schema.mutable(Schema.Array(Schema.String)),
+  trigger: Schema.String,
+});
+const comboSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  keys: Schema.mutable(Schema.Array(Schema.String)),
+  binding: Schema.String,
+  layerIds: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+});
+const tapDanceSchema = Schema.Struct({
+  id: Schema.String,
+  keyId: Schema.String,
+  tap: Schema.String,
+  hold: Schema.String,
+  doubleTap: Schema.String,
+});
+const keyOverrideSchema = Schema.Struct({
+  id: Schema.String,
+  trigger: Schema.String,
+  replacement: Schema.String,
+  modifiers: Schema.mutable(Schema.Array(Schema.String)),
+});
+const keyLightingSchema = Schema.Struct({
+  hue: Schema.Finite,
+  saturation: Schema.Finite,
+  brightness: Schema.Finite,
+});
+const lightingProfileSchema = Schema.Struct({
+  mode: Schema.Literals(["solid", "breathing", "reactive", "rainbow", "matrix"]),
+  hue: Schema.Finite,
+  saturation: Schema.Finite,
+  brightness: Schema.Finite,
+  speed: Schema.Finite,
+  keys: Schema.Record(Schema.String, keyLightingSchema),
+});
+const keyboardSettingsSchema = Schema.Struct({
+  tappingTerm: Schema.Finite,
+  debounce: Schema.Finite,
+  permissiveHold: Schema.Boolean,
+  retroTapping: Schema.Boolean,
+  nkro: Schema.Boolean,
+  splitTransport: Schema.Literals(["none", "serial", "i2c", "ble"]),
+});
+const qmkFirmwareMetadataSchema = Schema.Struct({
+  alternatives: Schema.optional(
+    Schema.mutable(Schema.Array(Schema.Struct({ keyboard: Schema.String, layout: Schema.String }))),
+  ),
+  keyboard: Schema.optional(Schema.String),
+  keymap: Schema.optional(Schema.String),
+  keyOrder: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  layout: Schema.optional(Schema.String),
+  repository: Schema.optional(Schema.String),
+  ref: Schema.optional(Schema.String),
+  targetConfirmed: Schema.optional(Schema.Boolean),
+  bootloader: Schema.optional(Schema.String),
+  processor: Schema.optional(Schema.String),
+  uf2FamilyId: Schema.optional(Schema.Finite),
+  uf2VolumeLabels: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+});
+const zmkFirmwareMetadataSchema = Schema.Struct({
+  alternatives: Schema.optional(
+    Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          board: Schema.String,
+          shields: Schema.mutable(Schema.Array(Schema.String)),
+        }),
+      ),
+    ),
+  ),
+  board: Schema.optional(Schema.String),
+  keymap: Schema.optional(Schema.String),
+  keyOrder: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  shield: Schema.optional(Schema.String),
+  shields: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  repository: Schema.optional(Schema.String),
+  ref: Schema.optional(Schema.String),
+  targetConfirmed: Schema.optional(Schema.Boolean),
+  uf2FamilyId: Schema.optional(Schema.Finite),
+  uf2VolumeLabels: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+});
+const firmwareMetadataSchema = Schema.Struct({
+  qmk: Schema.optional(qmkFirmwareMetadataSchema),
+  zmk: Schema.optional(zmkFirmwareMetadataSchema),
+});
+const deviceIdentitySchema = Schema.Struct({
+  key: Schema.String,
+  transport: Schema.Literals(["webusb", "webhid", "webbluetooth", "webserial"]),
+  vendorId: Schema.optional(Schema.Finite),
+  productId: Schema.optional(Schema.Finite),
+  productName: Schema.optional(Schema.String),
+  serialNumber: Schema.optional(Schema.String),
+});
+
+export const StoredDeviceProfileSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  origin: Schema.optional(Schema.Literals(["device", "imported", "draft", "starter"])),
+  vendor: Schema.String,
+  firmware: Schema.Literals(["qmk", "zmk"]),
+  protocol: Schema.Literals(["via-v3", "vial", "zmk-studio"]),
+  firmwareVersion: Schema.String,
+  firmwareEditIntent: Schema.optional(Schema.Literals(["live", "source"])),
+  vendorId: Schema.Finite,
+  productId: Schema.Finite,
+  matrix: Schema.Struct({ rows: Schema.Finite, cols: Schema.Finite }),
+  keys: Schema.mutable(Schema.Array(keyboardKeySchema)),
+  capabilities: Schema.mutable(
+    Schema.Array(
+      Schema.Literals([
+        "keymap",
+        "layers",
+        "macros",
+        "combos",
+        "tapDance",
+        "keyOverrides",
+        "lighting",
+        "encoders",
+        "oled",
+        "settings",
+        "firmware",
+      ]),
+    ),
+  ),
+  layers: Schema.mutable(Schema.Array(storedLayerSchema)),
+  // The editable feature collections are additive: rows persisted by older app
+  // revisions may predate a given collection. Default an absent key to [] on
+  // read-back so a legacy local row (or a snapshot omitting the key) decodes
+  // instead of failing the whole version graph. Present values are still
+  // strictly validated, and encoding always writes every field.
+  macros: Schema.mutable(Schema.Array(macroSchema)).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
+  combos: Schema.mutable(Schema.Array(comboSchema)).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
+  tapDances: Schema.mutable(Schema.Array(tapDanceSchema)).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
+  keyOverrides: Schema.mutable(Schema.Array(keyOverrideSchema)).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
+  lighting: lightingProfileSchema,
+  settings: keyboardSettingsSchema,
+  firmwareMetadata: Schema.optional(firmwareMetadataSchema),
+  identity: Schema.optional(deviceIdentitySchema),
+  detectionNotes: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  updatedAt: Schema.String,
+});
+
+const persistedIsoTimestampSchema = Schema.String.check(
+  Schema.makeFilter((value) =>
+    Number.isFinite(Date.parse(value)) ? undefined : "must be an ISO timestamp",
+  ),
+);
+const savePointAuthorMetaSchema = Schema.Struct({
+  name: Schema.String,
+  handle: Schema.optionalKey(Schema.String),
+  avatarUrl: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.String),
+});
+const communityWorkspaceSourceSchema = Schema.Struct({
+  kind: Schema.Literals(["community"]),
+  communityKeymapId: Schema.String,
+  title: Schema.String,
+  authorUserId: Schema.String,
+  authorHandle: Schema.optionalKey(Schema.String),
+  adoptedAt: persistedIsoTimestampSchema,
+  payloadHash: Schema.String,
+});
+
+export const StoredSavePointSchema = Schema.Struct({
+  id: Schema.String,
+  variantId: Schema.String,
+  message: Schema.String,
+  createdAt: persistedIsoTimestampSchema,
+  authorMeta: savePointAuthorMetaSchema,
+  snapshot: StoredDeviceProfileSchema,
+  diffFromParent: Schema.optionalKey(Schema.mutable(Schema.Array(ChangeRecordSchema))),
+  parentSavePointId: Schema.optionalKey(Schema.String),
+});
+
+export const StoredWorkspaceForkSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  baseProfileId: Schema.String,
+  createdAt: persistedIsoTimestampSchema,
+  device: StoredDeviceProfileSchema,
+  parentSavePointId: Schema.optionalKey(Schema.String),
+  sourceVariantId: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(communityWorkspaceSourceSchema),
+});
+
 function encodeStoredKeycode(code?: string): StoredKeycode | undefined {
   if (code === undefined) return undefined;
 
@@ -1156,10 +1431,8 @@ function encodeStoredKeycode(code?: string): StoredKeycode | undefined {
   return qmkKeycodeValue(normalized) ?? normalized;
 }
 
-function decodeStoredKeycode(value: unknown, fallback = "KC_NO"): string {
-  if (typeof value === "number" && Number.isFinite(value)) return qmkKeycodeName(value);
-  if (typeof value === "string") return normalizeQmkKeycode(value);
-  return fallback;
+function decodeStoredKeycode(value: StoredKeycode): string {
+  return typeof value === "number" ? qmkKeycodeName(value) : normalizeQmkKeycode(value);
 }
 
 function encodeBindingForStorage(binding: KeyBinding): StoredKeyBinding {
@@ -1171,187 +1444,215 @@ function encodeBindingForStorage(binding: KeyBinding): StoredKeyBinding {
   };
 }
 
-function decodeBindingFromStorage(value: unknown): KeyBinding {
-  const binding = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-
+function decodeBindingFromStorage(binding: StoredKeyBinding): KeyBinding {
   return {
     ...binding,
     code: decodeStoredKeycode(binding.code),
-    hold: binding.hold === undefined ? undefined : decodeStoredKeycode(binding.hold, ""),
-    tap: binding.tap === undefined ? undefined : decodeStoredKeycode(binding.tap, ""),
+    hold: binding.hold === undefined ? undefined : decodeStoredKeycode(binding.hold),
+    tap: binding.tap === undefined ? undefined : decodeStoredKeycode(binding.tap),
   };
 }
 
 export function encodeDeviceProfileForStorage(device: DeviceProfile): StoredDeviceProfile {
-  return Effect.runSync(encodeDeviceProfileForStorageEffect(device));
+  const profile = normalizeDeviceKeycodes(device);
+  return {
+    ...profile,
+    layers: profile.layers.map((layer) => ({
+      ...layer,
+      bindings: Object.fromEntries(
+        Object.entries(layer.bindings).map(([keyId, binding]) => [
+          keyId,
+          encodeBindingForStorage(binding),
+        ]),
+      ),
+    })),
+  };
 }
 
 export function encodeDeviceProfileForStorageEffect(device: DeviceProfile) {
-  return Effect.map(
-    normalizeDeviceKeycodesEffect(device),
-    (profile): StoredDeviceProfile => ({
-      ...profile,
-      layers: profile.layers.map((layer) => ({
-        ...layer,
-        bindings: Object.fromEntries(
-          Object.entries(layer.bindings).map(([keyId, binding]) => [
-            keyId,
-            encodeBindingForStorage(binding),
-          ]),
-        ),
-      })),
-    }),
-  );
+  return Effect.sync(() => encodeDeviceProfileForStorage(device));
+}
+
+function decodeStoredDeviceProfile(profile: typeof StoredDeviceProfileSchema.Type): DeviceProfile {
+  return {
+    ...profile,
+    origin: profile.origin ?? "imported",
+    layers: profile.layers.map((layer) => ({
+      ...layer,
+      bindings: Object.fromEntries(
+        Object.entries(layer.bindings).map(([keyId, binding]) => [
+          keyId,
+          decodeBindingFromStorage(binding),
+        ]),
+      ),
+    })),
+  };
 }
 
 export function decodeDeviceProfileFromStorage(value: unknown): DeviceProfile {
-  return Effect.runSync(decodeDeviceProfileFromStorageEffect(value));
+  const decoded = Schema.decodeUnknownResult(StoredDeviceProfileSchema)(value);
+  if (decoded._tag === "Failure") {
+    throw new BoundaryDecodeError({
+      operation: "keyboard.decode-stored-device-profile",
+      message: `Stored keyboard profile did not match its contract: ${String(decoded.failure)}`,
+      cause: decoded.failure,
+    });
+  }
+  return decodeStoredDeviceProfile(decoded.success);
 }
 
-export function decodeDeviceProfileFromStorageEffect(value: unknown) {
-  return Effect.flatMap(
-    Effect.try({
-      try: () => {
-        const profile = value as DeviceProfile;
-        return {
-          ...profile,
-          origin: isDeviceProfileOrigin(profile.origin) ? profile.origin : "imported",
-          layers: profile.layers.map((layer) => ({
-            ...layer,
-            bindings: Object.fromEntries(
-              Object.entries(layer.bindings).map(([keyId, binding]) => [
-                keyId,
-                decodeBindingFromStorage(binding),
-              ]),
-            ),
-          })),
-        };
-      },
-      catch: (error) =>
-        new Error(error instanceof Error ? error.message : "Stored profile could not be decoded"),
-    }),
-    normalizeDeviceKeycodesEffect,
-  );
+/**
+ * Non-throwing decode for synchronous UI render paths (e.g. Svelte `$derived`).
+ * Returns `null` instead of raising `BoundaryDecodeError` so a drifted or
+ * malformed profile degrades to an empty preview rather than crashing render.
+ */
+export function decodeDeviceProfileFromStorageOrNull(value: unknown): DeviceProfile | null {
+  const decoded = Schema.decodeUnknownOption(StoredDeviceProfileSchema)(value);
+  return Option.isSome(decoded) ? decodeStoredDeviceProfile(decoded.value) : null;
 }
+
+export const decodeDeviceProfileFromStorageEffect = Effect.fn(
+  "KeyboardSchema.decodeDeviceProfileFromStorage",
+)((value: unknown) =>
+  Schema.decodeUnknownEffect(StoredDeviceProfileSchema)(value).pipe(
+    Effect.map(decodeStoredDeviceProfile),
+    Effect.mapError(
+      (cause) =>
+        new BoundaryDecodeError({
+          operation: "keyboard.decode-stored-device-profile",
+          message: `Stored keyboard profile did not match its contract: ${String(cause)}`,
+          cause,
+        }),
+    ),
+  ),
+);
 
 export function encodeSavePointForStorage(savePoint: SavePoint): StoredSavePoint {
-  return Effect.runSync(encodeSavePointForStorageEffect(savePoint));
+  return {
+    ...savePoint,
+    snapshot: encodeDeviceProfileForStorage(savePoint.snapshot),
+  };
 }
 
 export function encodeSavePointForStorageEffect(savePoint: SavePoint) {
-  return Effect.map(encodeDeviceProfileForStorageEffect(savePoint.snapshot), (snapshot) => ({
-    ...savePoint,
-    snapshot,
-  }));
+  return Effect.sync(() => encodeSavePointForStorage(savePoint));
 }
 
-export function decodeSavePointFromStorage(value: unknown): SavePoint {
-  return Effect.runSync(decodeSavePointFromStorageEffect(value));
-}
-
-export function decodeSavePointFromStorageEffect(value: unknown) {
-  return Effect.flatMap(
-    Effect.try({
-      try: () => value as SavePoint,
-      catch: (error) =>
-        new Error(
-          error instanceof Error ? error.message : "Stored save point could not be decoded",
-        ),
-    }),
-    (savePoint) =>
-      Effect.map(decodeDeviceProfileFromStorageEffect(savePoint.snapshot), (snapshot) => ({
-        ...savePoint,
-        snapshot,
-      })),
-  );
-}
+export const decodeSavePointFromStorageEffect = Effect.fn(
+  "KeyboardSchema.decodeSavePointFromStorage",
+)((value: unknown) =>
+  Schema.decodeUnknownEffect(StoredSavePointSchema)(value).pipe(
+    Effect.flatMap((savePoint) =>
+      Effect.map(
+        decodeDeviceProfileFromStorageEffect(savePoint.snapshot),
+        (snapshot): SavePoint => ({
+          ...savePoint,
+          diffFromParent: savePoint.diffFromParent ? [...savePoint.diffFromParent] : undefined,
+          snapshot,
+        }),
+      ),
+    ),
+    Effect.mapError(
+      (cause) =>
+        new BoundaryDecodeError({
+          operation: "keyboard.decode-stored-save-point",
+          message: `Stored save point did not match its contract: ${String(cause)}`,
+          cause,
+        }),
+    ),
+  ),
+);
 
 export function encodeWorkspaceForkForStorage(fork: WorkspaceFork): StoredWorkspaceFork {
-  return Effect.runSync(encodeWorkspaceForkForStorageEffect(fork));
+  return {
+    ...fork,
+    device: encodeDeviceProfileForStorage(fork.device),
+  };
 }
 
 export function encodeWorkspaceForkForStorageEffect(fork: WorkspaceFork) {
-  return Effect.map(encodeDeviceProfileForStorageEffect(fork.device), (device) => ({
-    ...fork,
-    device,
-  }));
+  return Effect.sync(() => encodeWorkspaceForkForStorage(fork));
 }
 
-export function decodeWorkspaceForkFromStorage(value: unknown): WorkspaceFork {
-  return Effect.runSync(decodeWorkspaceForkFromStorageEffect(value));
-}
-
-export function decodeWorkspaceForkFromStorageEffect(value: unknown) {
-  return Effect.flatMap(
-    Effect.try({
-      try: () => value as WorkspaceFork,
-      catch: (error) =>
-        new Error(error instanceof Error ? error.message : "Stored fork could not be decoded"),
-    }),
-    (fork) =>
-      Effect.map(decodeDeviceProfileFromStorageEffect(fork.device), (device) => ({
-        ...fork,
-        device,
-      })),
-  );
-}
-
-export function profileFromDetectionEffect(base: DeviceProfile, detection: KeyboardDetection) {
-  return Effect.map(cloneDeviceEffect(base), (profile) => {
-    const layerCount = Math.max(detection.layerCount ?? profile.layers.length, 1);
-    const identity = sanitizeDeviceIdentity(detection.identity);
-
-    profile.id = identity.key;
-    profile.origin = "device";
-    profile.identity = identity;
-    profile.name = identity.productName ?? profile.name;
-    profile.vendor = "Detected keyboard";
-    profile.vendorId = identity.vendorId ?? profile.vendorId;
-    profile.productId = identity.productId ?? profile.productId;
-    profile.protocol = detection.protocolVersion ? "via-v3" : profile.protocol;
-    profile.firmwareVersion = detection.protocolVersion
-      ? `VIA protocol ${detection.protocolVersion}`
-      : profile.firmwareVersion;
-    profile.capabilities = Array.from(
-      new Set<Capability>(["keymap", "layers", "settings", "firmware", ...detection.capabilities]),
-    );
-    profile.layers = ensureLayerCount(profile, layerCount);
-    profile.detectionNotes = Array.from(
-      new Set([
-        ...detection.notes,
-        detection.keymap
-          ? "Imported the current VIA keymap from the device."
-          : "Using the current keyboard definition as the physical layout outline.",
-      ]),
-    );
-    profile.updatedAt = new Date().toISOString();
-
-    if (detection.keymap) {
-      profile.layers = profile.layers.map((layer, layerIndex) => {
-        const matrix = detection.keymap?.[layerIndex];
-        if (!matrix) return layer;
-
-        const bindings = { ...layer.bindings };
-        for (const key of profile.keys) {
-          const keycode = matrix[key.row]?.[key.col];
-          if (typeof keycode === "number") {
-            bindings[key.id] = { code: qmkKeycodeName(keycode) };
-          }
-        }
-
-        return { ...layer, bindings };
-      });
-    }
-
-    return profile;
-  });
-}
+export const decodeWorkspaceForkFromStorageEffect = Effect.fn(
+  "KeyboardSchema.decodeWorkspaceForkFromStorage",
+)((value: unknown) =>
+  Schema.decodeUnknownEffect(StoredWorkspaceForkSchema)(value).pipe(
+    Effect.flatMap((fork) =>
+      Effect.map(
+        decodeDeviceProfileFromStorageEffect(fork.device),
+        (device): WorkspaceFork => ({
+          ...fork,
+          device,
+        }),
+      ),
+    ),
+    Effect.mapError(
+      (cause) =>
+        new BoundaryDecodeError({
+          operation: "keyboard.decode-stored-workspace-fork",
+          message: `Stored workspace fork did not match its contract: ${String(cause)}`,
+          cause,
+        }),
+    ),
+  ),
+);
 
 export function profileFromDetection(
   base: DeviceProfile,
   detection: KeyboardDetection,
 ): DeviceProfile {
-  return Effect.runSync(profileFromDetectionEffect(base, detection));
+  const profile = cloneDevice(base);
+  const layerCount = Math.max(detection.layerCount ?? profile.layers.length, 1);
+  const identity = sanitizeDeviceIdentity(detection.identity);
+
+  profile.id = identity.key;
+  profile.origin = "device";
+  profile.identity = identity;
+  profile.name = identity.productName ?? profile.name;
+  profile.vendor = "Detected keyboard";
+  profile.vendorId = identity.vendorId ?? profile.vendorId;
+  profile.productId = identity.productId ?? profile.productId;
+  profile.protocol = detection.protocolVersion ? "via-v3" : profile.protocol;
+  profile.firmwareVersion = detection.protocolVersion
+    ? `VIA protocol ${detection.protocolVersion}`
+    : profile.firmwareVersion;
+  profile.capabilities = Array.from(
+    new Set<Capability>(["keymap", "layers", "settings", "firmware", ...detection.capabilities]),
+  );
+  profile.layers = ensureLayerCount(profile, layerCount);
+  profile.detectionNotes = Array.from(
+    new Set([
+      ...detection.notes,
+      detection.keymap
+        ? "Imported the current VIA keymap from the device."
+        : "Using the current keyboard definition as the physical layout outline.",
+    ]),
+  );
+  profile.updatedAt = new Date().toISOString();
+
+  if (detection.keymap) {
+    profile.layers = profile.layers.map((layer, layerIndex) => {
+      const matrix = detection.keymap?.[layerIndex];
+      if (!matrix) return layer;
+
+      const bindings = { ...layer.bindings };
+      for (const key of profile.keys) {
+        const keycode = matrix[key.row]?.[key.col];
+        if (typeof keycode === "number") {
+          bindings[key.id] = { code: qmkKeycodeName(keycode) };
+        }
+      }
+
+      return { ...layer, bindings };
+    });
+  }
+
+  return profile;
+}
+
+export function profileFromDetectionEffect(base: DeviceProfile, detection: KeyboardDetection) {
+  return Effect.sync(() => profileFromDetection(base, detection));
 }
 
 export function bindingFor(device: DeviceProfile, layerId: string, keyId: string): KeyBinding {

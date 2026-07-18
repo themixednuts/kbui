@@ -1,5 +1,5 @@
-import { env } from "$env/dynamic/private";
-import { Deferred, Effect } from "effect";
+import { unzipSync } from "fflate";
+import { Cache, Clock, Config, Duration, Effect, Exit, Option, Schedule, Schema } from "effect";
 
 import type { KeyboardCatalogEntry, KeyboardCatalogIndexEntry } from "$lib/keyboard/catalog";
 import {
@@ -9,9 +9,7 @@ import {
 } from "$lib/keyboard/via-definition";
 
 import { localKeyboardDefinitions } from "./local-defs";
-import { resolveQmkFirmwareMetadata } from "./qmk-target";
-import { retryTransient } from "$lib/effect/self-healing";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
+import { QmkTargetCache, resolveQmkFirmwareMetadataEffect } from "./qmk-target";
 
 const viaOwner = "the-via";
 const viaRepo = "keyboards";
@@ -26,17 +24,33 @@ const githubApiBase = "https://api.github.com";
 // actually redirects to this same codeload URL), so the resolved commit can
 // be read straight off the archive without ever calling the commits API.
 const viaCodeloadArchiveUrl = `https://codeload.github.com/${viaOwner}/${viaRepo}/legacy.zip/refs/heads/${viaBranch}`;
-const cacheTtlMs = 15 * 60 * 1000;
+const viaCacheTtl = Duration.minutes(15);
+const viaRequestRetrySchedule = Schedule.exponential("250 millis").pipe(
+  Schedule.upTo({ times: 3 }),
+);
+const catalogCacheKey = "catalog";
 
-class ViaCatalogFetchError extends Error {
-  constructor(
-    message: string,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "ViaCatalogFetchError";
-  }
-}
+const ViaRevisionResponse = Schema.Struct({ sha: Schema.String });
+const ViaRevisionResponseJson = Schema.fromJsonString(ViaRevisionResponse);
+
+export class ViaCatalogFetchError extends Schema.TaggedErrorClass<ViaCatalogFetchError>()(
+  "ViaCatalogFetchError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+    status: Schema.optionalKey(Schema.Finite),
+    cause: Schema.optionalKey(Schema.Defect()),
+  },
+) {}
+
+export class ViaKeyboardNotFoundError extends Schema.TaggedErrorClass<ViaKeyboardNotFoundError>()(
+  "ViaKeyboardNotFoundError",
+  {
+    id: Schema.String,
+    message: Schema.String,
+  },
+) {}
 
 type ViaSourceMeta = {
   source: "github-api";
@@ -50,31 +64,26 @@ export type KeyboardCatalogResponse<T> = ViaSourceMeta & {
   items: T;
 };
 
-let catalogCache:
-  | {
-      expiresAt: number;
-      catalog: KeyboardCatalogResponse<KeyboardCatalogEntry[]>;
-    }
-  | undefined;
 type ViaCatalog = KeyboardCatalogResponse<KeyboardCatalogEntry[]>;
+type ViaCatalogError = ViaCatalogFetchError | Config.ConfigError;
+type DetailMetadata = KeyboardCatalogEntry["firmwareMetadata"];
+type DetailMetadataResult = {
+  metadata: DetailMetadata;
+  cacheable: boolean;
+};
 
-let catalogLoad: Deferred.Deferred<ViaCatalog, ViaCatalogFetchError> | undefined;
-const qmkMetadataCache = new Map<
-  string,
-  { expiresAt: number; metadata: KeyboardCatalogEntry["firmwareMetadata"] }
->();
+let catalogCache: Cache.Cache<string, ViaCatalog, ViaCatalogError> | undefined;
+let detailMetadataCache:
+  | Cache.Cache<KeyboardCatalogEntry, DetailMetadataResult, Config.ConfigError>
+  | undefined;
 
-function now() {
-  return Date.now();
-}
+export const readViaGithubTokenEffect = Effect.fn("via.config.github-token")(function* () {
+  const viaToken = yield* Config.option(Config.string("VIA_GITHUB_TOKEN"));
+  if (Option.isSome(viaToken)) return viaToken.value;
+  return Option.getOrUndefined(yield* Config.option(Config.string("GITHUB_TOKEN")));
+});
 
-function githubToken() {
-  return env.VIA_GITHUB_TOKEN ?? env.GITHUB_TOKEN;
-}
-
-function githubHeaders(): HeadersInit {
-  const token = githubToken();
-
+function githubHeaders(token?: string): HeadersInit {
   return {
     Accept: "application/vnd.github+json",
     "User-Agent": "kbui-via-catalog",
@@ -94,122 +103,211 @@ function toIndexEntry(entry: KeyboardCatalogEntry): KeyboardCatalogIndexEntry {
   return summarizeCatalogEntry(entry);
 }
 
-function bundledDefinitionRevisionEffect(definition: Record<string, unknown>) {
-  return Effect.tryPromise({
-    try: () =>
-      crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(definition))),
+function isRetryableStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function messageFromCause(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+const fetchResponseEffect = Effect.fn("via.http.fetch")(function* (
+  operation: string,
+  url: string,
+  headers: HeadersInit,
+) {
+  return yield* Effect.tryPromise({
+    try: (signal) => fetch(url, { headers, signal }),
     catch: (cause) =>
-      new ViaCatalogFetchError(
-        cause instanceof Error ? cause.message : "Bundled definition digest failed.",
-        false,
-      ),
+      new ViaCatalogFetchError({
+        operation,
+        message: messageFromCause(cause, "VIA catalog request failed."),
+        retryable: true,
+        cause,
+      }),
   }).pipe(
-    Effect.map(
-      (digest) =>
-        `bundled:${Array.from(new Uint8Array(digest), (byte) =>
-          byte.toString(16).padStart(2, "0"),
-        ).join("")}`,
+    Effect.timeout("20 seconds"),
+    Effect.mapError((error) =>
+      error instanceof ViaCatalogFetchError
+        ? error
+        : new ViaCatalogFetchError({
+            operation,
+            message: "VIA catalog request timed out.",
+            retryable: true,
+            cause: error,
+          }),
     ),
   );
-}
+});
 
-function fetchViaRevisionEffect() {
-  return retryTransient(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(
-          `${githubApiBase}/repos/${viaOwner}/${viaRepo}/commits/${viaBranch}`,
-          { headers: githubHeaders() },
-        );
-        if (!response.ok) {
-          throw new ViaCatalogFetchError(
-            `VIA catalog revision returned ${response.status}.`,
-            response.status === 408 || response.status === 429 || response.status >= 500,
-          );
-        }
-        const body = (await response.json()) as { sha?: unknown };
-        if (typeof body.sha !== "string" || body.sha.length < 7) {
-          throw new ViaCatalogFetchError("VIA catalog revision response was malformed.", false);
-        }
-        return body.sha;
-      },
-      catch: (error) =>
-        error instanceof ViaCatalogFetchError
-          ? error
-          : new ViaCatalogFetchError(
-              error instanceof Error ? error.message : "VIA catalog revision request failed.",
-              true,
-            ),
-    }),
+const readResponseTextEffect = Effect.fn("via.http.read-text")(function* (
+  operation: string,
+  response: Response,
+) {
+  return yield* Effect.tryPromise({
+    try: () => response.text(),
+    catch: (cause) =>
+      new ViaCatalogFetchError({
+        operation,
+        message: messageFromCause(cause, "Could not read the VIA catalog response."),
+        retryable: true,
+        cause,
+      }),
+  }).pipe(
+    Effect.timeout("20 seconds"),
+    Effect.mapError((error) =>
+      error instanceof ViaCatalogFetchError
+        ? error
+        : new ViaCatalogFetchError({
+            operation,
+            message: "Reading the VIA catalog response timed out.",
+            retryable: true,
+            cause: error,
+          }),
+    ),
   );
-}
+});
 
-function fetchViaArchiveEffect(ref: string) {
-  return retryTransient(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(
-          `${githubApiBase}/repos/${viaOwner}/${viaRepo}/zipball/${ref}`,
-          {
-            headers: githubHeaders(),
-          },
-        );
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new ViaCatalogFetchError(
-            `GitHub archive API ${response.status}: ${body.slice(0, 400)}`,
-            response.status === 408 || response.status === 429 || response.status >= 500,
-          );
-        }
-
-        return new Uint8Array(await response.arrayBuffer());
-      },
-      catch: (error) =>
-        error instanceof ViaCatalogFetchError
-          ? error
-          : new ViaCatalogFetchError(
-              error instanceof Error ? error.message : "VIA catalog request failed.",
-              true,
-            ),
-    }),
+const readResponseBytesEffect = Effect.fn("via.http.read-bytes")(function* (
+  operation: string,
+  response: Response,
+) {
+  const buffer = yield* Effect.tryPromise({
+    try: () => response.arrayBuffer(),
+    catch: (cause) =>
+      new ViaCatalogFetchError({
+        operation,
+        message: messageFromCause(cause, "Could not read the VIA catalog archive."),
+        retryable: true,
+        cause,
+      }),
+  }).pipe(
+    Effect.timeout("20 seconds"),
+    Effect.mapError((error) =>
+      error instanceof ViaCatalogFetchError
+        ? error
+        : new ViaCatalogFetchError({
+            operation,
+            message: "Reading the VIA catalog archive timed out.",
+            retryable: true,
+            cause: error,
+          }),
+    ),
   );
-}
+  return new Uint8Array(buffer);
+});
 
-/**
- * Fetches the current archive straight from codeload, bypassing the
- * api.github.com REST surface (and its shared unauthenticated rate limit)
- * entirely. Used whenever no GitHub token is configured, and as the fallback
- * when the authenticated revision lookup fails.
- */
-function fetchViaArchiveFromCodeloadEffect() {
-  return retryTransient(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(viaCodeloadArchiveUrl, {
-          headers: { "User-Agent": "kbui-via-catalog" },
-        });
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new ViaCatalogFetchError(
-            `VIA catalog codeload archive returned ${response.status}: ${body.slice(0, 400)}`,
-            response.status === 408 || response.status === 429 || response.status >= 500,
-          );
-        }
-
-        return new Uint8Array(await response.arrayBuffer());
-      },
-      catch: (error) =>
-        error instanceof ViaCatalogFetchError
-          ? error
-          : new ViaCatalogFetchError(
-              error instanceof Error ? error.message : "VIA catalog codeload archive request failed.",
-              true,
-            ),
-    }),
+const decodeViaRevisionEffect = Effect.fn("via.revision.decode")(function* (text: string) {
+  const body = yield* Schema.decodeUnknownEffect(ViaRevisionResponseJson)(text).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ViaCatalogFetchError({
+          operation: "via.revision.decode",
+          message: "VIA catalog revision response was malformed.",
+          retryable: false,
+          cause,
+        }),
+    ),
   );
-}
+  if (body.sha.length < 7) {
+    return yield* Effect.fail(
+      new ViaCatalogFetchError({
+        operation: "via.revision.decode",
+        message: "VIA catalog revision response was malformed.",
+        retryable: false,
+      }),
+    );
+  }
+  return body.sha;
+});
+
+const fetchViaRevisionAttemptEffect = Effect.fn("via.revision.fetch-attempt")(function* (
+  token: string,
+) {
+  const operation = "via.revision.fetch";
+  const response = yield* fetchResponseEffect(
+    operation,
+    `${githubApiBase}/repos/${viaOwner}/${viaRepo}/commits/${viaBranch}`,
+    githubHeaders(token),
+  );
+  const text = yield* readResponseTextEffect(operation, response);
+  if (!response.ok) {
+    return yield* Effect.fail(
+      new ViaCatalogFetchError({
+        operation,
+        message: `VIA catalog revision returned ${response.status}: ${text.slice(0, 400)}`,
+        retryable: isRetryableStatus(response.status),
+        status: response.status,
+      }),
+    );
+  }
+  return yield* decodeViaRevisionEffect(text);
+});
+
+export const fetchViaRevisionEffect = Effect.fn("via.revision.fetch")((token: string) =>
+  Effect.retry(fetchViaRevisionAttemptEffect(token), {
+    schedule: viaRequestRetrySchedule,
+    while: (error) => error.retryable,
+  }),
+);
+
+const fetchViaArchiveAttemptEffect = Effect.fn("via.archive.fetch-attempt")(function* (
+  operation: string,
+  url: string,
+  headers: HeadersInit,
+) {
+  const response = yield* fetchResponseEffect(operation, url, headers);
+  if (!response.ok) {
+    const body = yield* readResponseTextEffect(operation, response);
+    return yield* Effect.fail(
+      new ViaCatalogFetchError({
+        operation,
+        message: `VIA catalog archive returned ${response.status}: ${body.slice(0, 400)}`,
+        retryable: isRetryableStatus(response.status),
+        status: response.status,
+      }),
+    );
+  }
+  return yield* readResponseBytesEffect(operation, response);
+});
+
+const fetchViaArchiveAtEffect = Effect.fn("via.archive.fetch")(
+  (operation: string, url: string, headers: HeadersInit) =>
+    Effect.retry(fetchViaArchiveAttemptEffect(operation, url, headers), {
+      schedule: viaRequestRetrySchedule,
+      while: (error) => error.retryable,
+    }),
+);
+
+export const fetchViaArchiveEffect = Effect.fn("via.archive.github")((ref: string, token: string) =>
+  fetchViaArchiveAtEffect(
+    "via.archive.github",
+    `${githubApiBase}/repos/${viaOwner}/${viaRepo}/zipball/${ref}`,
+    githubHeaders(token),
+  ),
+);
+
+export const fetchViaArchiveFromCodeloadEffect = Effect.fn("via.archive.codeload")(() =>
+  fetchViaArchiveAtEffect("via.archive.codeload", viaCodeloadArchiveUrl, {
+    "User-Agent": "kbui-via-catalog",
+  }),
+);
+
+const selectViaArchiveEffect = Effect.fn("via.archive.select")(function* (
+  token: string | undefined,
+) {
+  if (token) {
+    const revision = yield* Effect.result(fetchViaRevisionEffect(token));
+    if (revision._tag === "Success") {
+      const archive = yield* Effect.result(fetchViaArchiveEffect(revision.success, token));
+      if (archive._tag === "Success") {
+        return { bytes: archive.success, pinnedRef: revision.success };
+      }
+    }
+  }
+
+  return { bytes: yield* fetchViaArchiveFromCodeloadEffect(), pinnedRef: undefined };
+});
 
 /**
  * Recovers the resolved commit from an unzipped archive's root directory
@@ -225,134 +323,118 @@ function deriveRevisionFromArchive(archive: Record<string, Uint8Array>): string 
   return undefined;
 }
 
-function createViaCatalogEffect() {
-  return Effect.gen(function* () {
-    const { unzipSync } = yield* Effect.tryPromise({
-      try: () => import("fflate"),
-      catch: (cause) =>
-        new ViaCatalogFetchError(
-          cause instanceof Error ? cause.message : "Could not load the archive decoder.",
-          false,
-        ),
-    });
-    // Only spend the commits API's unauthenticated rate-limit budget when a
-    // token is actually configured to raise it. Without one (production has
-    // no VIA_GITHUB_TOKEN/GITHUB_TOKEN secret today), or if the authenticated
-    // lookup fails transiently, fall back to the tokenless codeload archive
-    // and read the resolved commit off its root directory name instead.
-    const pinnedRef = githubToken()
-      ? yield* Effect.matchEffect(fetchViaRevisionEffect(), {
-          onFailure: () => Effect.succeed(undefined),
-          onSuccess: (sha) => Effect.succeed(sha),
-        })
-      : undefined;
-
-    const archiveBytes = pinnedRef
-      ? yield* fetchViaArchiveEffect(pinnedRef)
-      : yield* fetchViaArchiveFromCodeloadEffect();
-
-    const archive = yield* Effect.try({
-      try: () => unzipSync(archiveBytes),
-      catch: (cause) =>
-        new ViaCatalogFetchError(
-          cause instanceof Error ? cause.message : "VIA catalog archive was malformed.",
-          false,
-        ),
-    });
-    const ref = pinnedRef ?? deriveRevisionFromArchive(archive) ?? viaBranch;
-    const decoder = new TextDecoder();
-    const entries: KeyboardCatalogEntry[] = [];
-
-    for (const [archivePath, bytes] of Object.entries(archive)) {
-      const sourcePath = archiveDefinitionPath(archivePath);
-      if (!sourcePath) continue;
-
-      try {
-        const definition = JSON.parse(decoder.decode(bytes)) as unknown;
-        const entry = parseViaDefinition(
-          sourcePath,
-          definition,
-          scoreViaDefinitionPath(sourcePath, bytes.byteLength),
-        );
-        if (entry) entries.push({ ...entry, sourceRevision: ref });
-      } catch {
-        // Skip malformed or unsupported definitions from the upstream catalog.
-      }
-    }
-
-    // Splice in local overrides. They use the same parser so their KLE layouts
-    // get the same x/y/rotation treatment as upstream entries.
-    for (const local of localKeyboardDefinitions) {
-      const entry = parseViaDefinition(local.sourcePath, local.json, local.priority);
-      if (entry) {
-        entries.push({
-          ...entry,
-          sourceRevision: yield* bundledDefinitionRevisionEffect(local.json),
-        });
-      }
-    }
-
-    entries.sort(
-      (left, right) => right.priority - left.priority || left.name.localeCompare(right.name),
-    );
-
-    return {
-      source: "github-api",
-      repo: viaRepoName,
-      ref,
-      refreshedAt: new Date().toISOString(),
-      count: entries.length,
-      items: entries,
-    } satisfies ViaCatalog;
+const bundledDefinitionRevisionEffect = Effect.fn("via.bundled-definition.digest")(function* (
+  definition: Record<string, unknown>,
+) {
+  const digest = yield* Effect.tryPromise({
+    try: () =>
+      crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(definition))),
+    catch: (cause) =>
+      new ViaCatalogFetchError({
+        operation: "via.bundled-definition.digest",
+        message: messageFromCause(cause, "Bundled definition digest failed."),
+        retryable: false,
+        cause,
+      }),
   });
-}
+  return `bundled:${Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+});
 
-function loadViaKeyboardCatalogEffect(): Effect.Effect<ViaCatalog, ViaCatalogFetchError> {
-  return Effect.suspend(() => {
-    if (catalogCache && catalogCache.expiresAt > now()) return Effect.succeed(catalogCache.catalog);
-    if (catalogLoad) return Deferred.await(catalogLoad);
-
-    const deferred = Deferred.makeUnsafe<ViaCatalog, ViaCatalogFetchError>();
-    catalogLoad = deferred;
-    return Effect.matchEffect(createViaCatalogEffect(), {
-      onFailure: (error) =>
-        Effect.sync(() => Deferred.doneUnsafe(deferred, Effect.fail(error))).pipe(
-          Effect.andThen(Effect.fail(error)),
-        ),
-      onSuccess: (catalog) =>
-        Effect.sync(() => {
-          catalogCache = { expiresAt: now() + cacheTtlMs, catalog };
-          Deferred.doneUnsafe(deferred, Effect.succeed(catalog));
-        }).pipe(Effect.as(catalog)),
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (catalogLoad === deferred) catalogLoad = undefined;
-        }),
-      ),
-    );
+export const createViaCatalogEffect = Effect.fn("via.catalog.create")(function* () {
+  const token = yield* readViaGithubTokenEffect();
+  const { bytes: archiveBytes, pinnedRef } = yield* selectViaArchiveEffect(token);
+  const archive = yield* Effect.try({
+    try: () => unzipSync(archiveBytes),
+    catch: (cause) =>
+      new ViaCatalogFetchError({
+        operation: "via.archive.decode",
+        message: messageFromCause(cause, "VIA catalog archive was malformed."),
+        retryable: false,
+        cause,
+      }),
   });
-}
+  const ref = pinnedRef ?? deriveRevisionFromArchive(archive) ?? viaBranch;
+  const decoder = new TextDecoder();
+  const entries: KeyboardCatalogEntry[] = [];
 
-export function loadViaKeyboardCatalog() {
-  return runWorkerEffect("via.catalog.load", loadViaKeyboardCatalogEffect());
-}
+  for (const [archivePath, bytes] of Object.entries(archive)) {
+    const sourcePath = archiveDefinitionPath(archivePath);
+    if (!sourcePath) continue;
 
-export function loadViaKeyboardIndex(): Promise<
-  KeyboardCatalogResponse<KeyboardCatalogIndexEntry[]>
-> {
-  return runWorkerEffect(
-    "via.catalog.index",
-    Effect.map(loadViaKeyboardCatalogEffect(), (catalog) => ({
-      source: catalog.source,
-      repo: catalog.repo,
-      ref: catalog.ref,
-      refreshedAt: catalog.refreshedAt,
-      count: catalog.count,
-      items: catalog.items.map(toIndexEntry),
-    })),
+    const decoded = Schema.decodeUnknownResult(Schema.UnknownFromJsonString)(decoder.decode(bytes));
+    if (decoded._tag === "Failure") continue;
+    try {
+      const entry = parseViaDefinition(
+        sourcePath,
+        decoded.success,
+        scoreViaDefinitionPath(sourcePath, bytes.byteLength),
+      );
+      if (entry) entries.push({ ...entry, sourceRevision: ref });
+    } catch {
+      // Skip definitions whose JSON is valid but whose unsupported shape makes
+      // the upstream parser reject them. One bad community file must not hide
+      // the rest of the catalog.
+    }
+  }
+
+  // Splice in local overrides. They use the same parser so their KLE layouts
+  // get the same x/y/rotation treatment as upstream entries.
+  for (const local of localKeyboardDefinitions) {
+    const entry = parseViaDefinition(local.sourcePath, local.json, local.priority);
+    if (entry) {
+      entries.push({
+        ...entry,
+        sourceRevision: yield* bundledDefinitionRevisionEffect(local.json),
+      });
+    }
+  }
+
+  entries.sort(
+    (left, right) => right.priority - left.priority || left.name.localeCompare(right.name),
   );
-}
+
+  return {
+    source: "github-api",
+    repo: viaRepoName,
+    ref,
+    refreshedAt: new Date(yield* Clock.currentTimeMillis).toISOString(),
+    count: entries.length,
+    items: entries,
+  } satisfies ViaCatalog;
+});
+
+const catalogCacheEffect = Effect.fn("via.catalog.cache")(function* () {
+  if (catalogCache) return catalogCache;
+
+  const created = yield* Cache.makeWith<string, ViaCatalog, ViaCatalogError>(
+    () => createViaCatalogEffect(),
+    {
+      capacity: 1,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? viaCacheTtl : Duration.zero),
+    },
+  );
+  if (!catalogCache) catalogCache = created;
+  return catalogCache;
+});
+
+export const loadViaKeyboardCatalogEffect = Effect.fn("via.catalog.load")(function* () {
+  const cache = yield* catalogCacheEffect();
+  return yield* Cache.get(cache, catalogCacheKey);
+});
+
+export const loadViaKeyboardIndexEffect = Effect.fn("via.catalog.index")(function* () {
+  const catalog = yield* loadViaKeyboardCatalogEffect();
+  return {
+    source: catalog.source,
+    repo: catalog.repo,
+    ref: catalog.ref,
+    refreshedAt: catalog.refreshedAt,
+    count: catalog.count,
+    items: catalog.items.map(toIndexEntry),
+  } satisfies KeyboardCatalogResponse<KeyboardCatalogIndexEntry[]>;
+});
 
 /**
  * Best-effort QMK build-target metadata for a single VIA detail response.
@@ -367,58 +449,63 @@ export function loadViaKeyboardIndex(): Promise<
  *
  * Only the cheap, path-based QMK match is kept — it is what the Settings
  * firmware-target picker reads from `firmwareMetadata.qmk`, and it is I/O bound
- * (small `info.json` fetches) rather than a large synchronous parse. Any failure
- * degrades to `undefined` so the VIA entry is always returned instead of 503ing
- * the whole connect flow.
+ * (small `info.json` fetches) rather than a large synchronous parse. A failed
+ * lookup degrades to `undefined` but receives a zero cache TTL so a transient QMK
+ * outage cannot poison the detail cache for 15 minutes.
  */
-function detailFirmwareMetadataEffect(entry: KeyboardCatalogEntry) {
-  return Effect.matchEffect(
-    Effect.tryPromise({
-      try: () => resolveQmkFirmwareMetadata(entry, githubHeaders()),
-      catch: (cause) =>
-        new ViaCatalogFetchError(
-          cause instanceof Error ? cause.message : "QMK target resolution failed.",
-          true,
-        ),
-    }),
-    {
-      onFailure: () => Effect.succeed(undefined),
-      onSuccess: (metadata) => Effect.succeed(metadata),
-    },
-  );
-}
+const detailFirmwareMetadataEffect = Effect.fn("via.detail.firmware-metadata")(function* (
+  entry: KeyboardCatalogEntry,
+) {
+  const token = yield* readViaGithubTokenEffect();
+  const resolved = yield* Effect.result(resolveQmkFirmwareMetadataEffect(entry, token));
+  const result: DetailMetadataResult =
+    resolved._tag === "Success"
+      ? { metadata: resolved.success, cacheable: true }
+      : { metadata: undefined, cacheable: false };
+  return result;
+});
 
-export function loadViaKeyboardDetail(id: string) {
-  return runWorkerEffect(
-    "via.catalog.detail",
-    Effect.gen(function* () {
-      const catalog = yield* loadViaKeyboardCatalogEffect();
-      const entry = catalog.items.find((item) => item.id === id || item.sourcePath === id);
+const detailMetadataCacheEffect = Effect.fn("via.detail.metadata-cache")(function* () {
+  if (detailMetadataCache) return detailMetadataCache;
 
-      if (!entry) {
-        return yield* Effect.fail(
-          new ViaCatalogFetchError(`Keyboard definition not found: ${id}`, false),
-        );
-      }
+  const created = yield* Cache.makeWith<
+    KeyboardCatalogEntry,
+    DetailMetadataResult,
+    Config.ConfigError,
+    QmkTargetCache
+  >(detailFirmwareMetadataEffect, {
+    capacity: 256,
+    timeToLive: (exit) =>
+      Exit.isSuccess(exit) && exit.value.cacheable ? viaCacheTtl : Duration.zero,
+  });
+  if (!detailMetadataCache) detailMetadataCache = created;
+  return detailMetadataCache;
+});
 
-      const cached = qmkMetadataCache.get(entry.id);
-      let metadata = cached && cached.expiresAt > now() ? cached.metadata : undefined;
-      if (!cached || cached.expiresAt <= now()) {
-        metadata = yield* detailFirmwareMetadataEffect(entry);
-        qmkMetadataCache.set(entry.id, { expiresAt: now() + cacheTtlMs, metadata });
-      }
+export const loadViaKeyboardDetailEffect = Effect.fn("via.catalog.detail")(function* (id: string) {
+  const catalog = yield* loadViaKeyboardCatalogEffect();
+  const entry = catalog.items.find((item) => item.id === id || item.sourcePath === id);
 
-      return {
-        ...entry,
-        firmwareMetadata: metadata,
-      };
-    }),
-  );
-}
+  if (!entry) {
+    return yield* Effect.fail(
+      new ViaKeyboardNotFoundError({
+        id,
+        message: `Keyboard definition not found: ${id}`,
+      }),
+    );
+  }
 
-export function loadViaKeyboardDetailInputs() {
-  return runWorkerEffect(
-    "via.catalog.detail-inputs",
-    Effect.map(loadViaKeyboardCatalogEffect(), (catalog) => catalog.items.map((entry) => entry.id)),
-  );
-}
+  const cache = yield* detailMetadataCacheEffect();
+  const metadata = yield* Cache.get(cache, entry);
+  return {
+    ...entry,
+    firmwareMetadata: metadata.metadata,
+  };
+});
+
+export const loadViaKeyboardDetailInputsEffect = Effect.fn("via.catalog.detail-inputs")(
+  function* () {
+    const catalog = yield* loadViaKeyboardCatalogEffect();
+    return catalog.items.map((entry) => entry.id);
+  },
+);

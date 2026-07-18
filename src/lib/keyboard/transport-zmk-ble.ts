@@ -139,15 +139,18 @@ function createGattByteTransport(input: {
 
   abortController.signal.addEventListener("abort", () => {
     cleanup();
+    const stopNotificationsCall = input.characteristic.stopNotifications?.bind(
+      input.characteristic,
+    );
+    const stopNotifications = stopNotificationsCall
+      ? Effect.tryPromise({
+          try: stopNotificationsCall,
+          catch: (cause) => platformError("zmk-studio.ble.abort", cause),
+        })
+      : Effect.void;
     forkApp(
       "zmk-studio.ble.abort",
-      Effect.tryPromise({
-        try: async () => {
-          await input.characteristic.stopNotifications?.();
-          input.device.gatt?.disconnect();
-        },
-        catch: (cause) => platformError("zmk-studio.ble.abort", cause),
-      }),
+      stopNotifications.pipe(Effect.ensuring(Effect.sync(() => input.device.gatt?.disconnect()))),
     );
   });
 

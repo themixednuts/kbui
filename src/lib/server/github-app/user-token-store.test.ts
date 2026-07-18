@@ -1,9 +1,10 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  decryptGitHubAppUserAccessToken,
-  decryptGitHubAppUserRefreshToken,
-  encryptGitHubAppUserToken,
+  decryptGitHubAppUserAccessTokenEffect,
+  decryptGitHubAppUserRefreshTokenEffect,
+  encryptGitHubAppUserTokenEffect,
   githubAppUserTokenSecretFor,
   githubAppUserTokenSecretsFor,
 } from "./user-token-store";
@@ -12,16 +13,18 @@ const secret = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
 describe("GitHub App user token storage", () => {
   it("encrypts user and refresh tokens with expiry metadata", async () => {
-    const encrypted = await encryptGitHubAppUserToken(
-      {
-        accessToken: "ghu_user_access",
-        expiresIn: 28800,
-        refreshToken: "ghr_refresh",
-        refreshTokenExpiresIn: 15897600,
-        tokenType: "bearer",
-      },
-      secret,
-      new Date("2026-07-06T12:00:00.000Z").getTime(),
+    const encrypted = await Effect.runPromise(
+      encryptGitHubAppUserTokenEffect(
+        {
+          accessToken: "ghu_user_access",
+          expiresIn: 28800,
+          refreshToken: "ghr_refresh",
+          refreshTokenExpiresIn: 15897600,
+          tokenType: "bearer",
+        },
+        secret,
+        new Date("2026-07-06T12:00:00.000Z").getTime(),
+      ),
     );
 
     expect(encrypted.accessTokenCiphertext).not.toContain("ghu_user_access");
@@ -29,21 +32,25 @@ describe("GitHub App user token storage", () => {
     expect(encrypted.accessTokenExpiresAt?.toISOString()).toBe("2026-07-06T20:00:00.000Z");
     expect(encrypted.refreshTokenExpiresAt?.toISOString()).toBe("2027-01-06T12:00:00.000Z");
     await expect(
-      decryptGitHubAppUserAccessToken(
-        {
-          accessTokenCiphertext: encrypted.accessTokenCiphertext ?? "",
-          accessTokenIv: encrypted.accessTokenIv ?? "",
-        },
-        secret,
+      Effect.runPromise(
+        decryptGitHubAppUserAccessTokenEffect(
+          {
+            accessTokenCiphertext: encrypted.accessTokenCiphertext ?? "",
+            accessTokenIv: encrypted.accessTokenIv ?? "",
+          },
+          secret,
+        ),
       ),
     ).resolves.toBe("ghu_user_access");
     await expect(
-      decryptGitHubAppUserRefreshToken(
-        {
-          refreshTokenCiphertext: encrypted.refreshTokenCiphertext ?? "",
-          refreshTokenIv: encrypted.refreshTokenIv ?? "",
-        },
-        secret,
+      Effect.runPromise(
+        decryptGitHubAppUserRefreshTokenEffect(
+          {
+            refreshTokenCiphertext: encrypted.refreshTokenCiphertext ?? "",
+            refreshTokenIv: encrypted.refreshTokenIv ?? "",
+          },
+          secret,
+        ),
       ),
     ).resolves.toBe("ghr_refresh");
   });

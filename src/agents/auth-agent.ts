@@ -17,22 +17,28 @@ import {
 } from "$lib/github-app/build-events";
 import { mapGitHubWorkflowRunToBuildStatus } from "$lib/keyboard/firmware-github";
 import type { GitHubWorkflowRunWebhookEvent } from "$lib/server/github/webhook";
-import { attachWorkflowArtifacts } from "$lib/server/github/workflow-artifacts";
+import { attachWorkflowArtifactsEffect } from "$lib/server/github/workflow-artifacts";
 import { deriveFirmwareGitHubRepository } from "$lib/keyboard/firmware-github";
-import type { GitHubFirmwareSyncInput } from "$lib/github-app/types";
 import { GitHubFirmwareSyncInputSchema } from "$lib/github-app/types";
-import { GitHubRestApiError, GitHubRestClient } from "$lib/server/github/client";
+import { GitHubRestClient } from "$lib/server/github/client";
 import { GitHubAppOAuthClient } from "$lib/server/github-app/oauth";
 import {
-  decryptGitHubAppUserAccessToken,
-  decryptGitHubAppUserRefreshToken,
-  encryptGitHubAppUserToken,
+  decryptGitHubAppUserAccessTokenEffect,
+  decryptGitHubAppUserRefreshTokenEffect,
+  encryptGitHubAppUserTokenEffect,
   githubAppUserTokenSecretFor,
   githubAppUserTokenSecretsFor,
 } from "$lib/server/github-app/user-token-store";
 import { platformError } from "$lib/effect/errors";
-import { selfHeal } from "$lib/effect/self-healing";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
+import {
+  collectFirmwareMaintenanceResults,
+  firmwareMaintenanceError,
+  retryFirmwareMaintenance,
+  type FirmwareMaintenanceSummary,
+} from "$lib/server/auth/firmware-maintenance";
+
+export type { FirmwareMaintenanceSummary } from "$lib/server/auth/firmware-maintenance";
 
 type AuthAgentEnv = Cloudflare.Env & {
   GITHUB_APP_SLUG?: string;
@@ -61,12 +67,6 @@ export interface RecordGitHubWorkflowRunWebhookResult {
   userId: string;
 }
 
-export interface FirmwareMaintenanceSummary {
-  checked: number;
-  failed: number;
-  repaired: number;
-}
-
 export interface RequestFirmwareVariantCleanupInput {
   userId: string;
   variantIds: string[];
@@ -79,6 +79,30 @@ const githubWebhookQueueRetry = {
 } as const;
 
 const localAuthSecret = "keeb-workbench-local-development-secret-change-before-deploy";
+
+class GitHubAuthorizationExpiredError extends Schema.TaggedErrorClass<GitHubAuthorizationExpiredError>()(
+  "GitHubAuthorizationExpiredError",
+  {
+    message: Schema.String,
+  },
+) {}
+
+class GitHubTokenDecryptError extends Schema.TaggedErrorClass<GitHubTokenDecryptError>()(
+  "GitHubTokenDecryptError",
+  {
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
+
+class GitHubOAuthRefreshError extends Schema.TaggedErrorClass<GitHubOAuthRefreshError>()(
+  "GitHubOAuthRefreshError",
+  {
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
+
 const localDynamicBaseURL = {
   allowedHosts: ["localhost:*", "127.0.0.1:*", "*.workers.dev"],
   protocol: "auto" as const,
@@ -414,21 +438,24 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
       .toArray();
     return runWorkerEffect(
       "auth.reconcile-firmware-repositories",
-      Effect.map(
-        Effect.forEach(
-          rows,
-          (row) =>
-            selfHeal(
-              this.reconcileFirmwareRepositoryRowEffect(row).pipe(
-                Effect.tapError((error) =>
-                  Effect.sync(() => this.markFirmwareMaintenanceFailure(row, error)),
-                ),
+      collectFirmwareMaintenanceResults(
+        rows,
+        (row) => this.reconcileFirmwareRepositoryRowEffect(row),
+        (row, error) =>
+          Effect.try({
+            try: () => this.markFirmwareMaintenanceFailure(row, error),
+            catch: (cause) => platformError("auth.mark-firmware-maintenance-failure", cause),
+          }).pipe(
+            Effect.catch((markError) =>
+              Effect.logError("Failed to persist GitHub firmware maintenance failure").pipe(
+                Effect.annotateLogs({
+                  branchId: row.branch_id,
+                  operation: markError.operation,
+                  repository: `${row.owner}/${row.repo}`,
+                }),
               ),
-              "5 seconds",
             ),
-          { concurrency: 2, discard: true },
-        ),
-        () => ({ checked: rows.length, failed: 0, repaired: rows.length }),
+          ),
       ),
     );
   }
@@ -454,16 +481,12 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
           return;
         }
 
-        const buildEvent = yield* Effect.tryPromise({
-          try: () =>
-            attachWorkflowArtifacts(
-              recorded.event,
-              input.event.installationId,
-              input.event.repository.id,
-              this.#agentEnv,
-            ),
-          catch: (cause) => platformError("github.attach-workflow-artifacts", cause),
-        });
+        const buildEvent = yield* attachWorkflowArtifactsEffect(
+          recorded.event,
+          input.event.installationId,
+          input.event.repository.id,
+          this.#agentEnv,
+        );
         yield* Effect.tryPromise({
           try: () =>
             this.#agentEnv.FirmwareBuildAgent.getByName(recorded.userId).publish(buildEvent),
@@ -487,44 +510,54 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
 
   private reconcileFirmwareRepositoryRowEffect(row: FirmwareMaintenanceSqlRow) {
     return Effect.gen({ self: this }, function* () {
-      const accessToken = yield* this.firmwareMaintenanceAccessTokenEffect(row);
+      // OAuth refresh rotates credentials, so it is intentionally outside the
+      // retry boundary. A later maintenance pass can try it again safely.
+      const accessToken = yield* this.firmwareMaintenanceAccessTokenEffect(row).pipe(
+        Effect.mapError((cause) =>
+          firmwareMaintenanceError("auth.firmware-maintenance-access-token", cause, false),
+        ),
+      );
+
+      yield* retryFirmwareMaintenance(
+        this.reconcileFirmwareRepositoryWithAccessTokenEffect(row, accessToken),
+        {
+          branchId: row.branch_id,
+          repository: `${row.owner}/${row.repo}`,
+        },
+      );
+    });
+  }
+
+  private reconcileFirmwareRepositoryWithAccessTokenEffect(
+    row: FirmwareMaintenanceSqlRow,
+    accessToken: string,
+  ) {
+    return Effect.gen({ self: this }, function* () {
       const client = new GitHubRestClient({ token: accessToken });
       if (row.delete_requested === 1) {
-        yield* Effect.tryPromise({
-          try: async () => {
-            try {
-              await client.deleteRef(row.owner, row.repo, `heads/${row.branch_name}`);
-            } catch (error) {
-              if (!(error instanceof GitHubRestApiError) || error.code !== "GITHUB_NOT_FOUND") {
-                throw error;
-              }
-            }
-          },
-          catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-        });
-        yield* Effect.sync(() => {
-          this.#agentCtx.storage.sql.exec(
-            "DELETE FROM github_firmware_branch WHERE id = ? AND delete_requested = 1",
-            row.branch_id,
-          );
+        yield* client.deleteRef(row.owner, row.repo, `heads/${row.branch_name}`).pipe(
+          Effect.catchIf(
+            (error) => error.code === "GITHUB_NOT_FOUND",
+            () => Effect.succeed(null),
+          ),
+        );
+        yield* Effect.try({
+          try: () =>
+            this.#agentCtx.storage.sql.exec(
+              "DELETE FROM github_firmware_branch WHERE id = ? AND delete_requested = 1",
+              row.branch_id,
+            ),
+          catch: (cause) => platformError("auth.delete-reconciled-firmware-branch", cause),
         });
         return;
       }
       const syncInput = yield* Schema.decodeUnknownEffect(
         Schema.fromJsonString(GitHubFirmwareSyncInputSchema),
-      )(row.sync_input_json).pipe(Effect.map((value) => value as GitHubFirmwareSyncInput));
-      const repository = yield* Effect.tryPromise({
-        try: async () => {
-          try {
-            return await client.getRepository(row.owner, row.repo);
-          } catch (error) {
-            if (
-              !(error instanceof GitHubRestApiError) ||
-              error.code !== "GITHUB_NOT_FOUND" ||
-              row.relationship !== "managed"
-            ) {
-              throw error;
-            }
+      )(row.sync_input_json);
+      const repository = yield* client.getRepository(row.owner, row.repo).pipe(
+        Effect.catchIf(
+          (error) => error.code === "GITHUB_NOT_FOUND" && row.relationship === "managed",
+          () => {
             const desired = deriveFirmwareGitHubRepository(syncInput.profile, {
               owner: row.owner,
               private: true,
@@ -536,129 +569,138 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
               name: desired.name,
               private: true,
             });
-          }
+          },
+        ),
+      );
+      const repaired = yield* reconcileGitHubFirmwareBranch({
+        client,
+        nowMs: Date.now(),
+        repository: {
+          defaultBranch: repository.default_branch || row.default_branch,
+          firmwareFamily: row.firmware_family,
+          owner: repository.owner.login,
+          repo: repository.name,
         },
-        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+        syncInput,
       });
-      const repaired = yield* Effect.tryPromise({
-        try: () =>
-          reconcileGitHubFirmwareBranch({
-            client,
-            nowMs: Date.now(),
-            repository: {
-              defaultBranch: repository.default_branch || row.default_branch,
-              firmwareFamily: row.firmware_family,
-              owner: repository.owner.login,
-              repo: repository.name,
-            },
-            syncInput,
-          }),
-        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+      yield* Effect.try({
+        try: () => {
+          const now = Date.now();
+          this.#agentCtx.storage.sql.exec(
+            `UPDATE github_firmware_branch
+             SET branch_name = ?, last_source_hash = ?, last_commit_sha = ?,
+                 last_status = 'reconciled', updated_at = ?
+             WHERE id = ?`,
+            repaired.branchName,
+            repaired.sourceHash,
+            repaired.commitSha,
+            now,
+            row.branch_id,
+          );
+          this.#agentCtx.storage.sql.exec(
+            `UPDATE github_firmware_repository
+             SET owner = ?, repo = ?, repo_id = ?, default_branch = ?, workflow_path = ?,
+                 last_source_hash = ?, last_commit_sha = ?, last_status = 'reconciled', updated_at = ?
+             WHERE id = ?`,
+            repository.owner.login,
+            repository.name,
+            String(repository.id),
+            repository.default_branch || row.default_branch,
+            repaired.workflowPath,
+            repaired.sourceHash,
+            repaired.commitSha,
+            now,
+            row.repository_id,
+          );
+        },
+        catch: (cause) => platformError("auth.persist-reconciled-firmware-branch", cause),
       });
-      yield* Effect.sync(() => {
-        const now = Date.now();
-        this.#agentCtx.storage.sql.exec(
-          `UPDATE github_firmware_branch
-           SET branch_name = ?, last_source_hash = ?, last_commit_sha = ?,
-               last_status = 'reconciled', updated_at = ?
-           WHERE id = ?`,
-          repaired.branchName,
-          repaired.sourceHash,
-          repaired.commitSha,
-          now,
-          row.branch_id,
-        );
-        this.#agentCtx.storage.sql.exec(
-          `UPDATE github_firmware_repository
-           SET owner = ?, repo = ?, repo_id = ?, default_branch = ?, workflow_path = ?,
-               last_source_hash = ?, last_commit_sha = ?, last_status = 'reconciled', updated_at = ?
-           WHERE id = ?`,
-          repository.owner.login,
-          repository.name,
-          String(repository.id),
-          repository.default_branch || row.default_branch,
-          repaired.workflowPath,
-          repaired.sourceHash,
-          repaired.commitSha,
-          now,
-          row.repository_id,
-        );
-      });
-    });
+    }).pipe(
+      Effect.mapError((cause) =>
+        firmwareMaintenanceError("auth.reconcile-firmware-repository", cause),
+      ),
+    );
   }
 
   private firmwareMaintenanceAccessTokenEffect(row: FirmwareMaintenanceSqlRow) {
-    return Effect.tryPromise({
-      try: async () => {
-        const secrets = githubAppUserTokenSecretsFor(this.#agentEnv);
-        if (
-          row.user_access_token_ciphertext &&
-          row.user_access_token_iv &&
-          (!row.user_access_token_expires_at ||
-            Number(row.user_access_token_expires_at) > Date.now() + 60_000)
-        ) {
-          return decryptWithSecrets(secrets, (secret) =>
-            decryptGitHubAppUserAccessToken(
-              {
-                accessTokenCiphertext: row.user_access_token_ciphertext!,
-                accessTokenIv: row.user_access_token_iv!,
-              },
-              secret,
-            ),
-          );
-        }
+    return Effect.gen({ self: this }, function* () {
+      const secrets = githubAppUserTokenSecretsFor(this.#agentEnv);
+      const accessTokenCiphertext = row.user_access_token_ciphertext;
+      const accessTokenIv = row.user_access_token_iv;
+      const nowMs = Date.now();
+      if (
+        accessTokenCiphertext &&
+        accessTokenIv &&
+        (!row.user_access_token_expires_at ||
+          Number(row.user_access_token_expires_at) > nowMs + 60_000)
+      ) {
+        return yield* decryptWithSecretsEffect(secrets, (secret) =>
+          decryptGitHubAppUserAccessTokenEffect({ accessTokenCiphertext, accessTokenIv }, secret),
+        );
+      }
 
-        const clientId = this.#agentEnv.GITHUB_APP_CLIENT_ID;
-        const clientSecret = this.#agentEnv.GITHUB_APP_CLIENT_SECRET;
-        const encryptionSecret = githubAppUserTokenSecretFor(this.#agentEnv);
-        if (
-          !clientId ||
-          !clientSecret ||
-          !encryptionSecret ||
-          !row.user_refresh_token_ciphertext ||
-          !row.user_refresh_token_iv ||
-          (row.user_refresh_token_expires_at &&
-            Number(row.user_refresh_token_expires_at) <= Date.now())
-        ) {
-          throw new Error(
-            "GitHub App user authorization must be renewed before repository repair.",
+      const clientId = this.#agentEnv.GITHUB_APP_CLIENT_ID;
+      const clientSecret = this.#agentEnv.GITHUB_APP_CLIENT_SECRET;
+      const encryptionSecret = githubAppUserTokenSecretFor(this.#agentEnv);
+      const refreshTokenCiphertext = row.user_refresh_token_ciphertext;
+      const refreshTokenIv = row.user_refresh_token_iv;
+      if (
+        !clientId ||
+        !clientSecret ||
+        !encryptionSecret ||
+        !refreshTokenCiphertext ||
+        !refreshTokenIv ||
+        (row.user_refresh_token_expires_at && Number(row.user_refresh_token_expires_at) <= nowMs)
+      ) {
+        return yield* Effect.fail(
+          new GitHubAuthorizationExpiredError({
+            message: "GitHub App user authorization must be renewed before repository repair.",
+          }),
+        );
+      }
+      const refreshToken = yield* decryptWithSecretsEffect(secrets, (secret) =>
+        decryptGitHubAppUserRefreshTokenEffect({ refreshTokenCiphertext, refreshTokenIv }, secret),
+      );
+      return yield* Effect.uninterruptibleMask((restore) =>
+        Effect.gen({ self: this }, function* () {
+          const token = yield* restore(
+            new GitHubAppOAuthClient()
+              .refreshUserToken({ clientId, clientSecret, refreshToken })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new GitHubOAuthRefreshError({
+                      message: "GitHub App user token refresh failed.",
+                      cause,
+                    }),
+                ),
+              ),
           );
-        }
-        const refreshToken = await decryptWithSecrets(secrets, (secret) =>
-          decryptGitHubAppUserRefreshToken(
-            {
-              refreshTokenCiphertext: row.user_refresh_token_ciphertext!,
-              refreshTokenIv: row.user_refresh_token_iv!,
-            },
-            secret,
-          ),
-        );
-        const token = await new GitHubAppOAuthClient().refreshUserToken({
-          clientId,
-          clientSecret,
-          refreshToken,
-        });
-        const encrypted = await encryptGitHubAppUserToken(token, encryptionSecret, Date.now());
-        this.#agentCtx.storage.sql.exec(
-          `UPDATE github_firmware_app_connection SET
-             user_access_token_ciphertext = ?, user_access_token_iv = ?,
-             user_access_token_expires_at = ?, user_refresh_token_ciphertext = ?,
-             user_refresh_token_iv = ?, user_refresh_token_expires_at = ?,
-             user_token_type = ?, updated_at = ?
-           WHERE user_access_token_ciphertext = ?`,
-          encrypted.accessTokenCiphertext,
-          encrypted.accessTokenIv,
-          encrypted.accessTokenExpiresAt?.getTime() ?? null,
-          encrypted.refreshTokenCiphertext,
-          encrypted.refreshTokenIv,
-          encrypted.refreshTokenExpiresAt?.getTime() ?? null,
-          encrypted.tokenType,
-          Date.now(),
-          row.user_access_token_ciphertext,
-        );
-        return token.accessToken;
-      },
-      catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          const encrypted = yield* encryptGitHubAppUserTokenEffect(token, encryptionSecret, nowMs);
+          yield* Effect.try({
+            try: () =>
+              this.#agentCtx.storage.sql.exec(
+                `UPDATE github_firmware_app_connection SET
+                   user_access_token_ciphertext = ?, user_access_token_iv = ?,
+                   user_access_token_expires_at = ?, user_refresh_token_ciphertext = ?,
+                   user_refresh_token_iv = ?, user_refresh_token_expires_at = ?,
+                   user_token_type = ?, updated_at = ?
+                 WHERE user_access_token_ciphertext = ?`,
+                encrypted.accessTokenCiphertext,
+                encrypted.accessTokenIv,
+                encrypted.accessTokenExpiresAt?.getTime() ?? null,
+                encrypted.refreshTokenCiphertext,
+                encrypted.refreshTokenIv,
+                encrypted.refreshTokenExpiresAt?.getTime() ?? null,
+                encrypted.tokenType,
+                Date.now(),
+                row.user_access_token_ciphertext,
+              ),
+            catch: (cause) => platformError("auth.persist-refreshed-github-token", cause),
+          });
+          return token.accessToken;
+        }),
+      );
     });
   }
 
@@ -1179,17 +1221,26 @@ function isLoopbackOrigin(origin: string) {
   }
 }
 
-async function decryptWithSecrets(
+function decryptWithSecretsEffect<E>(
   secrets: readonly string[],
-  decrypt: (secret: string) => Promise<string>,
+  decrypt: (secret: string) => Effect.Effect<string, E>,
 ) {
-  let lastError: unknown;
-  for (const secret of secrets) {
-    try {
-      return await decrypt(secret);
-    } catch (error) {
-      lastError = error;
-    }
+  const [first, ...rest] = secrets;
+  if (!first) {
+    return Effect.fail(
+      new GitHubTokenDecryptError({
+        message: "GitHub App token encryption key is unavailable.",
+        cause: null,
+      }),
+    );
   }
-  throw lastError ?? new Error("GitHub App token encryption key is unavailable.");
+  return Effect.firstSuccessOf([decrypt(first), ...rest.map(decrypt)]).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GitHubTokenDecryptError({
+          message: "GitHub App token could not be decrypted with the configured keys.",
+          cause,
+        }),
+    ),
+  );
 }

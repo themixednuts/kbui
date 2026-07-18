@@ -1,7 +1,6 @@
 import { Effect, Schema } from "effect";
 
 import { platformError } from "$lib/effect/errors";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import {
   GITHUB_REST_ACCEPT,
   GITHUB_REST_API_BASE_URL,
@@ -47,7 +46,7 @@ export interface GitHubAppUserInstallation {
 }
 
 export interface ListGitHubAppUserInstallationsResponse {
-  installations: GitHubAppUserInstallation[];
+  installations: ReadonlyArray<GitHubAppUserInstallation>;
   total_count: number;
 }
 
@@ -85,7 +84,7 @@ export class GitHubAppOAuthClient {
     this.#oauthBaseUrl = trimTrailingSlash(options.oauthBaseUrl ?? "https://github.com");
   }
 
-  exchangeUserCode(request: ExchangeGitHubAppUserCodeRequest): Promise<GitHubAppUserToken> {
+  exchangeUserCode(request: ExchangeGitHubAppUserCodeRequest) {
     const requestBody = new URLSearchParams({
       client_id: request.clientId,
       client_secret: request.clientSecret,
@@ -93,13 +92,13 @@ export class GitHubAppOAuthClient {
     });
     if (request.redirectUri) requestBody.set("redirect_uri", request.redirectUri);
 
-    return runWorkerEffect(
-      "github-app.exchange-user-code",
-      this.userTokenRequestEffect(`${this.#oauthBaseUrl}/login/oauth/access_token`, requestBody),
-    );
+    return this.userTokenRequestEffect(
+      `${this.#oauthBaseUrl}/login/oauth/access_token`,
+      requestBody,
+    ).pipe(Effect.withSpan("github-app.exchange-user-code"));
   }
 
-  refreshUserToken(request: RefreshGitHubAppUserTokenRequest): Promise<GitHubAppUserToken> {
+  refreshUserToken(request: RefreshGitHubAppUserTokenRequest) {
     const requestBody = new URLSearchParams({
       client_id: request.clientId,
       client_secret: request.clientSecret,
@@ -107,54 +106,60 @@ export class GitHubAppOAuthClient {
       refresh_token: request.refreshToken,
     });
 
-    return runWorkerEffect(
-      "github-app.refresh-user-token",
-      this.userTokenRequestEffect(`${this.#oauthBaseUrl}/login/oauth/access_token`, requestBody),
-    );
+    return this.userTokenRequestEffect(
+      `${this.#oauthBaseUrl}/login/oauth/access_token`,
+      requestBody,
+    ).pipe(Effect.withSpan("github-app.refresh-user-token"));
   }
 
-  listUserInstallations(token: string): Promise<ListGitHubAppUserInstallationsResponse> {
-    return runWorkerEffect(
-      "github-app.list-user-installations",
-      Effect.gen({ self: this }, function* () {
-        const response = yield* Effect.tryPromise({
-          try: () =>
-            this.#fetchImpl(`${this.#apiBaseUrl}/user/installations`, {
-              headers: {
-                Accept: GITHUB_REST_ACCEPT,
-                Authorization: `Bearer ${token}`,
-                "User-Agent": GITHUB_REST_USER_AGENT,
-                "X-GitHub-Api-Version": GITHUB_REST_API_VERSION,
-              },
-              method: "GET",
-            }),
-          catch: (cause) => platformError("github-app.list-user-installations", cause),
-        });
-        const body = yield* Effect.tryPromise({
-          try: () => response.json(),
-          catch: (cause) => platformError("github-app.decode-installations", cause),
-        });
-        if (!response.ok) {
-          return yield* Effect.fail(
-            platformError("github-app.list-user-installations", githubOAuthErrorMessage(body)),
-          );
-        }
-        const decoded = yield* Schema.decodeUnknownEffect(installationsSchema)(body);
-        return {
-          installations: decoded.installations.map((installation) => ({
-            ...installation,
-            account: installation.account ? { ...installation.account } : null,
-          })),
-          total_count: decoded.total_count,
-        };
-      }),
-    );
+  listUserInstallations(token: string) {
+    return Effect.gen({ self: this }, function* () {
+      const response = yield* Effect.tryPromise({
+        try: (signal) =>
+          this.#fetchImpl(`${this.#apiBaseUrl}/user/installations`, {
+            headers: {
+              Accept: GITHUB_REST_ACCEPT,
+              Authorization: `Bearer ${token}`,
+              "User-Agent": GITHUB_REST_USER_AGENT,
+              "X-GitHub-Api-Version": GITHUB_REST_API_VERSION,
+            },
+            method: "GET",
+            signal,
+          }),
+        catch: (cause) => platformError("github-app.list-user-installations", cause),
+      });
+      const responseText = yield* Effect.tryPromise({
+        try: () => response.text(),
+        catch: (cause) => platformError("github-app.decode-installations", cause),
+      });
+      if (!response.ok) {
+        return yield* Effect.fail(
+          platformError(
+            "github-app.list-user-installations",
+            githubOAuthErrorMessage(decodeJsonTextLenient(responseText)),
+          ),
+        );
+      }
+      const body = yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(
+        responseText,
+      ).pipe(Effect.mapError((cause) => platformError("github-app.decode-installations", cause)));
+      const decoded = yield* Schema.decodeUnknownEffect(installationsSchema)(body).pipe(
+        Effect.mapError((cause) => platformError("github-app.decode-installations", cause)),
+      );
+      return {
+        installations: decoded.installations.map((installation) => ({
+          ...installation,
+          account: installation.account ? { ...installation.account } : null,
+        })),
+        total_count: decoded.total_count,
+      } satisfies ListGitHubAppUserInstallationsResponse;
+    }).pipe(Effect.withSpan("github-app.list-user-installations"));
   }
 
   private userTokenRequestEffect(url: string, requestBody: URLSearchParams) {
     return Effect.gen({ self: this }, function* () {
       const response = yield* Effect.tryPromise({
-        try: () =>
+        try: (signal) =>
           this.#fetchImpl(url, {
             body: requestBody,
             headers: {
@@ -163,19 +168,28 @@ export class GitHubAppOAuthClient {
               "User-Agent": GITHUB_REST_USER_AGENT,
             },
             method: "POST",
+            signal,
           }),
         catch: (cause) => platformError("github-app.user-token-request", cause),
       });
-      const body = yield* Effect.tryPromise({
-        try: () => response.json(),
+      const responseText = yield* Effect.tryPromise({
+        try: () => response.text(),
         catch: (cause) => platformError("github-app.decode-user-token", cause),
       });
       if (!response.ok) {
         return yield* Effect.fail(
-          platformError("github-app.user-token-request", githubOAuthErrorMessage(body)),
+          platformError(
+            "github-app.user-token-request",
+            githubOAuthErrorMessage(decodeJsonTextLenient(responseText)),
+          ),
         );
       }
-      const decoded = yield* Schema.decodeUnknownEffect(userTokenSchema)(body);
+      const body = yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(
+        responseText,
+      ).pipe(Effect.mapError((cause) => platformError("github-app.decode-user-token", cause)));
+      const decoded = yield* Schema.decodeUnknownEffect(userTokenSchema)(body).pipe(
+        Effect.mapError((cause) => platformError("github-app.decode-user-token", cause)),
+      );
       return {
         accessToken: decoded.access_token,
         expiresIn: decoded.expires_in ?? null,
@@ -187,11 +201,23 @@ export class GitHubAppOAuthClient {
   }
 }
 
+function decodeJsonTextLenient(text: string): unknown {
+  const decoded = Schema.decodeUnknownResult(Schema.UnknownFromJsonString)(text);
+  return decoded._tag === "Success" ? decoded.success : text;
+}
+
 function githubOAuthErrorMessage(body: unknown) {
   if (body && typeof body === "object") {
-    const record = body as Record<string, unknown>;
-    for (const field of ["error_description", "message", "error"]) {
-      const value = record[field];
+    if ("error_description" in body) {
+      const value = body.error_description;
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    if ("message" in body) {
+      const value = body.message;
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    if ("error" in body) {
+      const value = body.error;
       if (typeof value === "string" && value.trim()) return value.trim();
     }
   }

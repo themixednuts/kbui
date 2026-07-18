@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import type { GitHubFirmwareBuildEvent } from "$lib/github-app/types";
 import { workflowRetryDelay } from "$lib/effect/cloudflare-workflow-retry";
-import { platformError } from "$lib/effect/errors";
+import { PlatformError, platformError } from "$lib/effect/errors";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 import type { FirmwareBuildAgent } from "./firmware-build-agent";
@@ -25,6 +25,10 @@ const trackingStepConfig = {
   timeout: "30 seconds",
 } as const;
 
+function firmwareBuildError(operation: string, cause: unknown) {
+  return cause instanceof PlatformError ? cause : platformError(operation, cause);
+}
+
 export class FirmwareBuildWorkflow extends AgentWorkflow<
   FirmwareBuildAgent,
   FirmwareBuildWorkflowParams
@@ -39,27 +43,15 @@ export class FirmwareBuildWorkflow extends AgentWorkflow<
         const params = event.payload;
         yield* Effect.tryPromise({
           try: () =>
-            step.do("mark github build waiting", trackingStepConfig, () =>
-              runWorkerEffect(
-                "workflow.firmware-build.mark-waiting",
-                Effect.gen({ self: this }, function* () {
-                  yield* Effect.tryPromise({
-                    try: () => this.agent.publish(params.initialEvent),
-                    catch: (cause) => platformError("firmware-build.publish-initial", cause),
-                  });
-                  yield* Effect.tryPromise({
-                    try: () =>
-                      this.agent.updateTracking(
-                        params.requestId,
-                        "waiting",
-                        "Waiting for GitHub Actions",
-                      ),
-                    catch: (cause) => platformError("firmware-build.mark-waiting", cause),
-                  });
-                }),
-              ),
-            ),
-          catch: (cause) => platformError("firmware-build.waiting-step", cause),
+            step.do("mark github build waiting", trackingStepConfig, async () => {
+              await this.agent.publish(params.initialEvent);
+              return this.agent.updateTracking(
+                params.requestId,
+                "waiting",
+                "Waiting for GitHub Actions",
+              );
+            }),
+          catch: (cause) => firmwareBuildError("firmware-build.waiting-step", cause),
         });
 
         const completion = yield* Effect.tryPromise({
@@ -70,7 +62,7 @@ export class FirmwareBuildWorkflow extends AgentWorkflow<
               // this event-driven without introducing a polling path.
               timeout: "365 days",
             }),
-          catch: (cause) => platformError("firmware-build.wait-for-terminal-event", cause),
+          catch: (cause) => firmwareBuildError("firmware-build.wait-for-terminal-event", cause),
         });
 
         yield* Effect.tryPromise({
@@ -78,13 +70,13 @@ export class FirmwareBuildWorkflow extends AgentWorkflow<
             step.do("mark github build complete", trackingStepConfig, () =>
               this.agent.completeTracking(completion.payload),
             ),
-          catch: (cause) => platformError("firmware-build.complete-step", cause),
+          catch: (cause) => firmwareBuildError("firmware-build.complete-step", cause),
         });
 
         const result = { requestId: params.requestId, terminal: true };
         yield* Effect.tryPromise({
           try: () => step.reportComplete(result),
-          catch: (cause) => platformError("firmware-build.report-complete", cause),
+          catch: (cause) => firmwareBuildError("firmware-build.report-complete", cause),
         });
         return result;
       }),

@@ -121,7 +121,11 @@ function connectSerialDeviceEffect(environment: TransportEnvironment) {
       catch: (cause) => platformError("zmk-studio.serial.open", cause),
     });
 
-    connection = new RealZmkStudioConnection(createSerialByteTransport(activePort));
+    const byteTransport = yield* Effect.try({
+      try: () => createSerialByteTransport(activePort),
+      catch: (cause) => platformError("zmk-studio.serial.transport", cause),
+    });
+    connection = new RealZmkStudioConnection(byteTransport);
     const activeConnection = connection;
     const [info, lock] = yield* Effect.all(
       [

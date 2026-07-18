@@ -2,12 +2,26 @@ import { Effect, FiberMap, Schedule } from "effect";
 import type { Attachment } from "svelte/attachments";
 
 import { runApp, startScopedApp } from "$lib/app/runtime";
-import { platformError } from "$lib/effect/errors";
+import { platformError, type PlatformError } from "$lib/effect/errors";
 import { effectAttachment } from "$lib/effect/svelte";
 
 const APP_CACHE_PREFIX = "klakson-cache-";
 const FORCE_REFRESH_MESSAGE = "klakson:force-refresh";
-const selfHealingSchedule = Schedule.jittered(Schedule.spaced("3 seconds"));
+const appUpdateRetrySchedule = Schedule.spaced("3 seconds").pipe(
+  Schedule.jittered,
+  Schedule.upTo({ times: 3 }),
+);
+
+function retryAppUpdate<A>(effect: Effect.Effect<A, PlatformError>) {
+  return effect.pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("App update operation failed").pipe(
+        Effect.annotateLogs({ operation: error.operation }),
+      ),
+    ),
+    Effect.retry({ schedule: appUpdateRetrySchedule }),
+  );
+}
 
 export const STALE_BUILD_DESCRIPTION =
   "This page is using outdated app files. Reload to switch to the current build.";
@@ -29,18 +43,22 @@ export function isChunkLoadFailure(value: unknown): boolean {
   ].some((fragment) => message.includes(fragment));
 }
 
-function checkForUpdateEffect(checkForUpdate: () => Promise<unknown>) {
-  return Effect.tryPromise({
-    try: checkForUpdate,
-    catch: (cause) => platformError("app-update.check", cause),
-  }).pipe(Effect.retry({ schedule: selfHealingSchedule }));
+export function checkForUpdateEffect(checkForUpdate: () => Promise<unknown>) {
+  return retryAppUpdate(
+    Effect.tryPromise({
+      try: checkForUpdate,
+      catch: (cause) => platformError("app-update.check", cause),
+    }),
+  );
 }
 
 function updateRegistrationEffect(registration: ServiceWorkerRegistration) {
-  return Effect.tryPromise({
-    try: () => registration.update(),
-    catch: (cause) => platformError("app-update.service-worker.update", cause),
-  }).pipe(Effect.retry({ schedule: selfHealingSchedule }));
+  return retryAppUpdate(
+    Effect.tryPromise({
+      try: () => registration.update(),
+      catch: (cause) => platformError("app-update.service-worker.update", cause),
+    }),
+  );
 }
 
 function appUpdateNotificationsEffect({ checkForUpdate, notify }: UpdateNotificationOptions) {
@@ -92,10 +110,12 @@ function appUpdateNotificationsEffect({ checkForUpdate, notify }: UpdateNotifica
     );
 
     if ("serviceWorker" in navigator) {
-      const registration = yield* Effect.tryPromise({
-        try: () => navigator.serviceWorker.ready,
-        catch: (cause) => platformError("app-update.service-worker.ready", cause),
-      }).pipe(Effect.retry({ schedule: selfHealingSchedule }));
+      const registration = yield* retryAppUpdate(
+        Effect.tryPromise({
+          try: () => navigator.serviceWorker.ready,
+          catch: (cause) => platformError("app-update.service-worker.ready", cause),
+        }),
+      );
       yield* watchServiceWorkerRegistration(registration, notify, run);
     }
 
@@ -112,12 +132,32 @@ export function setupAppUpdateNotifications(options: UpdateNotificationOptions):
   return startScopedApp("app-update.notifications", appUpdateNotificationsEffect(options));
 }
 
+export function deleteAppCacheEffect(
+  key: string,
+  deleteCache: (key: string) => Promise<boolean> = (cacheKey) => caches.delete(cacheKey),
+) {
+  return retryAppUpdate(
+    Effect.tryPromise({
+      try: () => deleteCache(key),
+      catch: (cause) => platformError("app-update.cache.delete", cause),
+    }).pipe(
+      Effect.filterOrFail(
+        (deleted) => deleted,
+        () => platformError("app-update.cache.delete", `Cache ${key} was not deleted.`),
+      ),
+      Effect.asVoid,
+    ),
+  );
+}
+
 const forceRefreshClientEffect = Effect.gen(function* () {
   if ("serviceWorker" in navigator) {
-    const registrations = yield* Effect.tryPromise({
-      try: () => navigator.serviceWorker.getRegistrations(),
-      catch: (cause) => platformError("app-update.service-worker.registrations", cause),
-    }).pipe(Effect.retry({ schedule: selfHealingSchedule }));
+    const registrations = yield* retryAppUpdate(
+      Effect.tryPromise({
+        try: () => navigator.serviceWorker.getRegistrations(),
+        catch: (cause) => platformError("app-update.service-worker.registrations", cause),
+      }),
+    );
 
     yield* Effect.forEach(
       registrations,
@@ -142,20 +182,15 @@ const forceRefreshClientEffect = Effect.gen(function* () {
   }
 
   if ("caches" in window) {
-    const keys = yield* Effect.tryPromise({
-      try: () => caches.keys(),
-      catch: (cause) => platformError("app-update.caches.keys", cause),
-    }).pipe(Effect.retry({ schedule: selfHealingSchedule }));
+    const keys = yield* retryAppUpdate(
+      Effect.tryPromise({
+        try: () => caches.keys(),
+        catch: (cause) => platformError("app-update.caches.keys", cause),
+      }),
+    );
     yield* Effect.forEach(
       keys.filter((key) => key.startsWith(APP_CACHE_PREFIX)),
-      (key) =>
-        Effect.tryPromise({
-          try: async () => {
-            const deleted = await caches.delete(key);
-            if (!deleted) throw new Error(`Cache ${key} was not deleted.`);
-          },
-          catch: (cause) => platformError("app-update.cache.delete", cause),
-        }).pipe(Effect.retry({ schedule: selfHealingSchedule })),
+      (key) => deleteAppCacheEffect(key),
       { concurrency: 4, discard: true },
     );
   }

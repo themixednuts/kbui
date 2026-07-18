@@ -3,6 +3,7 @@ import { tick } from "svelte";
 
 import { connectZmkStudioAndActivate } from "$lib/app/connect-flow";
 import { startLiveSyncCoordinatorEffectHarness } from "$lib/app/live-sync-coordinator-regression-harness.svelte";
+import { runApp } from "$lib/app/runtime";
 import { ShellStore } from "$lib/app/shell-store.svelte";
 import { WorkbenchStore } from "$lib/app/workbench-store.svelte";
 import { splitDemoKeyboard } from "$lib/keyboard/sample-boards";
@@ -46,7 +47,7 @@ describe("ZMK live sync engine", () => {
     workbench.selectKey("k2-4");
     workbench.applyKeycode("KC_B");
     engine.processChanges();
-    await engine.flush();
+    await runApp("test.zmk-live-sync.flush", engine.flushEffect());
 
     expect(requestsOf(zmk, "set_layer_binding").length - beforeWrites).toBe(1);
     expect(requestsOf(zmk, "get_keymap").length - beforeReads).toBe(1);
@@ -152,7 +153,7 @@ describe("ZMK live sync engine", () => {
     workbench.selectKey("k2-4");
     workbench.applyKeycode("CUSTOM_SAFE_RANGE");
     engine.processChanges();
-    await engine.flush();
+    await runApp("test.live-sync.flush", engine.flushEffect());
 
     expect(requestsOf(zmk, "set_layer_binding").length).toBe(beforeWrites);
     expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("CUSTOM_SAFE_RANGE");

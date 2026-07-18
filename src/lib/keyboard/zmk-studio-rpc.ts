@@ -1,8 +1,8 @@
 import * as protobuf from "protobufjs/minimal.js";
-import { Cause, Deferred, Effect, Fiber, Semaphore } from "effect";
+import { Cause, Deferred, Effect, Fiber, Schema, Semaphore } from "effect";
 
 import { forkApp, runApp } from "$lib/app/runtime";
-import { platformError } from "$lib/effect/errors";
+import { PlatformError, platformError } from "$lib/effect/errors";
 import {
   createZmkBehaviorCatalog,
   type ZmkBehaviorBinding,
@@ -974,7 +974,7 @@ export interface ZmkStudioRpcClientOptions {
 }
 
 interface PendingRpc {
-  deferred: Deferred.Deferred<ZmkStudioResponse, Error>;
+  deferred: Deferred.Deferred<ZmkStudioResponse, ZmkStudioRpcError>;
   request: ZmkStudioRequest;
 }
 
@@ -1067,21 +1067,71 @@ export function decodeZmkStudioResponseMessage(bytes: Uint8Array): StudioRespons
   return StudioResponseCodec.decode(bytes);
 }
 
-export class ZmkStudioRpcNoResponseError extends Error {
-  constructor() {
-    super("ZMK Studio RPC returned no response.");
-    Object.setPrototypeOf(this, ZmkStudioRpcNoResponseError.prototype);
+export class ZmkStudioRpcNoResponseError extends Schema.TaggedErrorClass<ZmkStudioRpcNoResponseError>()(
+  "ZmkStudioRpcNoResponseError",
+  {},
+) {
+  override get message() {
+    return "ZMK Studio RPC returned no response.";
   }
 }
 
-export class ZmkStudioRpcMetaError extends Error {
-  readonly condition: ErrorConditions;
-
-  constructor(condition: ErrorConditions) {
-    super(`ZMK Studio RPC meta error: ${metaErrorName(condition)}.`);
-    this.condition = condition;
-    Object.setPrototypeOf(this, ZmkStudioRpcMetaError.prototype);
+export class ZmkStudioRpcMetaError extends Schema.TaggedErrorClass<ZmkStudioRpcMetaError>()(
+  "ZmkStudioRpcMetaError",
+  { condition: Schema.Enum(ErrorConditions) },
+) {
+  override get message() {
+    return `ZMK Studio RPC meta error: ${metaErrorName(this.condition)}.`;
   }
+}
+
+export class ZmkStudioRpcClosedError extends Schema.TaggedErrorClass<ZmkStudioRpcClosedError>()(
+  "ZmkStudioRpcClosedError",
+  { message: Schema.String },
+) {}
+
+export class ZmkStudioRpcTimeoutError extends Schema.TaggedErrorClass<ZmkStudioRpcTimeoutError>()(
+  "ZmkStudioRpcTimeoutError",
+  { requestId: Schema.Int },
+) {
+  override get message() {
+    return `ZMK Studio RPC request ${this.requestId} timed out.`;
+  }
+}
+
+export class ZmkStudioRpcTransportClosedError extends Schema.TaggedErrorClass<ZmkStudioRpcTransportClosedError>()(
+  "ZmkStudioRpcTransportClosedError",
+  {},
+) {
+  override get message() {
+    return "ZMK Studio RPC transport closed unexpectedly.";
+  }
+}
+
+export class ZmkStudioRpcDecodeError extends Schema.TaggedErrorClass<ZmkStudioRpcDecodeError>()(
+  "ZmkStudioRpcDecodeError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
+
+export type ZmkStudioRpcError =
+  | PlatformError
+  | ZmkStudioRpcClosedError
+  | ZmkStudioRpcDecodeError
+  | ZmkStudioRpcMetaError
+  | ZmkStudioRpcNoResponseError
+  | ZmkStudioRpcTimeoutError
+  | ZmkStudioRpcTransportClosedError;
+
+function zmkStudioRpcDecodeError(operation: string, cause: unknown) {
+  return new ZmkStudioRpcDecodeError({
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
 }
 
 function metaErrorName(condition: ErrorConditions) {
@@ -1670,7 +1720,7 @@ export class ZmkStudioRpcClient {
   private readonly onNotification: ((notification: ZmkStudioNotification) => void) | undefined;
   private readonly pending = new Map<number, PendingRpc>();
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
-  private readonly readFiber: Fiber.Fiber<void, Error>;
+  private readonly readFiber: Fiber.Fiber<void, ZmkStudioRpcError>;
   private readonly timeoutMs: number;
   private readonly transport: ZmkStudioByteTransport;
   private readonly writeSemaphore = Semaphore.makeUnsafe(1);
@@ -1692,10 +1742,14 @@ export class ZmkStudioRpcClient {
     return runApp("zmk-studio.rpc.call", this.callEffect(request));
   }
 
-  callEffect(request: ZmkStudioRequest): Effect.Effect<ZmkStudioResponse, Error> {
+  callEffect(request: ZmkStudioRequest): Effect.Effect<ZmkStudioResponse, ZmkStudioRpcError> {
     let requestId = 0;
     return Effect.gen({ self: this }, function* () {
-      if (this.closed) return yield* Effect.fail(new Error("ZMK Studio RPC connection is closed."));
+      if (this.closed) {
+        return yield* Effect.fail(
+          new ZmkStudioRpcClosedError({ message: "ZMK Studio RPC connection is closed." }),
+        );
+      }
 
       requestId = this.nextRequestId;
       this.nextRequestId += 1;
@@ -1704,7 +1758,7 @@ export class ZmkStudioRpcClient {
         requestId,
       };
       const frame = frameZmkStudioPayload(encodeZmkStudioRequestMessage(protoRequest));
-      const deferred = yield* Deferred.make<ZmkStudioResponse, Error>();
+      const deferred = yield* Deferred.make<ZmkStudioResponse, ZmkStudioRpcError>();
       yield* Effect.sync(() => this.pending.set(requestId, { deferred, request }));
 
       yield* this.writeSemaphore.withPermit(
@@ -1717,9 +1771,7 @@ export class ZmkStudioRpcClient {
       return yield* Deferred.await(deferred).pipe(
         Effect.timeout(this.timeoutMs),
         Effect.mapError((error) =>
-          Cause.isTimeoutError(error)
-            ? new Error(`ZMK Studio RPC request ${requestId} timed out.`)
-            : error,
+          Cause.isTimeoutError(error) ? new ZmkStudioRpcTimeoutError({ requestId }) : error,
         ),
       );
     }).pipe(
@@ -1737,7 +1789,9 @@ export class ZmkStudioRpcClient {
       Effect.gen({ self: this }, function* () {
         if (this.closed) return;
         this.closed = true;
-        yield* this.failPendingEffect(new Error("ZMK Studio RPC connection closed."));
+        yield* this.failPendingEffect(
+          new ZmkStudioRpcClosedError({ message: "ZMK Studio RPC connection closed." }),
+        );
 
         const cleanups: ReadonlyArray<Effect.Effect<unknown, Error>> = [
           Fiber.interrupt(this.readFiber),
@@ -1778,7 +1832,7 @@ export class ZmkStudioRpcClient {
     );
   }
 
-  private failPendingEffect(error: Error): Effect.Effect<void> {
+  private failPendingEffect(error: ZmkStudioRpcError): Effect.Effect<void> {
     const pending = [...this.pending.values()];
     this.pending.clear();
     return Effect.forEach(pending, ({ deferred }) => Deferred.fail(deferred, error), {
@@ -1788,34 +1842,37 @@ export class ZmkStudioRpcClient {
 
   private handleRequestResponseEffect(
     response: StudioRequestResponseMessage,
-  ): Effect.Effect<void, Error> {
+  ): Effect.Effect<void, ZmkStudioRpcError> {
     const pending = this.pending.get(response.requestId);
     if (!pending) return Effect.void;
 
-    this.pending.delete(response.requestId);
-
     if (response.meta?.noResponse) {
-      return Deferred.fail(pending.deferred, new ZmkStudioRpcNoResponseError()).pipe(
+      this.pending.delete(response.requestId);
+      return Deferred.fail(pending.deferred, new ZmkStudioRpcNoResponseError({})).pipe(
         Effect.map(() => undefined),
       );
     }
     if (response.meta?.simpleError !== undefined) {
+      this.pending.delete(response.requestId);
       return Deferred.fail(
         pending.deferred,
-        new ZmkStudioRpcMetaError(response.meta.simpleError),
+        new ZmkStudioRpcMetaError({ condition: response.meta.simpleError }),
       ).pipe(Effect.map(() => undefined));
     }
 
     return Effect.try({
       try: () => zmkStudioResponseFromProtoRequestResponse(pending.request, response),
-      catch: (cause) => platformError("zmk-studio.decode-response", cause),
+      catch: (cause) => zmkStudioRpcDecodeError("zmk-studio.decode-response", cause),
     }).pipe(
+      Effect.tap(() => Effect.sync(() => this.pending.delete(response.requestId))),
       Effect.flatMap((decoded) => Deferred.succeed(pending.deferred, decoded)),
       Effect.map(() => undefined),
     );
   }
 
-  private handleResponseEffect(response: StudioResponseMessage): Effect.Effect<void, Error> {
+  private handleResponseEffect(
+    response: StudioResponseMessage,
+  ): Effect.Effect<void, ZmkStudioRpcError> {
     if (response.requestResponse) {
       return this.handleRequestResponseEffect(response.requestResponse);
     }
@@ -1832,7 +1889,7 @@ export class ZmkStudioRpcClient {
     return Effect.void;
   }
 
-  private readLoopEffect(): Effect.Effect<void, Error> {
+  private readLoopEffect(): Effect.Effect<void, ZmkStudioRpcError> {
     return Effect.suspend(() =>
       Effect.gen({ self: this }, function* () {
         const { done, value } = yield* Effect.tryPromise({
@@ -1841,13 +1898,13 @@ export class ZmkStudioRpcClient {
         });
         if (done) {
           if (this.closed) return;
-          return yield* Effect.fail(new Error("ZMK Studio RPC transport closed unexpectedly."));
+          return yield* Effect.fail(new ZmkStudioRpcTransportClosedError({}));
         }
         if (value) {
           const responses = yield* Effect.try({
             try: () =>
               this.deframer.push(value).map((payload) => decodeZmkStudioResponseMessage(payload)),
-            catch: (cause) => platformError("zmk-studio.decode-frame", cause),
+            catch: (cause) => zmkStudioRpcDecodeError("zmk-studio.decode-frame", cause),
           });
           yield* Effect.forEach(responses, (response) => this.handleResponseEffect(response), {
             discard: true,

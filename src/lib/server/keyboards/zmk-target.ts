@@ -1,10 +1,18 @@
-import { env } from "$env/dynamic/private";
-import { Deferred, Effect } from "effect";
+import {
+  Cache,
+  Config,
+  Duration,
+  Effect,
+  Exit,
+  Option,
+  Redacted,
+  Schedule,
+  Schema,
+  Semaphore,
+} from "effect";
 
 import type { FirmwareMetadata } from "$lib/keyboard/schema";
 import { uf2TargetForHardware } from "$lib/keyboard/uf2-families";
-import { retryTransient } from "$lib/effect/self-healing";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 const zmkOwner = "zmkfirmware";
 const zmkRepo = "zmk";
@@ -19,7 +27,15 @@ const githubApiBase = "https://api.github.com";
 // git/trees listing AND the per-file raw.githubusercontent.com fetches: the
 // hardware metadata catalog is parsed from the archive contents in memory.
 const zmkCodeloadArchiveUrl = `https://codeload.github.com/${zmkOwner}/${zmkRepo}/legacy.zip/refs/heads/${zmkBranch}`;
-const cacheTtlMs = 60 * 60 * 1000;
+const githubTokenConfig = Config.option(Config.redacted("GITHUB_TOKEN"));
+const zmkFetchRetrySchedule = Schedule.exponential("200 millis").pipe(
+  Schedule.jittered,
+  Schedule.upTo({ times: 3 }),
+);
+
+const zmkRevisionSchema = Schema.Struct({
+  sha: Schema.String.check(Schema.isMinLength(7)),
+});
 
 type HardwareMeta = {
   exposes: string[];
@@ -32,87 +48,185 @@ type HardwareMeta = {
 };
 
 type ZmkCatalog = { hardware: HardwareMeta[]; ref: string };
+type ZmkCatalogCacheKey = Option.Option<Redacted.Redacted<string>>;
 
-let catalogCache: { catalog: ZmkCatalog; expiresAt: number } | undefined;
-let catalogLoad: Deferred.Deferred<ZmkCatalog, ZmkCatalogFetchError> | undefined;
+export class ZmkCatalogFetchError extends Schema.TaggedErrorClass<ZmkCatalogFetchError>()(
+  "ZmkCatalogFetchError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+    status: Schema.optionalKey(Schema.Int),
+    cause: Schema.optionalKey(Schema.Defect()),
+  },
+) {}
 
-class ZmkCatalogFetchError extends Error {
-  constructor(
-    message: string,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "ZmkCatalogFetchError";
-  }
+function zmkCatalogFetchError(input: {
+  operation: string;
+  message: string;
+  retryable: boolean;
+  status?: number;
+  cause?: unknown;
+}) {
+  return new ZmkCatalogFetchError({
+    operation: input.operation,
+    message: input.message,
+    retryable: input.retryable,
+    ...(input.status === undefined ? {} : { status: input.status }),
+    ...(input.cause === undefined ? {} : { cause: input.cause }),
+  });
 }
 
-function githubHeaders(): HeadersInit {
-  const token = env.GITHUB_TOKEN;
+function isRetryableStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function githubHeaders(token: Redacted.Redacted<string>): HeadersInit {
   return {
     Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${Redacted.value(token)}`,
     "User-Agent": "kbui-zmk-target-resolver",
     "X-GitHub-Api-Version": "2022-11-28",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
-function fetchZmkRevisionEffect() {
-  return retryTransient(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(
-          `${githubApiBase}/repos/${zmkOwner}/${zmkRepo}/commits/${zmkBranch}`,
-          { headers: githubHeaders() },
-        );
-        if (!response.ok) {
-          throw new ZmkCatalogFetchError(
-            `ZMK catalog revision returned ${response.status}.`,
-            response.status === 408 || response.status === 429 || response.status >= 500,
-          );
-        }
-        const body = (await response.json()) as { sha?: unknown };
-        if (typeof body.sha !== "string" || body.sha.length < 7) {
-          throw new ZmkCatalogFetchError("ZMK catalog revision response was malformed.", false);
-        }
-        return body.sha;
-      },
-      catch: (error) =>
-        error instanceof ZmkCatalogFetchError
-          ? error
-          : new ZmkCatalogFetchError(
-              error instanceof Error ? error.message : "ZMK catalog revision request failed.",
-              true,
-            ),
-    }),
-  );
+const fetchResponseEffect = Effect.fn("ZmkCatalog.fetchResponse")(function* (
+  operation: string,
+  url: string,
+  headers: HeadersInit,
+) {
+  return yield* Effect.tryPromise({
+    try: (signal) => fetch(url, { headers, signal }),
+    catch: (cause) =>
+      zmkCatalogFetchError({
+        operation,
+        message: cause instanceof Error ? cause.message : "ZMK catalog request failed.",
+        retryable: true,
+        cause,
+      }),
+  });
+});
+
+const readResponseTextEffect = Effect.fn("ZmkCatalog.readResponseText")(function* (
+  operation: string,
+  response: Response,
+) {
+  return yield* Effect.tryPromise({
+    try: () => response.text(),
+    catch: (cause) =>
+      zmkCatalogFetchError({
+        operation,
+        message: "Could not read the ZMK catalog error response.",
+        retryable: isRetryableStatus(response.status),
+        status: response.status,
+        cause,
+      }),
+  });
+});
+
+const readResponseJsonEffect = Effect.fn("ZmkCatalog.readResponseJson")(function* (
+  operation: string,
+  response: Response,
+) {
+  return yield* Effect.tryPromise({
+    try: (): Promise<unknown> => response.json(),
+    catch: (cause) =>
+      zmkCatalogFetchError({
+        operation,
+        message: "ZMK catalog revision response was not valid JSON.",
+        retryable: false,
+        status: response.status,
+        cause,
+      }),
+  });
+});
+
+const readResponseBytesEffect = Effect.fn("ZmkCatalog.readResponseBytes")(function* (
+  operation: string,
+  response: Response,
+) {
+  const buffer = yield* Effect.tryPromise({
+    try: () => response.arrayBuffer(),
+    catch: (cause) =>
+      zmkCatalogFetchError({
+        operation,
+        message: "Could not read the ZMK catalog archive response.",
+        retryable: true,
+        status: response.status,
+        cause,
+      }),
+  });
+  return new Uint8Array(buffer);
+});
+
+const requireSuccessfulResponseEffect = Effect.fn("ZmkCatalog.requireSuccessfulResponse")(
+  function* (operation: string, label: string, response: Response) {
+    if (response.ok) return response;
+
+    const body = yield* readResponseTextEffect(`${operation}.readErrorBody`, response);
+    return yield* Effect.fail(
+      zmkCatalogFetchError({
+        operation,
+        message: `${label} returned ${response.status}: ${body.slice(0, 400)}`,
+        retryable: isRetryableStatus(response.status),
+        status: response.status,
+      }),
+    );
+  },
+);
+
+function retryZmkFetch<A>(effect: Effect.Effect<A, ZmkCatalogFetchError>) {
+  return Effect.retry(effect, {
+    schedule: zmkFetchRetrySchedule,
+    while: (error) => error.retryable,
+  });
 }
 
-function fetchZmkArchiveEffect(ref: string) {
-  return retryTransient(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(`${githubApiBase}/repos/${zmkOwner}/${zmkRepo}/zipball/${ref}`, {
-          headers: githubHeaders(),
-        });
-        if (!response.ok) {
-          const body = await response.text();
-          throw new ZmkCatalogFetchError(
-            `ZMK catalog archive returned ${response.status}: ${body.slice(0, 400)}`,
-            response.status === 408 || response.status === 429 || response.status >= 500,
-          );
-        }
-        return new Uint8Array(await response.arrayBuffer());
-      },
-      catch: (error) =>
-        error instanceof ZmkCatalogFetchError
-          ? error
-          : new ZmkCatalogFetchError(
-              error instanceof Error ? error.message : "ZMK catalog archive request failed.",
-              true,
-            ),
-    }),
+const fetchZmkRevisionEffect = Effect.fn("ZmkCatalog.fetchRevision")(function* (
+  token: Redacted.Redacted<string>,
+) {
+  const operation = "ZmkCatalog.fetchRevision";
+  const response = yield* fetchResponseEffect(
+    `${operation}.request`,
+    `${githubApiBase}/repos/${zmkOwner}/${zmkRepo}/commits/${zmkBranch}`,
+    githubHeaders(token),
   );
-}
+  const successful = yield* requireSuccessfulResponseEffect(
+    `${operation}.status`,
+    "ZMK catalog revision",
+    response,
+  );
+  const body = yield* readResponseJsonEffect(`${operation}.decodeJson`, successful);
+  return yield* Schema.decodeUnknownEffect(zmkRevisionSchema)(body).pipe(
+    Effect.mapError((cause) =>
+      zmkCatalogFetchError({
+        operation: `${operation}.decodeResponse`,
+        message: "ZMK catalog revision response was malformed.",
+        retryable: false,
+        status: successful.status,
+        cause,
+      }),
+    ),
+  );
+});
+
+const fetchZmkArchiveEffect = Effect.fn("ZmkCatalog.fetchArchive")(function* (
+  ref: string,
+  token: Redacted.Redacted<string>,
+) {
+  const operation = "ZmkCatalog.fetchArchive";
+  const response = yield* fetchResponseEffect(
+    `${operation}.request`,
+    `${githubApiBase}/repos/${zmkOwner}/${zmkRepo}/zipball/${ref}`,
+    githubHeaders(token),
+  );
+  const successful = yield* requireSuccessfulResponseEffect(
+    `${operation}.status`,
+    "ZMK catalog archive",
+    response,
+  );
+  return yield* readResponseBytesEffect(`${operation}.readBody`, successful);
+});
 
 /**
  * Fetches the current archive straight from codeload, bypassing the
@@ -120,32 +234,20 @@ function fetchZmkArchiveEffect(ref: string) {
  * entirely. Used whenever no GitHub token is configured, and as the fallback
  * when the authenticated revision lookup fails.
  */
-function fetchZmkArchiveFromCodeloadEffect() {
-  return retryTransient(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(zmkCodeloadArchiveUrl, {
-          headers: { "User-Agent": "kbui-zmk-target-resolver" },
-        });
-        if (!response.ok) {
-          const body = await response.text();
-          throw new ZmkCatalogFetchError(
-            `ZMK codeload archive returned ${response.status}: ${body.slice(0, 400)}`,
-            response.status === 408 || response.status === 429 || response.status >= 500,
-          );
-        }
-        return new Uint8Array(await response.arrayBuffer());
-      },
-      catch: (error) =>
-        error instanceof ZmkCatalogFetchError
-          ? error
-          : new ZmkCatalogFetchError(
-              error instanceof Error ? error.message : "ZMK codeload archive request failed.",
-              true,
-            ),
-    }),
-  );
-}
+const fetchZmkArchiveFromCodeloadEffect = Effect.fn("ZmkCatalog.fetchCodeloadArchive")(
+  function* () {
+    const operation = "ZmkCatalog.fetchCodeloadArchive";
+    const response = yield* fetchResponseEffect(`${operation}.request`, zmkCodeloadArchiveUrl, {
+      "User-Agent": "kbui-zmk-target-resolver",
+    });
+    const successful = yield* requireSuccessfulResponseEffect(
+      `${operation}.status`,
+      "ZMK codeload archive",
+      response,
+    );
+    return yield* readResponseBytesEffect(`${operation}.readBody`, successful);
+  },
+);
 
 /**
  * Recovers the resolved commit from an unzipped archive's root directory
@@ -213,87 +315,105 @@ export function parseZmkHardwareMetadata(path: string, yaml: string): HardwareMe
   };
 }
 
-function createZmkCatalogEffect(): Effect.Effect<ZmkCatalog, ZmkCatalogFetchError> {
-  return Effect.gen(function* () {
-    const { unzipSync } = yield* Effect.tryPromise({
-      try: () => import("fflate"),
-      catch: (cause) =>
-        new ZmkCatalogFetchError(
-          cause instanceof Error ? cause.message : "Could not load the archive decoder.",
-          false,
-        ),
-    });
-    // Only spend the commits API's rate-limit budget when a token is actually
-    // configured to raise it. Without one (production has no GITHUB_TOKEN
-    // secret today), or if the authenticated lookup fails, fall back to the
-    // tokenless codeload archive and read the resolved commit off its root
-    // directory name instead.
-    const pinnedRef = env.GITHUB_TOKEN
-      ? yield* Effect.matchEffect(fetchZmkRevisionEffect(), {
-          onFailure: () => Effect.succeed(undefined),
-          onSuccess: (sha) => Effect.succeed(sha),
-        })
-      : undefined;
-
-    const archiveBytes = pinnedRef
-      ? yield* fetchZmkArchiveEffect(pinnedRef)
-      : yield* fetchZmkArchiveFromCodeloadEffect();
-
-    // Only the ~150 tiny hardware-metadata files are decompressed; the rest of
-    // the multi-megabyte archive (firmware sources, docs) is skipped entirely
-    // to stay inside the Workers Free-plan CPU budget.
-    const archive = yield* Effect.try({
-      try: () => unzipSync(archiveBytes, { filter: (file) => file.name.endsWith(".zmk.yml") }),
-      catch: (cause) =>
-        new ZmkCatalogFetchError(
-          cause instanceof Error ? cause.message : "ZMK catalog archive was malformed.",
-          false,
-        ),
-    });
-    const ref = pinnedRef ?? deriveRevisionFromArchive(archive) ?? zmkBranch;
-    const decoder = new TextDecoder();
-    const hardware: HardwareMeta[] = [];
-    for (const [archivePath, bytes] of Object.entries(archive)) {
-      // Strip the `<owner>-<repo>-<shortsha>/` archive root to recover the
-      // in-repo path the matching heuristics score against.
-      const separator = archivePath.indexOf("/");
-      const path = separator === -1 ? undefined : archivePath.slice(separator + 1);
-      if (!path) continue;
-      const meta = parseZmkHardwareMetadata(path, decoder.decode(bytes));
-      if (meta) hardware.push(meta);
-    }
-    return { hardware, ref };
+const createZmkCatalogEffect = Effect.fn("ZmkCatalog.create")(function* (
+  token: ZmkCatalogCacheKey,
+) {
+  const { unzipSync } = yield* Effect.tryPromise({
+    try: () => import("fflate"),
+    catch: (cause) =>
+      zmkCatalogFetchError({
+        operation: "ZmkCatalog.loadArchiveDecoder",
+        message: cause instanceof Error ? cause.message : "Could not load the archive decoder.",
+        retryable: false,
+        cause,
+      }),
   });
-}
 
-function loadZmkCatalogEffect(): Effect.Effect<ZmkCatalog, ZmkCatalogFetchError> {
-  return Effect.suspend(() => {
-    if (catalogCache && catalogCache.expiresAt > Date.now()) {
-      return Effect.succeed(catalogCache.catalog);
-    }
-    if (catalogLoad) return Deferred.await(catalogLoad);
-
-    const deferred = Deferred.makeUnsafe<ZmkCatalog, ZmkCatalogFetchError>();
-    catalogLoad = deferred;
-    return Effect.matchEffect(createZmkCatalogEffect(), {
-      onFailure: (error) =>
-        Effect.sync(() => Deferred.doneUnsafe(deferred, Effect.fail(error))).pipe(
-          Effect.andThen(Effect.fail(error)),
+  // Only spend the commits API's rate-limit budget when a token is actually
+  // configured to raise it. Without one (production has no GITHUB_TOKEN
+  // secret today), or if the authenticated lookup fails, fall back to the
+  // tokenless codeload archive and read the resolved commit off its root
+  // directory name instead.
+  const pinnedRef = Option.isSome(token)
+    ? yield* retryZmkFetch(fetchZmkRevisionEffect(token.value)).pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("ZmkCatalog.revisionLookupFailed").pipe(
+            Effect.annotateLogs({ operation: error.operation, status: error.status }),
+          ),
         ),
-      onSuccess: (catalog) =>
-        Effect.sync(() => {
-          catalogCache = { catalog, expiresAt: Date.now() + cacheTtlMs };
-          Deferred.doneUnsafe(deferred, Effect.succeed(catalog));
-        }).pipe(Effect.as(catalog)),
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (catalogLoad === deferred) catalogLoad = undefined;
-        }),
-      ),
-    );
+        Effect.catchTag("ZmkCatalogFetchError", () => Effect.succeed(undefined)),
+      )
+    : undefined;
+
+  const archiveBytes =
+    Option.isSome(token) && pinnedRef
+      ? yield* retryZmkFetch(fetchZmkArchiveEffect(pinnedRef.sha, token.value))
+      : yield* retryZmkFetch(fetchZmkArchiveFromCodeloadEffect());
+
+  // Only the ~150 tiny hardware-metadata files are decompressed; the rest of
+  // the multi-megabyte archive (firmware sources, docs) is skipped entirely
+  // to stay inside the Workers Free-plan CPU budget.
+  const archive = yield* Effect.try({
+    try: () => unzipSync(archiveBytes, { filter: (file) => file.name.endsWith(".zmk.yml") }),
+    catch: (cause) =>
+      zmkCatalogFetchError({
+        operation: "ZmkCatalog.unzipArchive",
+        message: cause instanceof Error ? cause.message : "ZMK catalog archive was malformed.",
+        retryable: false,
+        cause,
+      }),
   });
-}
+  const ref = pinnedRef?.sha ?? deriveRevisionFromArchive(archive) ?? zmkBranch;
+  const decoder = new TextDecoder();
+  const hardware: HardwareMeta[] = [];
+  for (const [archivePath, bytes] of Object.entries(archive)) {
+    // Strip the `<owner>-<repo>-<shortsha>/` archive root to recover the
+    // in-repo path the matching heuristics score against.
+    const separator = archivePath.indexOf("/");
+    const path = separator === -1 ? undefined : archivePath.slice(separator + 1);
+    if (!path) continue;
+    const meta = parseZmkHardwareMetadata(path, decoder.decode(bytes));
+    if (meta) hardware.push(meta);
+  }
+  return { hardware, ref };
+});
+
+// The worker module is the lifetime owner. Cache supplies bounded storage,
+// concurrent single-flight lookup, Clock-based TTL, and interruption-safe
+// waiter completion. The semaphore only guards the one-time Cache allocation;
+// it never participates in catalog lookup. Failed loads receive zero TTL.
+let zmkCatalogCache: Cache.Cache<ZmkCatalogCacheKey, ZmkCatalog, ZmkCatalogFetchError> | undefined;
+const zmkCatalogCacheLock = Semaphore.makeUnsafe(1);
+
+const zmkCatalogCacheEffect = Effect.fn("ZmkCatalog.cache")(function* () {
+  if (zmkCatalogCache) return zmkCatalogCache;
+
+  return yield* zmkCatalogCacheLock.withPermits(1)(
+    Effect.gen(function* () {
+      if (zmkCatalogCache) return zmkCatalogCache;
+
+      const created = yield* Cache.makeWith<ZmkCatalogCacheKey, ZmkCatalog, ZmkCatalogFetchError>(
+        createZmkCatalogEffect,
+        {
+          capacity: 4,
+          timeToLive: (exit) => (Exit.isSuccess(exit) ? "1 hour" : Duration.zero),
+        },
+      );
+      zmkCatalogCache = created;
+      return created;
+    }),
+  );
+});
+
+const loadZmkCatalogEffect = Effect.fn("ZmkCatalog.load")(function* () {
+  const token = yield* githubTokenConfig;
+  const cache = yield* zmkCatalogCacheEffect();
+  return yield* Cache.get(cache, token);
+});
+
+export const invalidateZmkCatalogCacheEffect = Effect.suspend(() =>
+  zmkCatalogCacheEffect().pipe(Effect.flatMap(Cache.invalidateAll)),
+).pipe(Effect.withSpan("ZmkCatalog.invalidate"));
 
 function pathScore(path: string, identity: string) {
   const identityText = normalized(identity);
@@ -337,19 +457,15 @@ function boardIdentityScore(board: HardwareMeta, identity: string) {
   );
 }
 
-function resolveZmkFirmwareMetadataEffect(input: {
-  deviceName: string;
-  manufacturer?: string;
-}): Effect.Effect<FirmwareMetadata | undefined, ZmkCatalogFetchError> {
-  return Effect.gen(function* () {
+export const resolveZmkFirmwareMetadataEffect = Effect.fn("ZmkTarget.resolveFirmwareMetadata")(
+  function* (input: { deviceName: string; manufacturer?: string }) {
     const identity = `${input.deviceName} ${input.manufacturer ?? ""}`.trim();
     const catalog = yield* loadZmkCatalogEffect();
     const loaded = catalog.hardware
       .map((item) => ({ item, score: pathScore(item.path, identity) }))
       .filter((candidate) => candidate.score > 0)
       .sort(
-        (left, right) =>
-          right.score - left.score || left.item.path.localeCompare(right.item.path),
+        (left, right) => right.score - left.score || left.item.path.localeCompare(right.item.path),
       )
       .slice(0, 8)
       .map((candidate) => candidate.item);
@@ -392,23 +508,20 @@ function resolveZmkFirmwareMetadataEffect(input: {
         uf2FamilyId: uf2?.familyId,
         uf2VolumeLabels: uf2?.volumeLabels,
       },
-    };
-  });
-}
+    } satisfies FirmwareMetadata;
+  },
+);
 
-export function resolveZmkFirmwareMetadata(input: {
-  deviceName: string;
-  manufacturer?: string;
-}): Promise<FirmwareMetadata | undefined> {
-  // Best-effort: the ZMK-BLE connect flow must never hard-fail just because
-  // the hardware-metadata lookup couldn't run (rate limit, outage, malformed
-  // archive). Any failure degrades to "no metadata", matching the VIA/QMK
-  // detail paths.
-  return runWorkerEffect(
-    "zmk.resolve-firmware-metadata",
-    Effect.matchEffect(resolveZmkFirmwareMetadataEffect(input), {
-      onFailure: () => Effect.succeed(undefined),
-      onSuccess: (metadata) => Effect.succeed(metadata),
-    }),
+/**
+ * Best-effort boundary for the ZMK-BLE connect flow. Catalog outages, provider
+ * rejection, malformed archives, and config failures all truthfully degrade to
+ * "no metadata" instead of rejecting the remote query.
+ */
+export const resolveZmkFirmwareMetadataOrUndefinedEffect = Effect.fn(
+  "ZmkTarget.resolveFirmwareMetadataOrUndefined",
+)(function* (input: { deviceName: string; manufacturer?: string }) {
+  return yield* resolveZmkFirmwareMetadataEffect(input).pipe(
+    Effect.tapError((error) => Effect.logWarning("ZmkTarget.metadataUnavailable", error)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
-}
+});

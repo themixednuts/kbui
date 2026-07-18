@@ -1,5 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
+import { BoundaryDecodeError } from "$lib/effect/errors";
 import {
   decodeSavePointFromStorageEffect,
   decodeWorkspaceForkFromStorageEffect,
@@ -20,6 +21,27 @@ export interface WorkbenchVersionGraph {
   updatedAt: string;
 }
 
+const nonEmptyString = Schema.String.check(
+  Schema.makeFilter((value) =>
+    value.trim().length > 0 ? undefined : "must be a non-empty string",
+  ),
+);
+const isoTimestamp = nonEmptyString.check(
+  Schema.makeFilter((value) =>
+    Number.isFinite(Date.parse(value)) ? undefined : "must be an ISO timestamp",
+  ),
+);
+const workbenchVersionGraphBoundarySchema = Schema.Struct({
+  activeVariantId: nonEmptyString,
+  deletedForkIds: Schema.mutable(Schema.Array(Schema.String)),
+  deletedSavePointIds: Schema.mutable(Schema.Array(Schema.String)),
+  forks: Schema.mutable(Schema.Array(Schema.Unknown)),
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  savePoints: Schema.mutable(Schema.Array(Schema.Unknown)),
+  selectedSavePointId: Schema.NullOr(nonEmptyString),
+  updatedAt: isoTimestamp,
+});
+
 export function emptyWorkbenchVersionGraph(): WorkbenchVersionGraph {
   return {
     activeVariantId: MAIN_WORKBENCH_VARIANT_ID,
@@ -33,31 +55,20 @@ export function emptyWorkbenchVersionGraph(): WorkbenchVersionGraph {
   };
 }
 
-export function decodeWorkbenchVersionGraphEffect(value: unknown) {
-  return Effect.gen(function* () {
-    const input = yield* Effect.try({
-      try: () => {
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-          throw new Error("Version graph must be an object.");
-        }
-        const graph = value as Record<string, unknown>;
-        if (!Array.isArray(graph.forks) || !Array.isArray(graph.savePoints)) {
-          throw new Error("Version graph forks and save points must be arrays.");
-        }
-        return {
-          activeVariantId: requiredString(graph.activeVariantId, "activeVariantId"),
-          deletedForkIds: stringArray(graph.deletedForkIds, "deletedForkIds"),
-          deletedSavePointIds: stringArray(graph.deletedSavePointIds, "deletedSavePointIds"),
-          forks: graph.forks,
-          revision: finiteNonNegativeInteger(graph.revision, "revision"),
-          savePoints: graph.savePoints,
-          selectedSavePointId: optionalString(graph.selectedSavePointId, "selectedSavePointId"),
-          updatedAt: isoString(graph.updatedAt, "updatedAt"),
-        };
-      },
-      catch: (error) =>
-        new Error(error instanceof Error ? error.message : "Version graph could not be decoded."),
-    });
+export const decodeWorkbenchVersionGraphEffect = Effect.fn("WorkbenchVersionGraph.decode")(
+  function* (value: unknown) {
+    const input = yield* Schema.decodeUnknownEffect(workbenchVersionGraphBoundarySchema)(
+      value,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BoundaryDecodeError({
+            operation: "workbench.decode-version-graph",
+            message: `Version graph did not match its contract: ${String(cause)}`,
+            cause,
+          }),
+      ),
+    );
     const forks = yield* Effect.all(
       input.forks.map((fork) => decodeWorkspaceForkFromStorageEffect(fork)),
       { concurrency: "unbounded" },
@@ -67,9 +78,16 @@ export function decodeWorkbenchVersionGraphEffect(value: unknown) {
       { concurrency: "unbounded" },
     );
 
-    return normalizeWorkbenchVersionGraph({ ...input, forks, savePoints });
-  });
-}
+    return normalizeWorkbenchVersionGraph({
+      ...input,
+      deletedForkIds: unionStrings(input.deletedForkIds),
+      deletedSavePointIds: unionStrings(input.deletedSavePointIds),
+      forks,
+      savePoints,
+      updatedAt: new Date(input.updatedAt).toISOString(),
+    });
+  },
+);
 
 export function mergeWorkbenchVersionGraphs(
   left: WorkbenchVersionGraph,
@@ -159,36 +177,4 @@ function newestForVariant(savePoints: SavePoint[], variantId: string) {
 
 function unionStrings(...collections: string[][]): string[] {
   return [...new Set(collections.flat())].sort();
-}
-
-function requiredString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${field} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function optionalString(value: unknown, field: string): string | null {
-  if (value === null || value === undefined) return null;
-  return requiredString(value, field);
-}
-
-function stringArray(value: unknown, field: string): string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error(`${field} must be an array of strings.`);
-  }
-  return unionStrings(value);
-}
-
-function finiteNonNegativeInteger(value: unknown, field: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new Error(`${field} must be a non-negative integer.`);
-  }
-  return value;
-}
-
-function isoString(value: unknown, field: string): string {
-  const text = requiredString(value, field);
-  if (!Number.isFinite(Date.parse(text))) throw new Error(`${field} must be an ISO timestamp.`);
-  return new Date(text).toISOString();
 }

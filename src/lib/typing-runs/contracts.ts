@@ -1,3 +1,7 @@
+import { Effect, Schema } from "effect";
+
+import { BoundaryDecodeError } from "$lib/effect/errors";
+
 export const TYPING_RUNS_AGENT_NAME = "global-typing-runs";
 
 export type MonkeytypeRunSource = "monkeytype-extension-dom-v1";
@@ -164,6 +168,116 @@ export interface TypingRunStatsGroup {
   latestCapturedAt: string | null;
 }
 
+const requiredText = (minimum: number, maximum: number) =>
+  Schema.Trim.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
+const optionalText = (maximum: number) =>
+  Schema.optionalKey(Schema.NullOr(Schema.Trim.check(Schema.isMaxLength(maximum))));
+const optionalNumber = (minimum: number, maximum: number) =>
+  Schema.optionalKey(Schema.NullOr(Schema.Finite.check(Schema.isBetween({ minimum, maximum }))));
+const optionalInteger = (minimum: number, maximum: number) =>
+  Schema.optionalKey(Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum, maximum }))));
+const optionalBoolean = Schema.optionalKey(Schema.NullOr(Schema.Boolean));
+const isoTimestamp = requiredText(1, 80).check(
+  Schema.makeFilter((value) =>
+    Number.isFinite(Date.parse(value)) ? undefined : "must be an ISO date string",
+  ),
+);
+const optionalIsoTimestamp = Schema.optionalKey(
+  Schema.NullOr(
+    Schema.Trim.check(Schema.isMaxLength(80)).check(
+      Schema.makeFilter((value) =>
+        value === "" || Number.isFinite(Date.parse(value))
+          ? undefined
+          : "must be an ISO date string",
+      ),
+    ),
+  ),
+);
+
+export const KeyboardChoiceBoundarySchema = Schema.Struct({
+  keyboardId: requiredText(1, 160),
+  displayName: requiredText(1, 160),
+  profileId: optionalText(160),
+  forkId: optionalText(160),
+  catalogId: optionalText(160),
+  vendorId: optionalInteger(0, 0xffff),
+  productId: optionalInteger(0, 0xffff),
+  boardName: optionalText(160),
+});
+
+export const LayoutChoiceBoundarySchema = Schema.Struct({
+  layoutId: requiredText(1, 180),
+  displayName: requiredText(1, 160),
+  variantId: optionalText(160),
+  layerNames: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(Schema.Trim.check(Schema.isMaxLength(80))).check(Schema.isMaxLength(32)),
+    ),
+  ),
+  layoutHash: optionalText(160),
+});
+
+export const PairDeviceRequestBoundarySchema = Schema.Struct({
+  code: requiredText(4, 128),
+  installId: requiredText(1, 160),
+  extensionVersion: requiredText(1, 80),
+  label: optionalText(120),
+  pairedAt: optionalIsoTimestamp,
+});
+
+export const KeyboardChoicesBoundarySchema = Schema.Struct({
+  keyboards: Schema.Array(KeyboardChoiceBoundarySchema).check(Schema.isMaxLength(100)),
+  layouts: Schema.Array(LayoutChoiceBoundarySchema).check(Schema.isMaxLength(200)),
+});
+
+export const MonkeytypeRunCaptureBoundarySchema = Schema.Struct({
+  source: Schema.Literals(["monkeytype-extension-dom-v1"]),
+  capturedAt: isoTimestamp,
+  monkeytypeResultId: optionalText(160),
+  monkeytypeTimestamp: optionalNumber(0, 99_999_999_999_999),
+  wpm: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1_000 })),
+  rawWpm: optionalNumber(0, 1_500),
+  acc: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+  consistency: optionalNumber(0, 100),
+  testDuration: optionalNumber(0, 86_400),
+  mode: optionalText(80),
+  mode2: optionalText(80),
+  testTypeText: optionalText(240),
+  language: optionalText(80),
+  difficulty: optionalText(80),
+  punctuation: optionalBoolean,
+  numbers: optionalBoolean,
+  keyboard: KeyboardChoiceBoundarySchema,
+  layout: LayoutChoiceBoundarySchema,
+  extension: Schema.Struct({
+    installId: requiredText(1, 160),
+    version: requiredText(1, 80),
+    parserVersion: requiredText(1, 80),
+  }),
+});
+
+export const IngestRunRequestBoundarySchema = Schema.Struct({
+  capture: MonkeytypeRunCaptureBoundarySchema,
+  idempotencyKey: optionalText(512),
+});
+
+export const TaggedRunsFilterBoundarySchema = Schema.UndefinedOr(
+  Schema.Struct({
+    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+    keyboardId: optionalText(160),
+    layoutId: optionalText(160),
+    mode: optionalText(80),
+  }),
+);
+
+export const TypingRunStatsGroupBySchema = Schema.Literals([
+  "keyboard",
+  "layout",
+  "keyboard-layout",
+]);
+
+export const IdempotencyKeySchema = requiredText(1, 512);
+
 export const runIdempotencyKeySpec = {
   version: "monkeytype-run-dom-v1",
   directResultFormat: "monkeytype-result:<monkeytypeResultId>",
@@ -202,244 +316,173 @@ export function idempotencyKeyForCapture(capture: MonkeytypeRunCapture): string 
   return compactKeyPart(`dom:${parts.map((part) => part.replace(/\|/g, "/")).join("|")}`);
 }
 
-export function normalizePairDeviceRequest(raw: unknown): PairDeviceRequest {
-  const value = requireRecord(raw, "Pair request");
+export const decodePairDeviceRequestEffect = Effect.fn(
+  "TypingRunContracts.decodePairDeviceRequest",
+)((raw: unknown) =>
+  Schema.decodeUnknownEffect(PairDeviceRequestBoundarySchema)(raw).pipe(
+    Effect.map(normalizePairDeviceRequest),
+    mapBoundaryError("typing-runs.decode-pair-device-request"),
+  ),
+);
+
+export const decodeKeyboardChoiceEffect = Effect.fn("TypingRunContracts.decodeKeyboardChoice")(
+  (raw: unknown) =>
+    Schema.decodeUnknownEffect(KeyboardChoiceBoundarySchema)(raw).pipe(
+      Effect.map(normalizeKeyboardChoice),
+      mapBoundaryError("typing-runs.decode-keyboard-choice"),
+    ),
+);
+
+export const decodeLayoutChoiceEffect = Effect.fn("TypingRunContracts.decodeLayoutChoice")(
+  (raw: unknown) =>
+    Schema.decodeUnknownEffect(LayoutChoiceBoundarySchema)(raw).pipe(
+      Effect.map(normalizeLayoutChoice),
+      mapBoundaryError("typing-runs.decode-layout-choice"),
+    ),
+);
+
+export const decodeSetKeyboardChoicesRequestEffect = Effect.fn(
+  "TypingRunContracts.decodeSetKeyboardChoicesRequest",
+)((raw: unknown) =>
+  Schema.decodeUnknownEffect(KeyboardChoicesBoundarySchema)(raw).pipe(
+    Effect.map(
+      (value): SetKeyboardChoicesRequest => ({
+        keyboards: value.keyboards.map(normalizeKeyboardChoice),
+        layouts: value.layouts.map(normalizeLayoutChoice),
+      }),
+    ),
+    mapBoundaryError("typing-runs.decode-keyboard-choices"),
+  ),
+);
+
+export const decodeKeyboardChoicesResponseEffect = decodeSetKeyboardChoicesRequestEffect;
+
+export const decodeMonkeytypeRunCaptureEffect = Effect.fn(
+  "TypingRunContracts.decodeMonkeytypeRunCapture",
+)((raw: unknown) =>
+  Schema.decodeUnknownEffect(MonkeytypeRunCaptureBoundarySchema)(raw).pipe(
+    Effect.map(normalizeMonkeytypeRunCapture),
+    mapBoundaryError("typing-runs.decode-monkeytype-run-capture"),
+  ),
+);
+
+export const decodeIngestRunRequestEffect = Effect.fn("TypingRunContracts.decodeIngestRunRequest")(
+  function* (raw: unknown) {
+    const value = yield* Schema.decodeUnknownEffect(IngestRunRequestBoundarySchema)(raw).pipe(
+      mapBoundaryError("typing-runs.decode-ingest-run-request"),
+    );
+    const capture = normalizeMonkeytypeRunCapture(value.capture);
+    const idempotencyKey = yield* decodeIdempotencyKeyEffect(
+      optionalValue(value.idempotencyKey) ?? idempotencyKeyForCapture(capture),
+    );
+    return { capture, idempotencyKey } satisfies IngestRunRequest;
+  },
+);
+
+export const decodeTaggedRunsFilterEffect = Effect.fn("TypingRunContracts.decodeTaggedRunsFilter")(
+  (raw: unknown) =>
+    Schema.decodeUnknownEffect(TaggedRunsFilterBoundarySchema)(raw).pipe(
+      Effect.map(
+        (value): TaggedRunsFilter => ({
+          limit: value?.limit ?? 50,
+          keyboardId: optionalValue(value?.keyboardId),
+          layoutId: optionalValue(value?.layoutId),
+          mode: optionalValue(value?.mode),
+        }),
+      ),
+      mapBoundaryError("typing-runs.decode-tagged-runs-filter"),
+    ),
+);
+
+export const decodeTypingRunStatsGroupByEffect = Effect.fn(
+  "TypingRunContracts.decodeTypingRunStatsGroupBy",
+)((raw: unknown) =>
+  Schema.decodeUnknownEffect(TypingRunStatsGroupBySchema)(raw).pipe(
+    mapBoundaryError("typing-runs.decode-stats-group"),
+  ),
+);
+
+export const decodeIdempotencyKeyEffect = Effect.fn("TypingRunContracts.decodeIdempotencyKey")(
+  (raw: unknown) =>
+    Schema.decodeUnknownEffect(IdempotencyKeySchema)(raw).pipe(
+      mapBoundaryError("typing-runs.decode-idempotency-key"),
+    ),
+);
+
+function normalizePairDeviceRequest(
+  value: typeof PairDeviceRequestBoundarySchema.Type,
+): PairDeviceRequest {
   return {
-    code: requiredString(value, "code", 4, 128),
-    installId: requiredString(value, "installId", 1, 160),
-    extensionVersion: requiredString(value, "extensionVersion", 1, 80),
-    label: optionalString(value, "label", 120),
-    pairedAt: optionalIsoString(value, "pairedAt"),
+    code: value.code,
+    installId: value.installId,
+    extensionVersion: value.extensionVersion,
+    label: optionalValue(value.label),
+    pairedAt: optionalValue(value.pairedAt),
   };
 }
 
-export function normalizeSetKeyboardChoicesRequest(raw: unknown): SetKeyboardChoicesRequest {
-  const value = requireRecord(raw, "Keyboard choices");
-  const keyboards = arrayField(value, "keyboards", 100).map(normalizeKeyboardChoice);
-  const layouts = arrayField(value, "layouts", 200).map(normalizeLayoutChoice);
-
-  return { keyboards, layouts };
-}
-
-export function normalizeKeyboardChoicesResponse(raw: unknown): KeyboardChoicesResponse {
-  return normalizeSetKeyboardChoicesRequest(raw);
-}
-
-export function normalizeIngestRunRequest(raw: unknown): IngestRunRequest {
-  const value = requireRecord(raw, "Run ingest request");
-  const capture = normalizeMonkeytypeRunCapture(value.capture);
-  const explicitKey = optionalString(value, "idempotencyKey", 512);
-  const idempotencyKey = explicitKey?.trim() || idempotencyKeyForCapture(capture);
-
+function normalizeKeyboardChoice(value: typeof KeyboardChoiceBoundarySchema.Type): KeyboardChoice {
   return {
-    capture,
-    idempotencyKey: normalizeIdempotencyKey(idempotencyKey),
+    keyboardId: value.keyboardId,
+    displayName: value.displayName,
+    profileId: optionalValue(value.profileId),
+    forkId: optionalValue(value.forkId),
+    catalogId: optionalValue(value.catalogId),
+    vendorId: optionalValue(value.vendorId),
+    productId: optionalValue(value.productId),
+    boardName: optionalValue(value.boardName),
   };
 }
 
-export function normalizeMonkeytypeRunCapture(raw: unknown): MonkeytypeRunCapture {
-  const value = requireRecord(raw, "Monkeytype run capture");
-  const extension = requireRecord(value.extension, "Extension metadata");
-
+function normalizeLayoutChoice(value: typeof LayoutChoiceBoundarySchema.Type): LayoutChoice {
   return {
-    source: literal(value.source, "source", "monkeytype-extension-dom-v1"),
-    capturedAt: requiredIsoString(value, "capturedAt"),
-    monkeytypeResultId: optionalString(value, "monkeytypeResultId", 160),
-    monkeytypeTimestamp: optionalNumber(value, "monkeytypeTimestamp", 0, 99_999_999_999_999),
-    wpm: requiredNumber(value, "wpm", 0, 1_000),
-    rawWpm: optionalNumber(value, "rawWpm", 0, 1_500),
-    acc: requiredNumber(value, "acc", 0, 100),
-    consistency: optionalNumber(value, "consistency", 0, 100),
-    testDuration: optionalNumber(value, "testDuration", 0, 86_400),
-    mode: optionalString(value, "mode", 80),
-    mode2: optionalString(value, "mode2", 80),
-    testTypeText: optionalString(value, "testTypeText", 240),
-    language: optionalString(value, "language", 80),
-    difficulty: optionalString(value, "difficulty", 80),
-    punctuation: optionalBoolean(value, "punctuation"),
-    numbers: optionalBoolean(value, "numbers"),
+    layoutId: value.layoutId,
+    displayName: value.displayName,
+    variantId: optionalValue(value.variantId),
+    layerNames: value.layerNames ? [...value.layerNames] : undefined,
+    layoutHash: optionalValue(value.layoutHash),
+  };
+}
+
+function normalizeMonkeytypeRunCapture(
+  value: typeof MonkeytypeRunCaptureBoundarySchema.Type,
+): MonkeytypeRunCapture {
+  return {
+    source: value.source,
+    capturedAt: value.capturedAt,
+    monkeytypeResultId: optionalValue(value.monkeytypeResultId),
+    monkeytypeTimestamp: optionalValue(value.monkeytypeTimestamp),
+    wpm: value.wpm,
+    rawWpm: optionalValue(value.rawWpm),
+    acc: value.acc,
+    consistency: optionalValue(value.consistency),
+    testDuration: optionalValue(value.testDuration),
+    mode: optionalValue(value.mode),
+    mode2: optionalValue(value.mode2),
+    testTypeText: optionalValue(value.testTypeText),
+    language: optionalValue(value.language),
+    difficulty: optionalValue(value.difficulty),
+    punctuation: optionalValue(value.punctuation),
+    numbers: optionalValue(value.numbers),
     keyboard: normalizeKeyboardChoice(value.keyboard),
     layout: normalizeLayoutChoice(value.layout),
-    extension: {
-      installId: requiredString(extension, "installId", 1, 160),
-      version: requiredString(extension, "version", 1, 80),
-      parserVersion: requiredString(extension, "parserVersion", 1, 80),
-    },
+    extension: value.extension,
   };
 }
 
-export function normalizeTaggedRunsFilter(raw: unknown): TaggedRunsFilter {
-  const value = raw === undefined ? {} : requireRecord(raw, "Tagged runs filter");
-  const limit = optionalInteger(value, "limit", 1, 200);
-  return {
-    limit: limit ?? 50,
-    keyboardId: optionalString(value, "keyboardId", 160),
-    layoutId: optionalString(value, "layoutId", 160),
-    mode: optionalString(value, "mode", 80),
-  };
+function mapBoundaryError(operation: string) {
+  return Effect.mapError(
+    (cause) =>
+      new BoundaryDecodeError({
+        operation,
+        message: `Typing run payload did not match its contract: ${String(cause)}`,
+        cause,
+      }),
+  );
 }
 
-export function normalizeTypingRunStatsGroupBy(raw: unknown): TypingRunStatsGroupBy {
-  if (raw === "keyboard" || raw === "layout" || raw === "keyboard-layout") return raw;
-  throw new Error("Stats groupBy must be keyboard, layout, or keyboard-layout.");
-}
-
-export function normalizeIdempotencyKey(value: string): string {
-  const normalized = value.trim();
-  if (!normalized) throw new Error("Run idempotency key is required.");
-  if (normalized.length > 512) throw new Error("Run idempotency key is too long.");
-  return normalized;
-}
-
-function normalizeKeyboardChoice(raw: unknown): KeyboardChoice {
-  const value = requireRecord(raw, "Keyboard choice");
-  return {
-    keyboardId: requiredString(value, "keyboardId", 1, 160),
-    displayName: requiredString(value, "displayName", 1, 160),
-    profileId: optionalString(value, "profileId", 160),
-    forkId: optionalString(value, "forkId", 160),
-    catalogId: optionalString(value, "catalogId", 160),
-    vendorId: optionalInteger(value, "vendorId", 0, 0xffff),
-    productId: optionalInteger(value, "productId", 0, 0xffff),
-    boardName: optionalString(value, "boardName", 160),
-  };
-}
-
-function normalizeLayoutChoice(raw: unknown): LayoutChoice {
-  const value = requireRecord(raw, "Layout choice");
-  return {
-    layoutId: requiredString(value, "layoutId", 1, 180),
-    displayName: requiredString(value, "displayName", 1, 160),
-    variantId: optionalString(value, "variantId", 160),
-    layerNames: optionalStringArray(value, "layerNames", 32, 80),
-    layoutHash: optionalString(value, "layoutHash", 160),
-  };
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function arrayField(value: Record<string, unknown>, key: string, max: number): unknown[] {
-  const field = value[key];
-  if (!Array.isArray(field)) throw new Error(`${key} must be an array.`);
-  if (field.length > max) throw new Error(`${key} has too many items.`);
-  return field;
-}
-
-function requiredString(
-  value: Record<string, unknown>,
-  key: string,
-  minLength: number,
-  maxLength: number,
-): string {
-  const field = value[key];
-  if (typeof field !== "string") throw new Error(`${key} must be a string.`);
-  const trimmed = field.trim();
-  if (trimmed.length < minLength) throw new Error(`${key} is required.`);
-  if (trimmed.length > maxLength) throw new Error(`${key} is too long.`);
-  return trimmed;
-}
-
-function optionalString(
-  value: Record<string, unknown>,
-  key: string,
-  maxLength: number,
-): string | undefined {
-  const field = value[key];
-  if (field === undefined || field === null) return undefined;
-  if (typeof field !== "string") throw new Error(`${key} must be a string.`);
-  const trimmed = field.trim();
-  if (!trimmed) return undefined;
-  if (trimmed.length > maxLength) throw new Error(`${key} is too long.`);
-  return trimmed;
-}
-
-function requiredIsoString(value: Record<string, unknown>, key: string): string {
-  const field = requiredString(value, key, 1, 80);
-  if (!Number.isFinite(Date.parse(field))) throw new Error(`${key} must be an ISO date string.`);
-  return field;
-}
-
-function optionalIsoString(value: Record<string, unknown>, key: string): string | undefined {
-  const field = optionalString(value, key, 80);
-  if (field === undefined) return undefined;
-  if (!Number.isFinite(Date.parse(field))) throw new Error(`${key} must be an ISO date string.`);
-  return field;
-}
-
-function requiredNumber(
-  value: Record<string, unknown>,
-  key: string,
-  min: number,
-  max: number,
-): number {
-  const field = value[key];
-  if (typeof field !== "number" || !Number.isFinite(field)) {
-    throw new Error(`${key} must be a finite number.`);
-  }
-  if (field < min || field > max) throw new Error(`${key} is out of range.`);
-  return field;
-}
-
-function optionalNumber(
-  value: Record<string, unknown>,
-  key: string,
-  min: number,
-  max: number,
-): number | undefined {
-  const field = value[key];
-  if (field === undefined || field === null) return undefined;
-  if (typeof field !== "number" || !Number.isFinite(field)) {
-    throw new Error(`${key} must be a finite number.`);
-  }
-  if (field < min || field > max) throw new Error(`${key} is out of range.`);
-  return field;
-}
-
-function optionalInteger(
-  value: Record<string, unknown>,
-  key: string,
-  min: number,
-  max: number,
-): number | undefined {
-  const field = optionalNumber(value, key, min, max);
-  if (field === undefined) return undefined;
-  if (!Number.isInteger(field)) throw new Error(`${key} must be an integer.`);
-  return field;
-}
-
-function optionalBoolean(value: Record<string, unknown>, key: string): boolean | undefined {
-  const field = value[key];
-  if (field === undefined || field === null) return undefined;
-  if (typeof field !== "boolean") throw new Error(`${key} must be a boolean.`);
-  return field;
-}
-
-function optionalStringArray(
-  value: Record<string, unknown>,
-  key: string,
-  maxItems: number,
-  maxLength: number,
-): string[] | undefined {
-  const field = value[key];
-  if (field === undefined || field === null) return undefined;
-  if (!Array.isArray(field)) throw new Error(`${key} must be an array.`);
-  if (field.length > maxItems) throw new Error(`${key} has too many items.`);
-  return field.map((item, index) => {
-    if (typeof item !== "string") throw new Error(`${key}[${index}] must be a string.`);
-    const trimmed = item.trim();
-    if (trimmed.length > maxLength) throw new Error(`${key}[${index}] is too long.`);
-    return trimmed;
-  });
-}
-
-function literal<T extends string>(value: unknown, key: string, expected: T): T {
-  if (value !== expected) throw new Error(`${key} must be ${expected}.`);
-  return expected;
+function optionalValue<A>(value: A | null | undefined): A | undefined {
+  return value === null || value === undefined || value === "" ? undefined : value;
 }
 
 function compactKeyPart(value: string): string {

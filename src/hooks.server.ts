@@ -1,12 +1,13 @@
 import { dev } from "$app/environment";
 import type { Handle } from "@sveltejs/kit";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import { platformError } from "$lib/effect/errors";
 import { tryMaybePromise } from "$lib/effect/maybe-promise";
-import { selfHeal } from "$lib/effect/self-healing";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 import { canonicalLoopbackUrl } from "$lib/server/canonical-origin";
+import { decodeAuthSessionPayloadEffect } from "$lib/server/auth/session-payload";
+import { fetchAuthSessionResponse } from "$lib/server/auth/session-lookup";
 import { cacheControlFor } from "$lib/server/http-cache";
 import { readSessionFromCookieCache } from "$lib/server/session-cookie";
 
@@ -15,13 +16,6 @@ const crossOriginIsolationHeaders = {
   "Cross-Origin-Embedder-Policy": "require-corp",
   "Cross-Origin-Opener-Policy": "same-origin",
 } as const;
-
-const sessionPayloadSchema = Schema.NullOr(
-  Schema.Struct({
-    session: Schema.optionalKey(Schema.Unknown),
-    user: Schema.optionalKey(Schema.Unknown),
-  }),
-);
 
 export const handle: Handle = ({ event, resolve }) =>
   runWorkerEffect(
@@ -85,28 +79,46 @@ export const handle: Handle = ({ event, resolve }) =>
             if (value) authHeaders.set(name, value);
           }
 
-          const sessionResult = yield* selfHeal(
-            Effect.tryPromise({
-              try: () =>
-                agent.fetch(sessionUrl.toString(), {
-                  headers: authHeaders,
-                  method: "GET",
-                }),
-              catch: (cause) => platformError("hooks.auth-session", cause),
-            }),
-            "500 millis",
-          );
+          const sessionLookup = Effect.gen(function* () {
+            const sessionResult = yield* fetchAuthSessionResponse((signal) =>
+              agent.fetch(sessionUrl.toString(), {
+                headers: authHeaders,
+                method: "GET",
+                signal,
+              }),
+            );
+            const setCookie = sessionResult.headers.get("set-cookie") ?? null;
 
-          authSetCookie = sessionResult.headers.get("set-cookie") ?? null;
+            if (!sessionResult.ok) {
+              return { session: null, setCookie, user: null };
+            }
 
-          if (sessionResult.ok) {
             const rawData = yield* Effect.tryPromise({
               try: () => sessionResult.json(),
               catch: (cause) => platformError("hooks.decode-auth-session-json", cause),
             });
-            const data = yield* Schema.decodeUnknownEffect(sessionPayloadSchema)(rawData);
-            event.locals.session = (data?.session as App.Locals["session"] | undefined) ?? null;
-            event.locals.user = (data?.user as App.Locals["user"] | undefined) ?? null;
+            const data = yield* decodeAuthSessionPayloadEffect(rawData);
+            return {
+              ...data,
+              setCookie,
+            };
+          });
+
+          // This handler is the truthful fallback boundary: an unavailable or
+          // malformed auth session is logged and this request continues signed out.
+          const lookedUp = yield* sessionLookup.pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("AuthAgent session lookup failed; continuing signed out").pipe(
+                Effect.annotateLogs({ error: String(error), pathname }),
+              ),
+            ),
+            Effect.catch(() => Effect.succeed(null)),
+          );
+
+          if (lookedUp) {
+            authSetCookie = lookedUp.setCookie;
+            event.locals.session = lookedUp.session;
+            event.locals.user = lookedUp.user;
           }
         }
       }

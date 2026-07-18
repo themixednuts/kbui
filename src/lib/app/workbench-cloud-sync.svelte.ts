@@ -11,8 +11,12 @@ import {
 import type { WorkbenchStore } from "$lib/app/workbench-store.svelte";
 import { platformError } from "$lib/effect/errors";
 import { mountEffect } from "$lib/effect/svelte";
+import type { LocalStore } from "$lib/keyboard/local-store";
 
-type SyncRuntime = <A, E>(key: string, effect: Effect.Effect<A, E>) => Fiber.Fiber<A, E>;
+type SyncRuntime = <A, E>(
+  key: string,
+  effect: Effect.Effect<A, E, LocalStore>,
+) => Fiber.Fiber<A, E>;
 
 export class WorkbenchCloudSyncStore {
   connected = $state(false);
@@ -34,7 +38,7 @@ export class WorkbenchCloudSyncStore {
 
       this.#accountId = accountId;
       const lifecycle = Effect.gen({ self: this }, function* () {
-        const run = yield* FiberMap.makeRuntime<never, string>();
+        const run = yield* FiberMap.makeRuntime<LocalStore, string>();
         yield* Effect.acquireRelease(
           Effect.sync(() => this.createClient(workbench, run)),
           (client) =>
@@ -77,10 +81,7 @@ export class WorkbenchCloudSyncStore {
         const remote = state.graph;
         run(
           "reconcile",
-          Effect.tryPromise({
-            try: () => workbench.reconcileVersionGraph(remote),
-            catch: (cause) => platformError("workbench.reconcile-version-graph", cause),
-          }).pipe(
+          workbench.reconcileVersionGraphEffect(remote).pipe(
             Effect.tap((merged) =>
               Effect.sync(() => {
                 if (

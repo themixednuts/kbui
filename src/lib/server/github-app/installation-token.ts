@@ -1,7 +1,6 @@
 import { Effect, Schema } from "effect";
 
-import { platformError } from "$lib/effect/errors";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
+import { platformError, type PlatformError } from "$lib/effect/errors";
 import {
   GITHUB_REST_ACCEPT,
   GITHUB_REST_API_BASE_URL,
@@ -30,7 +29,7 @@ export interface CreateGitHubAppJwtOptions {
 export interface GitHubAppInstallationTokenClientOptions {
   apiBaseUrl?: string;
   apiVersion?: string;
-  createJwt?: (request: CreateGitHubAppJwtOptions) => Promise<string>;
+  createJwt?: (request: CreateGitHubAppJwtOptions) => Effect.Effect<string, PlatformError>;
   cryptoProvider?: Pick<Crypto, "subtle">;
   fetchImpl?: typeof fetch;
   nowMs?: () => number;
@@ -53,7 +52,7 @@ export type GitHubInstallationAccessTokenPermission =
 export interface GitHubAppInstallationAccessToken {
   expiresAt: string;
   permissions: Record<string, string>;
-  repositories: Array<{ full_name: string; id: number; name: string }> | null;
+  repositories: ReadonlyArray<{ full_name: string; id: number; name: string }> | null;
   repositorySelection: string | null;
   token: string;
 }
@@ -92,7 +91,7 @@ export function githubAppInstallationAuthConfigFromEnv(
 export class GitHubAppInstallationTokenClient {
   readonly #apiBaseUrl: string;
   readonly #apiVersion: string;
-  readonly #createJwt: (request: CreateGitHubAppJwtOptions) => Promise<string>;
+  readonly #createJwt: (request: CreateGitHubAppJwtOptions) => Effect.Effect<string, PlatformError>;
   readonly #cryptoProvider: Pick<Crypto, "subtle">;
   readonly #fetchImpl: typeof fetch;
   readonly #nowMs: () => number;
@@ -100,7 +99,7 @@ export class GitHubAppInstallationTokenClient {
   constructor(options: GitHubAppInstallationTokenClientOptions = {}) {
     this.#apiBaseUrl = trimTrailingSlash(options.apiBaseUrl ?? GITHUB_REST_API_BASE_URL);
     this.#apiVersion = options.apiVersion ?? GITHUB_REST_API_VERSION;
-    this.#createJwt = options.createJwt ?? createGitHubAppJwt;
+    this.#createJwt = options.createJwt ?? createGitHubAppJwtEffect;
     this.#cryptoProvider = options.cryptoProvider ?? globalThis.crypto;
     this.#fetchImpl = options.fetchImpl ?? defaultFetch;
     this.#nowMs = options.nowMs ?? (() => Date.now());
@@ -109,109 +108,110 @@ export class GitHubAppInstallationTokenClient {
   createInstallationAccessToken(
     config: GitHubAppInstallationAuthConfig,
     request: CreateInstallationAccessTokenRequest,
-  ): Promise<GitHubAppInstallationAccessToken> {
-    return runWorkerEffect(
-      "github-app.create-installation-token",
-      Effect.gen({ self: this }, function* () {
-        if (!config.appId || !config.privateKey) {
-          return yield* Effect.fail(
-            platformError(
-              "github-app.create-installation-token",
-              "GitHub App ID and private key are required to create installation tokens.",
-            ),
-          );
-        }
-        const jwt = yield* Effect.tryPromise({
-          try: () =>
-            this.#createJwt({
-              appId: config.appId!,
-              cryptoProvider: this.#cryptoProvider,
-              nowMs: this.#nowMs,
-              privateKey: config.privateKey!,
-            }),
-          catch: (cause) => platformError("github-app.create-jwt", cause),
-        });
-        const body = installationTokenRequestBody(request);
-        const encodedBody = body
-          ? yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(body)
-          : undefined;
-        const response = yield* Effect.tryPromise({
-          try: () =>
-            this.#fetchImpl(
-              `${this.#apiBaseUrl}/app/installations/${encodeURIComponent(
-                request.installationId,
-              )}/access_tokens`,
-              {
-                body: encodedBody,
-                headers: {
-                  Accept: GITHUB_REST_ACCEPT,
-                  Authorization: `Bearer ${jwt}`,
-                  ...(body ? { "Content-Type": "application/json" } : {}),
-                  "User-Agent": GITHUB_REST_USER_AGENT,
-                  "X-GitHub-Api-Version": this.#apiVersion,
-                },
-                method: "POST",
-              },
-            ),
-          catch: (cause) => platformError("github-app.request-installation-token", cause),
-        });
-        const responseBody = yield* Effect.tryPromise({
-          try: () => response.json(),
-          catch: (cause) => platformError("github-app.decode-installation-token-json", cause),
-        });
-        if (!response.ok) {
-          return yield* Effect.fail(
-            platformError(
-              "github-app.request-installation-token",
-              githubAppTokenErrorMessage(responseBody),
-            ),
-          );
-        }
-        const decoded = yield* Schema.decodeUnknownEffect(installationTokenResponseSchema)(
-          responseBody,
+  ): Effect.Effect<GitHubAppInstallationAccessToken, PlatformError> {
+    return Effect.gen({ self: this }, function* () {
+      const { appId, privateKey } = config;
+      if (!appId || !privateKey) {
+        return yield* Effect.fail(
+          platformError(
+            "github-app.create-installation-token",
+            "GitHub App ID and private key are required to create installation tokens.",
+          ),
         );
-        return {
-          expiresAt: decoded.expires_at,
-          permissions: { ...decoded.permissions },
-          repositories: decoded.repositories ? [...decoded.repositories] : null,
-          repositorySelection: decoded.repository_selection,
-          token: decoded.token,
-        };
-      }),
-    );
+      }
+      const jwt = yield* this.#createJwt({
+        appId,
+        cryptoProvider: this.#cryptoProvider,
+        nowMs: this.#nowMs,
+        privateKey,
+      });
+      const body = installationTokenRequestBody(request);
+      const encodedBody = body
+        ? yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(body).pipe(
+            Effect.mapError((cause) =>
+              platformError("github-app.encode-installation-token", cause),
+            ),
+          )
+        : undefined;
+      const response = yield* Effect.tryPromise({
+        try: (signal) =>
+          this.#fetchImpl(
+            `${this.#apiBaseUrl}/app/installations/${encodeURIComponent(
+              request.installationId,
+            )}/access_tokens`,
+            {
+              body: encodedBody,
+              headers: {
+                Accept: GITHUB_REST_ACCEPT,
+                Authorization: `Bearer ${jwt}`,
+                ...(body ? { "Content-Type": "application/json" } : {}),
+                "User-Agent": GITHUB_REST_USER_AGENT,
+                "X-GitHub-Api-Version": this.#apiVersion,
+              },
+              method: "POST",
+              signal,
+            },
+          ),
+        catch: (cause) => platformError("github-app.request-installation-token", cause),
+      });
+      const responseText = yield* Effect.tryPromise({
+        try: () => response.text(),
+        catch: (cause) => platformError("github-app.decode-installation-token-json", cause),
+      });
+      if (!response.ok) {
+        return yield* Effect.fail(
+          platformError(
+            "github-app.request-installation-token",
+            githubAppTokenErrorMessage(decodeJsonTextLenient(responseText)),
+          ),
+        );
+      }
+      const responseBody = yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(
+        responseText,
+      ).pipe(
+        Effect.mapError((cause) =>
+          platformError("github-app.decode-installation-token-json", cause),
+        ),
+      );
+      const decoded = yield* Schema.decodeUnknownEffect(installationTokenResponseSchema)(
+        responseBody,
+      ).pipe(
+        Effect.mapError((cause) =>
+          platformError("github-app.decode-installation-token-response", cause),
+        ),
+      );
+      return {
+        expiresAt: decoded.expires_at,
+        permissions: { ...decoded.permissions },
+        repositories: decoded.repositories ? [...decoded.repositories] : null,
+        repositorySelection: decoded.repository_selection,
+        token: decoded.token,
+      } satisfies GitHubAppInstallationAccessToken;
+    }).pipe(Effect.withSpan("github-app.create-installation-token"));
   }
 }
 
-export function createGitHubAppJwt({
+export const createGitHubAppJwtEffect = Effect.fn("github-app.create-jwt")(function* ({
   appId,
   cryptoProvider = globalThis.crypto,
   nowMs = () => Date.now(),
   privateKey,
 }: CreateGitHubAppJwtOptions) {
-  return runWorkerEffect(
-    "github-app.create-jwt",
-    Effect.gen(function* () {
-      const issuedAt = Math.floor(nowMs() / 1000) - 60;
-      const payload = { iat: issuedAt, exp: issuedAt + 10 * 60, iss: appId };
-      const header = { alg: "RS256", typ: "JWT" };
-      const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
-      const key = yield* Effect.tryPromise({
-        try: () => importPkcs8PrivateKey(privateKey, cryptoProvider),
-        catch: (cause) => platformError("github-app.import-private-key", cause),
-      });
-      const signature = yield* Effect.tryPromise({
-        try: () =>
-          cryptoProvider.subtle.sign(
-            "RSASSA-PKCS1-v1_5",
-            key,
-            new TextEncoder().encode(signingInput),
-          ),
-        catch: (cause) => platformError("github-app.sign-jwt", cause),
-      });
-      return `${signingInput}.${base64UrlBytes(new Uint8Array(signature))}`;
-    }),
-  );
-}
+  const issuedAt = Math.floor(nowMs() / 1000) - 60;
+  const payload = { iat: issuedAt, exp: issuedAt + 10 * 60, iss: appId };
+  const header = { alg: "RS256", typ: "JWT" };
+  const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
+  const key = yield* Effect.tryPromise({
+    try: () => importPkcs8PrivateKey(privateKey, cryptoProvider),
+    catch: (cause) => platformError("github-app.import-private-key", cause),
+  });
+  const signature = yield* Effect.tryPromise({
+    try: () =>
+      cryptoProvider.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(signingInput)),
+    catch: (cause) => platformError("github-app.sign-jwt", cause),
+  });
+  return `${signingInput}.${base64UrlBytes(new Uint8Array(signature))}`;
+});
 
 export function normalizeGitHubAppPrivateKey(value: string | undefined) {
   const trimmed = value?.trim();
@@ -227,7 +227,7 @@ function installationTokenRequestBody(request: CreateInstallationAccessTokenRequ
   return Object.keys(body).length > 0 ? body : null;
 }
 
-async function importPkcs8PrivateKey(privateKey: string, cryptoProvider: Pick<Crypto, "subtle">) {
+function importPkcs8PrivateKey(privateKey: string, cryptoProvider: Pick<Crypto, "subtle">) {
   const keyBytes = pemToPrivateKeyBytes(privateKey);
   return cryptoProvider.subtle.importKey(
     "pkcs8",
@@ -315,9 +315,14 @@ function base64UrlBytes(bytes: Uint8Array) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+function decodeJsonTextLenient(text: string): unknown {
+  const decoded = Schema.decodeUnknownResult(Schema.UnknownFromJsonString)(text);
+  return decoded._tag === "Success" ? decoded.success : text;
+}
+
 function githubAppTokenErrorMessage(body: unknown) {
   if (body && typeof body === "object" && "message" in body) {
-    const message = (body as { message?: unknown }).message;
+    const message = body.message;
     if (typeof message === "string" && message.trim()) return message.trim();
   }
   return "GitHub App installation token request failed.";

@@ -1,9 +1,11 @@
-import { Effect, Schema } from "effect";
+import { Effect, Schedule, Schema } from "effect";
 
-import { platformError } from "$lib/effect/errors";
-import { selfHeal } from "$lib/effect/self-healing";
-import { runWorkerEffect } from "$lib/effect/worker-runtime";
-import type { MonkeytypeRateLimit, MonkeytypeStatusError } from "$lib/monkeytype/types";
+import { PlatformError, platformError } from "$lib/effect/errors";
+import {
+  MonkeytypeRateLimitSchema,
+  type MonkeytypeRateLimit,
+  type MonkeytypeStatusError,
+} from "$lib/monkeytype/types";
 
 export const MONKEYTYPE_API_BASE_URL = "https://api.monkeytype.com";
 
@@ -11,24 +13,25 @@ export type MonkeytypeFetch = typeof fetch;
 
 const defaultMonkeytypeFetch: MonkeytypeFetch = (input, init) => globalThis.fetch(input, init);
 
+const monkeytypeFetchRetrySchedule = Schedule.exponential("250 millis").pipe(
+  Schedule.jittered,
+  Schedule.upTo({ times: 3 }),
+);
+
 export interface MonkeytypeResponse<T> {
   data: T;
   rateLimit: MonkeytypeRateLimit;
 }
 
-export class MonkeytypeApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly rateLimit: MonkeytypeRateLimit;
-
-  constructor(error: MonkeytypeStatusError & { status: number; rateLimit: MonkeytypeRateLimit }) {
-    super(error.message);
-    this.name = "MonkeytypeApiError";
-    this.code = error.code;
-    this.status = error.status;
-    this.rateLimit = error.rateLimit;
-  }
-
+export class MonkeytypeApiError extends Schema.TaggedErrorClass<MonkeytypeApiError>()(
+  "MonkeytypeApiError",
+  {
+    code: Schema.String,
+    message: Schema.String,
+    status: Schema.Finite,
+    rateLimit: MonkeytypeRateLimitSchema,
+  },
+) {
   toStatusError(): MonkeytypeStatusError {
     return {
       code: this.code,
@@ -49,60 +52,70 @@ export class MonkeytypeApiClient {
   readonly #fetchImpl: MonkeytypeFetch;
   readonly #nowMs: () => number;
 
+  readonly statsEffect = Effect.fn("MonkeytypeApiClient.stats")((apeKey: string) =>
+    this.#requestEffect("/users/stats", { apeKey }),
+  );
+
+  readonly personalBestsEffect = Effect.fn("MonkeytypeApiClient.personalBests")(
+    (apeKey: string, mode: string, mode2: string) => {
+      const params = new URLSearchParams({ mode, mode2 });
+      return this.#requestEffect(`/users/personalBests?${params}`, { apeKey });
+    },
+  );
+
+  readonly resultsEffect = Effect.fn("MonkeytypeApiClient.results")(
+    (apeKey: string, limit: number) => {
+      const params = new URLSearchParams({ limit: String(limit), offset: "0" });
+      return this.#requestEffect(`/results?${params}`, { apeKey });
+    },
+  );
+
+  readonly publicProfileEffect = Effect.fn("MonkeytypeApiClient.publicProfile")(
+    (username: string) => {
+      const params = new URLSearchParams({ isUid: "false" });
+      return this.#requestEffect(`/users/${encodeURIComponent(username)}/profile?${params}`);
+    },
+  );
+
   constructor(options: MonkeytypeApiClientOptions = {}) {
     this.#fetchImpl = options.fetchImpl ?? defaultMonkeytypeFetch;
     this.#nowMs = options.nowMs ?? (() => new Date().getTime());
   }
 
-  stats(apeKey: string): Promise<MonkeytypeResponse<unknown>> {
-    return this.#request("/users/stats", { apeKey });
-  }
-
-  personalBests(apeKey: string, mode: string, mode2: string): Promise<MonkeytypeResponse<unknown>> {
-    const params = new URLSearchParams({ mode, mode2 });
-    return this.#request(`/users/personalBests?${params}`, { apeKey });
-  }
-
-  results(apeKey: string, limit: number): Promise<MonkeytypeResponse<unknown>> {
-    const params = new URLSearchParams({ limit: String(limit), offset: "0" });
-    return this.#request(`/results?${params}`, { apeKey });
-  }
-
-  publicProfile(username: string): Promise<MonkeytypeResponse<unknown>> {
-    const params = new URLSearchParams({ isUid: "false" });
-    return this.#request(`/users/${encodeURIComponent(username)}/profile?${params}`);
-  }
-
-  #request<T>(
+  #requestEffect(
     path: string,
     options: {
       apeKey?: string;
     } = {},
-  ): Promise<MonkeytypeResponse<T>> {
-    return runWorkerEffect(
-      "monkeytype.request",
-      Effect.gen({ self: this }, function* () {
-        const headers = new Headers({ accept: "application/json" });
-        if (options.apeKey) headers.set("authorization", `ApeKey ${options.apeKey}`);
-        const response = yield* selfHeal(
-          Effect.tryPromise({
-            try: () =>
-              this.#fetchImpl(`${MONKEYTYPE_API_BASE_URL}${path}`, {
-                headers,
-                method: "GET",
-              }),
-            catch: (cause) => platformError("monkeytype.fetch", cause),
+  ) {
+    return Effect.gen({ self: this }, function* () {
+      const headers = new Headers({ accept: "application/json" });
+      if (options.apeKey) headers.set("authorization", `ApeKey ${options.apeKey}`);
+
+      const fetchAttempt = Effect.tryPromise({
+        try: (signal) =>
+          this.#fetchImpl(`${MONKEYTYPE_API_BASE_URL}${path}`, {
+            headers,
+            method: "GET",
+            signal,
           }),
-          "1 second",
-        );
-        const rateLimit = readMonkeytypeRateLimit(response.headers, this.#nowMs());
-        const body = yield* readResponseBodyEffect(response);
-        if (!response.ok) {
-          return yield* Effect.fail(monkeytypeErrorFromResponse(response.status, body, rateLimit));
-        }
-        return { data: unwrapMonkeytypeData<T>(body), rateLimit };
-      }),
-    );
+        catch: (cause) => platformError("monkeytype.fetch", cause),
+      }).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.mapError((error) =>
+          error instanceof PlatformError ? error : platformError("monkeytype.fetch-timeout", error),
+        ),
+      );
+      const response = yield* Effect.retry(fetchAttempt, {
+        schedule: monkeytypeFetchRetrySchedule,
+      });
+      const rateLimit = readMonkeytypeRateLimit(response.headers, this.#nowMs());
+      const body = yield* readResponseBodyEffect(response);
+      if (!response.ok) {
+        return yield* Effect.fail(monkeytypeErrorFromResponse(response.status, body, rateLimit));
+      }
+      return { data: unwrapMonkeytypeData(body), rateLimit } satisfies MonkeytypeResponse<unknown>;
+    });
   }
 }
 
@@ -130,7 +143,6 @@ export function monkeytypeErrorFromResponse(
     ...mapped,
     status,
     rateLimit,
-    retryAt: rateLimit.resetAt,
   });
 }
 
@@ -181,19 +193,17 @@ function readResponseBodyEffect(response: Response) {
   });
 }
 
-function unwrapMonkeytypeData<T>(body: unknown): T {
-  if (body && typeof body === "object" && "data" in body) {
-    return (body as { data: T }).data;
-  }
-  return body as T;
+function unwrapMonkeytypeData(body: unknown): unknown {
+  if (body && typeof body === "object" && "data" in body) return body.data;
+  return body;
 }
 
 function messageFromBody(body: unknown) {
   if (typeof body === "string") return body;
   if (!body || typeof body !== "object") return null;
-  const record = body as Record<string, unknown>;
-  const value = record.message ?? record.error ?? record.errorMessage;
-  return typeof value === "string" && value.trim() ? value : null;
+  const value = "message" in body ? body.message : "error" in body ? body.error : undefined;
+  const fallback = value ?? ("errorMessage" in body ? body.errorMessage : undefined);
+  return typeof fallback === "string" && fallback.trim() ? fallback : null;
 }
 
 function parseHeaderNumber(value: string | null) {
