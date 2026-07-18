@@ -13,11 +13,9 @@
     "binding": "ASSETS",
     "directory": ".svelte-kit/cloudflare",
   },
-  // Safety net for the catalog-build endpoints (getViaKeyboardIndex/Detail).
-  // Building the VIA catalog (unzip the-via/keyboards + ~1400 parseViaDefinition)
-  // is a heavy synchronous parse; raise the ceiling above the 30s default so a
-  // cold first request has headroom. The real fix keeps the QMK USB-index build
-  // off the detail path (see loadViaKeyboardDetail).
+  // NOTE: "limits.cpu_ms" is rejected on the Free plan (API code 100328).
+  // Catalog-build endpoints stay under the CPU budget by keeping the QMK
+  // USB-index build off the detail path (see loadViaKeyboardDetail).
   "flagship": [
     {
       "binding": "FLAGS",
