@@ -706,6 +706,12 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
           },
         },
         secret: this.#agentEnv.BETTER_AUTH_SECRET ?? localAuthSecret,
+        session: {
+          cookieCache: {
+            enabled: true,
+            maxAge: 300, // seconds; bounded session-revocation lag, standard trade-off
+          },
+        },
         user: {
           additionalFields: {
             githubLogin: {

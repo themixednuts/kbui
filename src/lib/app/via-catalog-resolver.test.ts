@@ -130,9 +130,15 @@ describe("VIA catalog resolver", () => {
     expect(detailRequested).toBe(true);
     expect(profile).toBeDefined();
     expect(profile?.name).toBe("Charybdis (4x6) Splinky");
-    // QMK build target could not be resolved, so no firmware metadata is attached,
-    // but the keyboard still activates from the VIA definition.
-    expect(profile?.firmwareMetadata).toBeUndefined();
+    // The USB-identity QMK resolution failed, but this device ships a curated
+    // Splinky target keyed on its exact USB id + "splinky" product name, so the
+    // keyboard still activates with the correct RP2040 fork build out of the box.
+    expect(profile?.firmwareMetadata?.qmk).toMatchObject({
+      keyboard: "bastardkb/charybdis/4x6",
+      repository: "bastardkb/bastardkb-qmk",
+      processor: "RP2040",
+      targetConfirmed: true,
+    });
   });
 
   it("degrades matrixHintFor to undefined when there is no VIA summary and QMK resolution fails", async () => {

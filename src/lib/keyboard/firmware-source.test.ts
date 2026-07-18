@@ -426,6 +426,48 @@ describe("firmware source generation", () => {
     );
   });
 
+  it("warns that the MCU must be verified when the product name matches no candidate target", () => {
+    const profile = qmkProfileWithMetadata();
+    profile.firmwareMetadata!.qmk!.targetConfirmed = false;
+    profile.firmwareMetadata!.qmk!.keyboard = "bastardkb/charybdis/4x6/blackpill";
+    profile.firmwareMetadata!.qmk!.alternatives = [
+      { keyboard: "bastardkb/charybdis/4x6/elitec", layout: "LAYOUT" },
+    ];
+    profile.identity = {
+      key: "device",
+      transport: "webhid",
+      productName: "Charybdis (4x6) Splinky",
+    };
+
+    const generated = generateFirmwareArtifacts(profile);
+    const diagnostic = generated.diagnostics.find(
+      (item) => item.code === "qmk.metadata.target_unconfirmed",
+    );
+
+    expect(diagnostic?.message).toContain("splinky");
+    expect(diagnostic?.message.toLowerCase()).toContain("verify the mcu");
+  });
+
+  it("keeps the generic ambiguous-target message when every product-name token matches a candidate", () => {
+    const profile = qmkProfileWithMetadata();
+    profile.firmwareMetadata!.qmk!.targetConfirmed = false;
+    profile.firmwareMetadata!.qmk!.keyboard = "bastardkb/charybdis/4x6/blackpill";
+    profile.identity = {
+      key: "device",
+      transport: "webhid",
+      productName: "Charybdis 4x6",
+    };
+
+    const generated = generateFirmwareArtifacts(profile);
+    const diagnostic = generated.diagnostics.find(
+      (item) => item.code === "qmk.metadata.target_unconfirmed",
+    );
+
+    expect(diagnostic?.message).toBe(
+      "Several QMK controller targets share this device identity. Confirm the physical controller before compiling.",
+    );
+  });
+
   it("blocks ZMK builds until an ambiguous controller and shield target is confirmed", () => {
     const profile = zmkProfileWithMetadata();
     profile.firmwareMetadata!.zmk!.targetConfirmed = false;

@@ -5,6 +5,7 @@ import {
   catalogIdentityMatchScore,
   entryMatchesIdentity,
   profileFromCatalog,
+  type KeyboardCatalogEntry,
   type KeyboardCatalogSummary,
 } from "./catalog";
 import {
@@ -168,6 +169,78 @@ describe("connected VIA build-target enrichment", () => {
     });
     expect(enriched.firmwareMetadata?.qmk?.keyOrder).toEqual(definition.keys.map((key) => key.id));
   });
+
+  function charybdisDefinitionWithKeyOrder() {
+    const localCharybdis = localKeyboardDefinitions.find((definition) =>
+      definition.sourcePath.includes("charybdis/4x6"),
+    );
+    const definition = parseViaDefinition(
+      localCharybdis!.sourcePath,
+      localCharybdis!.json,
+      localCharybdis!.priority,
+    )!;
+    definition.firmwareMetadata = { qmk: { keyOrder: definition.keys.map((key) => key.id) } };
+    return definition;
+  }
+
+  // Mainline QMK's USB catalog only knows the blackpill (STM32) and elitec (AVR)
+  // Charybdis 4x6 controllers, both sharing PID 0x1833, so the resolver can
+  // never confirm one for a Splinky (RP2040) device.
+  const unconfirmedMainlineIdentity = (definition: KeyboardCatalogEntry) => ({
+    ...definition,
+    source: "qmk-api" as const,
+    sourcePath: "bastardkb/charybdis/4x6/blackpill",
+    firmwareMetadata: {
+      qmk: {
+        alternatives: [{ keyboard: "bastardkb/charybdis/4x6/elitec", layout: "LAYOUT" }],
+        keyboard: "bastardkb/charybdis/4x6/blackpill",
+        layout: "LAYOUT",
+        processor: "STM32F411",
+        ref: "mainlinesha",
+        repository: "qmk/qmk_firmware",
+        targetConfirmed: false,
+      },
+    },
+  });
+
+  it("seeds the curated BastardKB Splinky fork target when QMK cannot confirm the controller", () => {
+    const definition = charybdisDefinitionWithKeyOrder();
+
+    const enriched = withResolvedQmkTarget(
+      definition,
+      unconfirmedMainlineIdentity(definition),
+      "Charybdis (4x6) Splinky",
+    );
+
+    expect(enriched.firmwareMetadata?.qmk).toMatchObject({
+      keyboard: "bastardkb/charybdis/4x6",
+      layout: "LAYOUT",
+      repository: "bastardkb/bastardkb-qmk",
+      ref: "8f3b92fff27e6356120913a4ec6b21a017d0fef6",
+      processor: "RP2040",
+      bootloader: "rp2040",
+      targetConfirmed: true,
+    });
+    // The corrected VIA key order is still what drives the live matrix.
+    expect(enriched.firmwareMetadata?.qmk?.keyOrder).toEqual(definition.keys.map((key) => key.id));
+  });
+
+  it("does not apply the curated Splinky target to a same-PID non-Splinky controller", () => {
+    const definition = charybdisDefinitionWithKeyOrder();
+
+    const enriched = withResolvedQmkTarget(
+      definition,
+      unconfirmedMainlineIdentity(definition),
+      "Charybdis (4x6)",
+    );
+
+    // No "splinky" token: keep the (still unconfirmed) mainline resolution so
+    // the user picks a controller in Settings instead of being forced to RP2040.
+    expect(enriched.firmwareMetadata?.qmk).toMatchObject({
+      keyboard: "bastardkb/charybdis/4x6/blackpill",
+      targetConfirmed: false,
+    });
+  });
 });
 
 describe("keyboard catalog combo extensions", () => {
@@ -298,5 +371,46 @@ describe("local Charybdis hardware identity", () => {
         productId: 0x1833,
       })?.id,
     ).toBe(entry?.id);
+  });
+
+  it("maps the thumb clusters to the canonical QMK matrix rows (regression: rows 4/9 were transposed)", () => {
+    // Ground truth from
+    // https://keyboards.qmk.fm/v1/keyboards/bastardkb/charybdis/4x6/blackpill/info.json
+    // LAYOUT macro: matrix row 4 (left thumbs) = cols 1..5 (5 keys), matrix
+    // row 9 (right thumbs) = cols 1,3,5 (3 keys). A prior revision transposed
+    // them (row 4 = {1,3,5}, row 9 = {1,2,3,4,5}), which desynced the parsed
+    // VIA key set from the QMK-resolved layout key order and produced
+    // qmk.key_order.unknown_keys (k4-4, k4-2) / qmk.key_order.incomplete.
+    const localCharybdis = localKeyboardDefinitions.find((definition) =>
+      definition.sourcePath.includes("charybdis/4x6"),
+    );
+    const entry = parseViaDefinition(localCharybdis!.sourcePath, localCharybdis!.json)!;
+
+    const idsForRow = (row: number) =>
+      new Set(entry.keys.filter((key) => key.row === row).map((key) => key.id));
+
+    expect(idsForRow(4)).toEqual(new Set(["k4-1", "k4-2", "k4-3", "k4-4", "k4-5"]));
+    expect(idsForRow(9)).toEqual(new Set(["k9-1", "k9-3", "k9-5"]));
+    expect(entry.keys).toHaveLength(56);
+  });
+});
+
+describe("local VIA definitions", () => {
+  it("every local def parses to a positive, duplicate-free key set", () => {
+    for (const definition of localKeyboardDefinitions) {
+      const entry = parseViaDefinition(definition.sourcePath, definition.json, definition.priority);
+      expect(entry, `local def ${definition.sourcePath} should parse`).toBeDefined();
+
+      const ids = entry!.keys.map((key) => key.id);
+      expect(ids.length, `local def ${definition.sourcePath} should yield keys`).toBeGreaterThan(0);
+      expect(
+        new Set(ids).size,
+        `local def ${definition.sourcePath} should have no duplicate key ids`,
+      ).toBe(ids.length);
+      // Every id is the canonical k<row>-<col> shape the firmware key order relies on.
+      for (const key of entry!.keys) {
+        expect(key.id).toBe(`k${key.row}-${key.col}`);
+      }
+    }
   });
 });

@@ -103,10 +103,12 @@ export interface FirmwareArtifacts {
 }
 
 interface QmkMetadata {
+  alternatives?: Array<{ keyboard: string; layout: string }>;
   keyOrder?: string[];
   keyboard?: string;
   keymap: string;
   layout?: string;
+  productName?: string;
   targetConfirmed?: boolean;
 }
 
@@ -219,8 +221,43 @@ function qmkMetadata(profile: DeviceProfile): QmkMetadata {
       "physicalKeyOrder",
       "qmkKeyOrder",
     ]),
+    alternatives: profile.firmwareMetadata?.qmk?.alternatives,
+    productName: profile.identity?.productName,
     targetConfirmed: profile.firmwareMetadata?.qmk?.targetConfirmed,
   };
+}
+
+/**
+ * Message for the "several controller targets share this identity" gate. When
+ * the connected device's product name carries a token that appears in NONE of
+ * the candidate keyboard paths (e.g. a "splinky" controller against mainline
+ * QMK's blackpill/elitec-only Charybdis targets), the physical controller is
+ * probably a variant that no candidate builds — so we warn that the MCU itself
+ * must be verified, not merely picked from the list.
+ */
+function qmkTargetUnconfirmedMessage(metadata: QmkMetadata): string {
+  const base =
+    "Several QMK controller targets share this device identity. Confirm the physical controller before compiling.";
+
+  const productName = metadata.productName?.trim();
+  if (!productName) return base;
+
+  const candidatePaths = [
+    metadata.keyboard,
+    ...(metadata.alternatives ?? []).map((alternative) => alternative.keyboard),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+  if (candidatePaths.length === 0) return base;
+
+  const unmatched = productName
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3)
+    .filter((token) => !candidatePaths.some((path) => path.includes(token)));
+  if (unmatched.length === 0) return base;
+
+  return `The connected controller "${productName}" reports ${unmatched.join(", ")}, which matches none of the known QMK targets for this device (${candidatePaths.join(", ")}). The physical controller may be a variant none of these targets build; verify the MCU and pick or supply the correct build target before compiling.`;
 }
 
 function zmkMetadata(profile: DeviceProfile): ZmkMetadata {
@@ -467,7 +504,7 @@ export function generateQmkKeymapJson(profile: DeviceProfile): GeneratedQmkKeyma
       diagnostic(
         "qmk.metadata.target_unconfirmed",
         "error",
-        "Several QMK controller targets share this device identity. Confirm the physical controller before compiling.",
+        qmkTargetUnconfirmedMessage(metadata),
         { file: "qmk/keymap.json", path: "metadata.qmk.targetConfirmed" },
       ),
     );
@@ -541,7 +578,7 @@ export function generateQmkSourceBundle(profile: DeviceProfile): FirmwareSourceB
       diagnostic(
         "qmk.metadata.target_unconfirmed",
         "error",
-        "Several QMK controller targets share this device identity. Confirm the physical controller before compiling.",
+        qmkTargetUnconfirmedMessage(metadata),
         { file: "COMMANDS.txt", path: "metadata.qmk.targetConfirmed" },
       ),
     );

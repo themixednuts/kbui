@@ -6,6 +6,14 @@
   "compatibility_date": "2026-07-15",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  // Workers Cache (July 2026): serves cacheable responses from Cloudflare's
+  // edge without running the Worker. Only responses that explicitly declare a
+  // public Cache-Control are cached — hooks.server.ts stamps
+  // "private, no-store" on everything else, so heuristic freshness (which
+  // would otherwise cache unheadered 200s for 2h WITHOUT the Cookie header in
+  // the cache key) can never cache personalized responses. NOTE: with cache
+  // enabled, static-asset requests are billed at the standard request rate.
+  "cache": { "enabled": true },
   // Agent workflow callbacks use constructor.name to route back to the
   // originating Durable Object. Preserve class names through bundling.
   "keep_names": true,

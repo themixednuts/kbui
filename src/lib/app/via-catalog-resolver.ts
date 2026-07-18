@@ -8,6 +8,7 @@ import {
   type KeyboardCatalogEntry,
   type KeyboardCatalogIndexEntry,
 } from "$lib/keyboard/catalog";
+import { curatedQmkTargetForIdentity } from "$lib/keyboard/curated-qmk-targets";
 import type { ConnectionState } from "$lib/keyboard/transport";
 
 import type { WorkbenchStore } from "./workbench-store.svelte";
@@ -43,23 +44,44 @@ function remoteKeyboardIdentity(identity: CatalogIdentity) {
 export function withResolvedQmkTarget(
   definition: KeyboardCatalogEntry,
   identityEntry: KeyboardCatalogEntry | undefined,
+  deviceProductName?: string,
 ): KeyboardCatalogEntry {
   const resolvedQmk = identityEntry?.firmwareMetadata?.qmk;
-  if (!resolvedQmk) return definition;
+  const definitionQmk = definition.firmwareMetadata?.qmk;
+
+  // A curated target only steps in when the USB-identity resolution could NOT
+  // confirm a single controller. Mainline QMK can't disambiguate some boards —
+  // e.g. the BastardKB Splinky, whose RP2040 controller lives only in
+  // BastardKB's fork; all three Charybdis 4x6 controllers share PID 0x1833 — so
+  // a hand-verified curated fork target is both correct and confirmed where the
+  // resolved one is neither.
+  const curated = resolvedQmk?.targetConfirmed
+    ? undefined
+    : curatedQmkTargetForIdentity(definition.vendorId, definition.productId, deviceProductName);
+
+  if (!resolvedQmk && !curated) return definition;
+
+  // The VIA definition owns the physical key order used by the live matrix.
+  // Keep it when present while taking the exact build target, ref, controller
+  // alternatives, and confirmation state from the resolved/curated target.
+  const mergedQmk = curated
+    ? {
+        ...resolvedQmk,
+        ...definitionQmk,
+        ...curated,
+        keyOrder: definitionQmk?.keyOrder ?? resolvedQmk?.keyOrder ?? curated.keyOrder,
+      }
+    : {
+        ...definitionQmk,
+        ...resolvedQmk,
+        keyOrder: definitionQmk?.keyOrder ?? resolvedQmk?.keyOrder,
+      };
 
   return {
     ...definition,
     firmwareMetadata: {
       ...definition.firmwareMetadata,
-      qmk: {
-        ...definition.firmwareMetadata?.qmk,
-        ...resolvedQmk,
-        // The VIA definition owns the physical key order used by the live
-        // matrix. Keep it when present while taking the exact build target,
-        // ref, controller alternatives, and confirmation state from QMK's
-        // USB-identity catalog.
-        keyOrder: definition.firmwareMetadata?.qmk?.keyOrder ?? resolvedQmk.keyOrder,
-      },
+      qmk: mergedQmk,
     },
   };
 }
@@ -187,7 +209,8 @@ export function createViaCatalogResolver({
               }),
               qmkEntryOrUndefinedEffect(identity),
             ]),
-            ([definition, identityEntry]) => withResolvedQmkTarget(definition, identityEntry),
+            ([definition, identityEntry]) =>
+              withResolvedQmkTarget(definition, identityEntry, identity.productName),
           )
         : qmkEntryOrUndefinedEffect(identity),
     );

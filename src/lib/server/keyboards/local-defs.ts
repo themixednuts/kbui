@@ -431,7 +431,22 @@ const dilemma3x5_2: LocalKeyboardDefinition = {
  * than in the-via/keyboards. Keep the USB identity exact: 0x1833 is the
  * Charybdis 4x6 firmware PID, while 0x1835 belongs to the Dilemma above.
  *
+ * Thumb-cluster matrix mapping is taken verbatim from QMK's canonical
+ * info.json (`keyboards/bastardkb/charybdis/4x6/**` LAYOUT macro):
+ *
+ *     Left thumbs  (matrix row 4): cols 1,2,3,4,5  — 5 keys
+ *     Right thumbs (matrix row 9): cols 1,3,5      — 3 keys
+ *
+ * The right half carries fewer thumb keys because the trackball module
+ * displaces two of its thumb switches. An earlier revision of this def had
+ * the two rows transposed (row 4 = {1,3,5}, row 9 = {1,2,3,4,5}), which made
+ * the parsed VIA key set disagree with the QMK-resolved layout key order and
+ * blocked firmware generation with `qmk.key_order.unknown_keys` /
+ * `qmk.key_order.incomplete` for k4-4/k4-2.
+ *
  * Source: https://docs.bastardkb.com/fw/charybdis-left-handed.html
+ * Verified against
+ * https://keyboards.qmk.fm/v1/keyboards/bastardkb/charybdis/4x6/blackpill/info.json
  */
 const charybdis4x6: LocalKeyboardDefinition = {
   sourcePath: "klakson/bastardkb/charybdis/4x6/charybdis_4x6",
@@ -514,8 +529,8 @@ const charybdis4x6: LocalKeyboardDefinition = {
           "8,1",
           "8,0",
         ],
-        [{ x: 5 }, "4,3", "4,1", { x: 2 }, "9,1", "9,4", "9,3"],
-        [{ x: 6 }, "4,5", { x: 2 }, "9,2", "9,5"],
+        [{ x: 5 }, "4,3", "4,4", "4,1", { x: 2 }, "9,1", "9,3"],
+        [{ x: 6 }, "4,5", "4,2", { x: 2 }, "9,5"],
       ],
     },
   },
