@@ -1,32 +1,35 @@
-# Local dev secrets — read automatically by `wrangler dev` and bound onto
-# `env.*` for the Cloudflare worker (including AuthAgent + UserWorkbenchAgent).
+# Local Worker configuration — read automatically by `wrangler dev` and bound
+# onto `env.*` for AuthAgent, UserWorkbenchAgent, and the SvelteKit Worker.
 #
-# Copy to `.dev.vars` and fill in real values. `.dev.vars` is .gitignored.
-# Restart `wrangler dev` after editing — values are only read on boot.
+# Copy this file to `.dev.vars` and fill in real values. `.dev.vars` is
+# gitignored. Restart `wrangler dev` after editing; values are read on boot.
+# Keep local and production origins separate:
+#   local BETTER_AUTH_URL      = http://127.0.0.1:8787
+#   production BETTER_AUTH_URL = https://kbui.jonfonts.workers.dev
+# The production value belongs in the BETTER_AUTH_URL GitHub Actions secret,
+# never in the local `.dev.vars` file.
 
 # Any 32+ character random string. Generate with:
 #   openssl rand -base64 32
 BETTER_AUTH_SECRET="replace-with-at-least-32-random-characters"
 
 # Match the exact origin the browser hits. `vp run dev:worker` reads this URL
-# and binds Wrangler to the same host/port, so change the GitHub OAuth app
-# URLs together with this value. The app redirects alternate loopback hosts
-# such as localhost <-> 127.0.0.1 back to this origin so auth cookies and
+# and binds Wrangler to the same host/port. The app redirects alternate loopback
+# hosts such as localhost <-> 127.0.0.1 back to this origin so auth cookies and
 # OAuth callbacks stay on one host.
 BETTER_AUTH_URL="http://127.0.0.1:8787"
 
 # --- GitHub OAuth ---------------------------------------------------------
-# 1. Create an OAuth App: https://github.com/settings/developers
-#       Application name : kbui (Local)
-#       Homepage URL     : <BETTER_AUTH_URL>
-#       Callback URL     : <BETTER_AUTH_URL>/api/auth/callback/github
-# 2. Paste the resulting Client ID + Client Secret here.
-# 3. Restart `wrangler dev`.
+# Create a separate OAuth App at https://github.com/settings/developers:
+#   Application name : kbui (Local)
+#   Homepage URL     : <BETTER_AUTH_URL>
+#   Callback URL     : <BETTER_AUTH_URL>/api/auth/callback/github
+# Paste the resulting client credentials here, then restart the Worker.
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
 
 # --- GitHub App firmware builds ------------------------------------------
-# This is separate from the OAuth app above. OAuth signs the user in; this
+# This is separate from the OAuth App above. OAuth signs the user in; this
 # GitHub App is installed on the user's selected firmware repo/account so kbui
 # can commit generated QMK/ZMK files and read Actions results with narrow
 # installation permissions.
@@ -35,6 +38,7 @@ GITHUB_CLIENT_SECRET=""
 #   Homepage URL : <BETTER_AUTH_URL>
 #   Callback URL : <BETTER_AUTH_URL>/api/auth/firmware/github/callback
 #   Setup URL    : <BETTER_AUTH_URL>/api/auth/firmware/github/setup
+#   Webhook URL  : <BETTER_AUTH_URL>/api/webhooks/github
 #   Request user authorization (OAuth) during installation: enabled
 #
 # Repository permissions:
@@ -47,18 +51,21 @@ GITHUB_APP_SLUG=""
 GITHUB_APP_ID=""
 GITHUB_APP_CLIENT_ID=""
 GITHUB_APP_CLIENT_SECRET=""
+# Explicit install URL, normally:
+#   https://github.com/apps/<GITHUB_APP_SLUG>/installations/new
 GITHUB_APP_INSTALL_URL=""
-# Required for ongoing maintenance/build calls. Generate a private key from
-# the GitHub App settings page and paste it with escaped newlines:
-#   GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+# Generate a private key from the GitHub App settings page and paste it with
+# escaped newlines. GitHub currently generates an RSA private key:
+#   GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
 GITHUB_APP_PRIVATE_KEY=""
-# Encrypts GitHub App user access/refresh tokens used for setup actions such
-# as create repo, create from template, adopt repo, and fork repo. If omitted,
-# local dev falls back to MONKEYTYPE_SECRET_KEY.
+# Encrypts GitHub App user access/refresh tokens used for setup actions such as
+# create repo, create from template, adopt repo, and fork repo. This key is
+# required for token persistence; it does not fall back to another secret.
+# Generate an independent 32-byte base64 key with:
+#   openssl rand -base64 32
 GITHUB_APP_TOKEN_SECRET_KEY=""
-# Required for event-driven build status. Configure the GitHub App webhook URL
-# as <BETTER_AUTH_URL>/api/webhooks/github, subscribe to Workflow run events,
-# and use the same high-entropy value here and in GitHub App settings.
+# Required for event-driven build status. Use the same high-entropy value here
+# and in the GitHub App webhook settings; subscribe to Workflow run events.
 GITHUB_WEBHOOK_SECRET=""
 
 # For exact local webhook testing, keep `vp run dev:worker` running and start:
@@ -70,10 +77,32 @@ GITHUB_WEBHOOK_SECRET=""
 KBGUI_TUNNEL_NAME=""
 KBGUI_PUBLIC_ORIGIN=""
 
-# --- Monkeytype data sync -------------------------------------------------
+# --- Monkeytype data sync ------------------------------------------------
 # Encrypts stored ApeKeys in AuthAgent Durable Object SQLite.
-# Generate a 32-byte base64 key with:
+# Generate an independent 32-byte base64 key with:
 #   openssl rand -base64 32
-# Production:
-#   vp exec wrangler secret put MONKEYTYPE_SECRET_KEY
 MONKEYTYPE_SECRET_KEY="replace-with-32-byte-base64-secret"
+
+# --- Optional GitHub API rate-limit tokens -------------------------------
+# Catalog and ZMK fetches work without these. Set one only when local or Worker
+# GitHub API rate limits require it. They are intentionally not part of the
+# required 13-secret production deploy contract.
+# VIA_GITHUB_TOKEN=""
+# GITHUB_TOKEN=""
+
+# --- GitHub Actions secret names -----------------------------------------
+# GitHub reserves the GITHUB_ prefix for Actions secrets. The deploy workflow
+# therefore reads the following aliases and maps them back to the runtime names:
+#   GH_CLIENT_ID                   -> GITHUB_CLIENT_ID
+#   GH_CLIENT_SECRET               -> GITHUB_CLIENT_SECRET
+#   GH_APP_SLUG                    -> GITHUB_APP_SLUG
+#   GH_APP_ID                      -> GITHUB_APP_ID
+#   GH_APP_CLIENT_ID               -> GITHUB_APP_CLIENT_ID
+#   GH_APP_CLIENT_SECRET           -> GITHUB_APP_CLIENT_SECRET
+#   GH_APP_INSTALL_URL             -> GITHUB_APP_INSTALL_URL
+#   GH_APP_PRIVATE_KEY             -> GITHUB_APP_PRIVATE_KEY
+#   GH_WEBHOOK_SECRET              -> GITHUB_WEBHOOK_SECRET
+#   GH_APP_TOKEN_SECRET_KEY        -> GITHUB_APP_TOKEN_SECRET_KEY
+# BETTER_AUTH_SECRET, BETTER_AUTH_URL, and MONKEYTYPE_SECRET_KEY keep their
+# names in GitHub Actions. Cloudflare Worker secrets always use the runtime
+# names on the right-hand side above.
