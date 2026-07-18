@@ -1,5 +1,5 @@
 import { env } from "$env/dynamic/private";
-import { Effect } from "effect";
+import { Deferred, Effect } from "effect";
 
 import type { FirmwareMetadata } from "$lib/keyboard/schema";
 import { uf2TargetForHardware } from "$lib/keyboard/uf2-families";
@@ -9,9 +9,18 @@ import { runWorkerEffect } from "$lib/effect/worker-runtime";
 const zmkOwner = "zmkfirmware";
 const zmkRepo = "zmk";
 const zmkBranch = "main";
+const githubApiBase = "https://api.github.com";
+// codeload.github.com serves git archives directly (no api.github.com REST
+// call), so it isn't subject to the unauthenticated core API's 60 req/hr rate
+// limit that 403s in production, where no GITHUB_TOKEN secret is configured.
+// The "legacy.zip" variant nests every file under a `<owner>-<repo>-<shortsha>/`
+// root directory, so the resolved commit can be read straight off the archive
+// without a commits API call. One archive download also replaces the recursive
+// git/trees listing AND the per-file raw.githubusercontent.com fetches: the
+// hardware metadata catalog is parsed from the archive contents in memory.
+const zmkCodeloadArchiveUrl = `https://codeload.github.com/${zmkOwner}/${zmkRepo}/legacy.zip/refs/heads/${zmkBranch}`;
 const cacheTtlMs = 60 * 60 * 1000;
 
-type GitTreeEntry = { path?: string; type?: string };
 type HardwareMeta = {
   exposes: string[];
   id: string;
@@ -22,8 +31,10 @@ type HardwareMeta = {
   type: "board" | "shield";
 };
 
-let pathCache: { expiresAt: number; paths: string[]; ref: string } | undefined;
-let revisionCache: { expiresAt: number; ref: string } | undefined;
+type ZmkCatalog = { hardware: HardwareMeta[]; ref: string };
+
+let catalogCache: { catalog: ZmkCatalog; expiresAt: number } | undefined;
+let catalogLoad: Deferred.Deferred<ZmkCatalog, ZmkCatalogFetchError> | undefined;
 
 class ZmkCatalogFetchError extends Error {
   constructor(
@@ -45,54 +56,109 @@ function githubHeaders(): HeadersInit {
   };
 }
 
-function retryingJsonRequestEffect<T>(url: string) {
-  const request = Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(url, { headers: githubHeaders() });
-      if (!response.ok) {
-        throw new ZmkCatalogFetchError(
-          `ZMK catalog request returned ${response.status}.`,
-          response.status === 408 || response.status === 429 || response.status >= 500,
+function fetchZmkRevisionEffect() {
+  return retryTransient(
+    Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(
+          `${githubApiBase}/repos/${zmkOwner}/${zmkRepo}/commits/${zmkBranch}`,
+          { headers: githubHeaders() },
         );
-      }
-      return (await response.json()) as T;
-    },
-    catch: (error) =>
-      error instanceof ZmkCatalogFetchError
-        ? error
-        : new ZmkCatalogFetchError(
-            error instanceof Error ? error.message : "ZMK catalog request failed.",
-            true,
-          ),
-  });
-
-  return retryTransient(request);
+        if (!response.ok) {
+          throw new ZmkCatalogFetchError(
+            `ZMK catalog revision returned ${response.status}.`,
+            response.status === 408 || response.status === 429 || response.status >= 500,
+          );
+        }
+        const body = (await response.json()) as { sha?: unknown };
+        if (typeof body.sha !== "string" || body.sha.length < 7) {
+          throw new ZmkCatalogFetchError("ZMK catalog revision response was malformed.", false);
+        }
+        return body.sha;
+      },
+      catch: (error) =>
+        error instanceof ZmkCatalogFetchError
+          ? error
+          : new ZmkCatalogFetchError(
+              error instanceof Error ? error.message : "ZMK catalog revision request failed.",
+              true,
+            ),
+    }),
+  );
 }
 
-function zmkRevisionEffect() {
-  return Effect.suspend(() => {
-    if (revisionCache && revisionCache.expiresAt > Date.now()) {
-      return Effect.succeed(revisionCache.ref);
-    }
-    return Effect.gen(function* () {
-      const body = yield* retryingJsonRequestEffect<unknown>(
-        `https://api.github.com/repos/${zmkOwner}/${zmkRepo}/commits/${zmkBranch}`,
-      );
-      if (
-        typeof body !== "object" ||
-        body === null ||
-        !("sha" in body) ||
-        typeof body.sha !== "string" ||
-        body.sha.length < 7
-      ) {
-        return yield* Effect.fail(
-          new ZmkCatalogFetchError("ZMK catalog revision response was malformed.", false),
-        );
-      }
-      revisionCache = { expiresAt: Date.now() + cacheTtlMs, ref: body.sha };
-      return body.sha;
-    });
-  });
+function fetchZmkArchiveEffect(ref: string) {
+  return retryTransient(
+    Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(`${githubApiBase}/repos/${zmkOwner}/${zmkRepo}/zipball/${ref}`, {
+          headers: githubHeaders(),
+        });
+        if (!response.ok) {
+          const body = await response.text();
+          throw new ZmkCatalogFetchError(
+            `ZMK catalog archive returned ${response.status}: ${body.slice(0, 400)}`,
+            response.status === 408 || response.status === 429 || response.status >= 500,
+          );
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      },
+      catch: (error) =>
+        error instanceof ZmkCatalogFetchError
+          ? error
+          : new ZmkCatalogFetchError(
+              error instanceof Error ? error.message : "ZMK catalog archive request failed.",
+              true,
+            ),
+    }),
+  );
+}
+
+/**
+ * Fetches the current archive straight from codeload, bypassing the
+ * api.github.com REST surface (and its shared unauthenticated rate limit)
+ * entirely. Used whenever no GitHub token is configured, and as the fallback
+ * when the authenticated revision lookup fails.
+ */
+function fetchZmkArchiveFromCodeloadEffect() {
+  return retryTransient(
+    Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(zmkCodeloadArchiveUrl, {
+          headers: { "User-Agent": "kbui-zmk-target-resolver" },
+        });
+        if (!response.ok) {
+          const body = await response.text();
+          throw new ZmkCatalogFetchError(
+            `ZMK codeload archive returned ${response.status}: ${body.slice(0, 400)}`,
+            response.status === 408 || response.status === 429 || response.status >= 500,
+          );
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      },
+      catch: (error) =>
+        error instanceof ZmkCatalogFetchError
+          ? error
+          : new ZmkCatalogFetchError(
+              error instanceof Error ? error.message : "ZMK codeload archive request failed.",
+              true,
+            ),
+    }),
+  );
+}
+
+/**
+ * Recovers the resolved commit from an unzipped archive's root directory
+ * name (`<owner>-<repo>-<shortsha>/...`) instead of a separate commits API
+ * call. Falls back to the branch name if the archive layout ever changes.
+ */
+function deriveRevisionFromArchive(archive: Record<string, Uint8Array>): string | undefined {
+  for (const path of Object.keys(archive)) {
+    const root = path.split("/", 1)[0];
+    const match = root ? /-([0-9a-f]{7,40})$/i.exec(root) : null;
+    if (match) return match[1];
+  }
+  return undefined;
 }
 
 function normalized(value: string) {
@@ -147,20 +213,85 @@ export function parseZmkHardwareMetadata(path: string, yaml: string): HardwareMe
   };
 }
 
-function zmkMetadataPathsEffect() {
-  return Effect.suspend(() => {
-    if (pathCache && pathCache.expiresAt > Date.now()) return Effect.succeed(pathCache);
-    return Effect.gen(function* () {
-      const ref = yield* zmkRevisionEffect();
-      const body = yield* retryingJsonRequestEffect<{ tree?: GitTreeEntry[] }>(
-        `https://api.github.com/repos/${zmkOwner}/${zmkRepo}/git/trees/${ref}?recursive=1`,
-      );
-      const paths = (body.tree ?? [])
-        .filter((entry) => entry.type === "blob" && entry.path?.endsWith(".zmk.yml"))
-        .map((entry) => entry.path as string);
-      pathCache = { expiresAt: Date.now() + cacheTtlMs, paths, ref };
-      return pathCache;
+function createZmkCatalogEffect(): Effect.Effect<ZmkCatalog, ZmkCatalogFetchError> {
+  return Effect.gen(function* () {
+    const { unzipSync } = yield* Effect.tryPromise({
+      try: () => import("fflate"),
+      catch: (cause) =>
+        new ZmkCatalogFetchError(
+          cause instanceof Error ? cause.message : "Could not load the archive decoder.",
+          false,
+        ),
     });
+    // Only spend the commits API's rate-limit budget when a token is actually
+    // configured to raise it. Without one (production has no GITHUB_TOKEN
+    // secret today), or if the authenticated lookup fails, fall back to the
+    // tokenless codeload archive and read the resolved commit off its root
+    // directory name instead.
+    const pinnedRef = env.GITHUB_TOKEN
+      ? yield* Effect.matchEffect(fetchZmkRevisionEffect(), {
+          onFailure: () => Effect.succeed(undefined),
+          onSuccess: (sha) => Effect.succeed(sha),
+        })
+      : undefined;
+
+    const archiveBytes = pinnedRef
+      ? yield* fetchZmkArchiveEffect(pinnedRef)
+      : yield* fetchZmkArchiveFromCodeloadEffect();
+
+    // Only the ~150 tiny hardware-metadata files are decompressed; the rest of
+    // the multi-megabyte archive (firmware sources, docs) is skipped entirely
+    // to stay inside the Workers Free-plan CPU budget.
+    const archive = yield* Effect.try({
+      try: () => unzipSync(archiveBytes, { filter: (file) => file.name.endsWith(".zmk.yml") }),
+      catch: (cause) =>
+        new ZmkCatalogFetchError(
+          cause instanceof Error ? cause.message : "ZMK catalog archive was malformed.",
+          false,
+        ),
+    });
+    const ref = pinnedRef ?? deriveRevisionFromArchive(archive) ?? zmkBranch;
+    const decoder = new TextDecoder();
+    const hardware: HardwareMeta[] = [];
+    for (const [archivePath, bytes] of Object.entries(archive)) {
+      // Strip the `<owner>-<repo>-<shortsha>/` archive root to recover the
+      // in-repo path the matching heuristics score against.
+      const separator = archivePath.indexOf("/");
+      const path = separator === -1 ? undefined : archivePath.slice(separator + 1);
+      if (!path) continue;
+      const meta = parseZmkHardwareMetadata(path, decoder.decode(bytes));
+      if (meta) hardware.push(meta);
+    }
+    return { hardware, ref };
+  });
+}
+
+function loadZmkCatalogEffect(): Effect.Effect<ZmkCatalog, ZmkCatalogFetchError> {
+  return Effect.suspend(() => {
+    if (catalogCache && catalogCache.expiresAt > Date.now()) {
+      return Effect.succeed(catalogCache.catalog);
+    }
+    if (catalogLoad) return Deferred.await(catalogLoad);
+
+    const deferred = Deferred.makeUnsafe<ZmkCatalog, ZmkCatalogFetchError>();
+    catalogLoad = deferred;
+    return Effect.matchEffect(createZmkCatalogEffect(), {
+      onFailure: (error) =>
+        Effect.sync(() => Deferred.doneUnsafe(deferred, Effect.fail(error))).pipe(
+          Effect.andThen(Effect.fail(error)),
+        ),
+      onSuccess: (catalog) =>
+        Effect.sync(() => {
+          catalogCache = { catalog, expiresAt: Date.now() + cacheTtlMs };
+          Deferred.doneUnsafe(deferred, Effect.succeed(catalog));
+        }).pipe(Effect.as(catalog)),
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (catalogLoad === deferred) catalogLoad = undefined;
+        }),
+      ),
+    );
   });
 }
 
@@ -173,57 +304,20 @@ function pathScore(path: string, identity: string) {
   return Number(pathText.endsWith(identityText)) * 1000 + overlap * 100;
 }
 
-function loadMetadataEffect(path: string, ref: string) {
-  const request = Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(
-        `https://raw.githubusercontent.com/${zmkOwner}/${zmkRepo}/${ref}/${path}`,
-      );
-      if (response.status === 404) return undefined;
-      if (!response.ok) {
-        throw new ZmkCatalogFetchError(
-          `ZMK hardware metadata returned ${response.status}.`,
-          response.status === 408 || response.status === 429 || response.status >= 500,
-        );
-      }
-      return parseZmkHardwareMetadata(path, await response.text());
-    },
-    catch: (error) =>
-      error instanceof ZmkCatalogFetchError
-        ? error
-        : new ZmkCatalogFetchError(
-            error instanceof Error ? error.message : "ZMK hardware metadata request failed.",
-            true,
-          ),
-  });
-  return retryTransient(request);
-}
+function compatibleControllers(meta: HardwareMeta, catalog: ZmkCatalog): HardwareMeta[] {
+  if (meta.type === "board") return [meta];
+  if (meta.requires.length === 0) return [];
 
-function compatibleControllersEffect(
-  meta: HardwareMeta,
-  catalog: { paths: string[]; ref: string },
-) {
-  if (meta.type === "board") return Effect.succeed([meta]);
-  if (meta.requires.length === 0) return Effect.succeed([]);
-
-  const boardPaths = catalog.paths.filter(
-    (path) =>
-      path.startsWith("app/boards/") &&
-      !path.includes("/shields/") &&
-      !path.includes("/interconnects/"),
-  );
-  return Effect.map(
-    Effect.forEach(boardPaths, (path) => loadMetadataEffect(path, catalog.ref), {
-      concurrency: 8,
-    }),
-    (loaded) =>
-      loaded
-        .filter((item): item is HardwareMeta => item?.type === "board")
-        .filter((board) =>
-          meta.requires.every((requirement) => board.exposes.includes(requirement)),
-        )
-        .sort((left, right) => left.id.localeCompare(right.id)),
-  );
+  return catalog.hardware
+    .filter(
+      (item) =>
+        item.type === "board" &&
+        item.path.startsWith("app/boards/") &&
+        !item.path.includes("/shields/") &&
+        !item.path.includes("/interconnects/"),
+    )
+    .filter((board) => meta.requires.every((requirement) => board.exposes.includes(requirement)))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function targetFor(meta: HardwareMeta, board: HardwareMeta) {
@@ -249,19 +343,16 @@ function resolveZmkFirmwareMetadataEffect(input: {
 }): Effect.Effect<FirmwareMetadata | undefined, ZmkCatalogFetchError> {
   return Effect.gen(function* () {
     const identity = `${input.deviceName} ${input.manufacturer ?? ""}`.trim();
-    const catalog = yield* zmkMetadataPathsEffect();
-    const rankedPaths = catalog.paths
-      .map((path) => ({ path, score: pathScore(path, identity) }))
+    const catalog = yield* loadZmkCatalogEffect();
+    const loaded = catalog.hardware
+      .map((item) => ({ item, score: pathScore(item.path, identity) }))
       .filter((candidate) => candidate.score > 0)
-      .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path))
-      .slice(0, 8);
-    const loaded = (yield* Effect.forEach(
-      rankedPaths,
-      ({ path }) => loadMetadataEffect(path, catalog.ref),
-      {
-        concurrency: 8,
-      },
-    )).filter((item): item is HardwareMeta => Boolean(item));
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.item.path.localeCompare(right.item.path),
+      )
+      .slice(0, 8)
+      .map((candidate) => candidate.item);
     const exact = loaded.filter((item) => {
       const device = normalized(input.deviceName);
       return normalized(item.id) === device || normalized(item.name) === device;
@@ -272,7 +363,7 @@ function resolveZmkFirmwareMetadataEffect(input: {
       exact.length > 0 ? [...exact, ...loaded.filter((item) => !exact.includes(item))] : loaded;
     const hardware = matches[0];
     if (!hardware) return undefined;
-    const compatible = yield* compatibleControllersEffect(hardware, catalog);
+    const compatible = compatibleControllers(hardware, catalog);
     const rankedControllers = compatible
       .map((board) => ({ board, score: boardIdentityScore(board, identity) }))
       .sort(
@@ -309,5 +400,15 @@ export function resolveZmkFirmwareMetadata(input: {
   deviceName: string;
   manufacturer?: string;
 }): Promise<FirmwareMetadata | undefined> {
-  return runWorkerEffect("zmk.resolve-firmware-metadata", resolveZmkFirmwareMetadataEffect(input));
+  // Best-effort: the ZMK-BLE connect flow must never hard-fail just because
+  // the hardware-metadata lookup couldn't run (rate limit, outage, malformed
+  // archive). Any failure degrades to "no metadata", matching the VIA/QMK
+  // detail paths.
+  return runWorkerEffect(
+    "zmk.resolve-firmware-metadata",
+    Effect.matchEffect(resolveZmkFirmwareMetadataEffect(input), {
+      onFailure: () => Effect.succeed(undefined),
+      onSuccess: (metadata) => Effect.succeed(metadata),
+    }),
+  );
 }
