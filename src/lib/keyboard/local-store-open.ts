@@ -1,6 +1,6 @@
-import { Effect, Schedule, Schema } from "effect";
+import { Duration, Effect, Schedule, Schema } from "effect";
 
-import { platformError, type PlatformError } from "$lib/effect/errors";
+import { type PlatformError } from "$lib/effect/errors";
 
 export class LocalStoreUnavailable extends Schema.TaggedErrorClass<LocalStoreUnavailable>()(
   "LocalStoreUnavailable",
@@ -22,16 +22,13 @@ class OpfsLockContention extends Schema.TaggedErrorClass<OpfsLockContention>()(
   { message: Schema.String },
 ) {}
 
-interface OpfsDatabase {
-  getDatabaseInfo(): Promise<{ storageType?: string }>;
-  destroy(): Promise<void>;
-}
-
-export interface OpenOpfsDatabaseOptions<Db extends OpfsDatabase> {
+export interface OpenOpfsDatabaseOptions<Db> {
   /** Must build a fresh client: SQLocal pins itself to `:memory:` after a failed OPFS init. */
-  readonly createDatabase: () => Promise<Db>;
-  readonly isCrossOriginIsolated: () => boolean;
-  readonly baseRetryDelay?: import("effect").Duration.Input;
+  readonly open: Effect.Effect<Db, PlatformError>;
+  readonly storageType: (db: Db) => Effect.Effect<string | undefined, PlatformError>;
+  readonly close: (db: Db) => Effect.Effect<void, PlatformError>;
+  readonly crossOriginIsolated: Effect.Effect<boolean>;
+  readonly baseRetryDelay?: Duration.Input;
   readonly maxRetries?: number;
 }
 
@@ -41,29 +38,29 @@ export interface OpenOpfsDatabaseOptions<Db extends OpfsDatabase> {
  * another session) is retried with exponential backoff; missing isolation
  * headers fail immediately since no retry can fix them.
  */
-export function openOpfsDatabaseEffect<Db extends OpfsDatabase>({
-  createDatabase,
-  isCrossOriginIsolated,
+export function openOpfsDatabaseEffect<Db>({
+  open,
+  storageType,
+  close,
+  crossOriginIsolated,
   baseRetryDelay = "150 millis",
   maxRetries = 5,
 }: OpenOpfsDatabaseOptions<Db>): Effect.Effect<Db, LocalStoreUnavailable | PlatformError> {
-  const discard = (db: Db) => Effect.tryPromise(() => db.destroy()).pipe(Effect.ignore);
+  const discard = (db: Db) =>
+    close(db).pipe(
+      Effect.tapError((error) => Effect.logDebug("LocalStore.discard_failed", error)),
+      Effect.ignore,
+    );
 
   const attemptOpen = Effect.gen(function* () {
-    const db = yield* Effect.tryPromise({
-      try: createDatabase,
-      catch: (cause) => platformError("local-store.open", cause),
-    });
-    const info = yield* Effect.tryPromise({
-      try: () => db.getDatabaseInfo(),
-      catch: (cause) => platformError("local-store.open", cause),
-    }).pipe(Effect.onError(() => discard(db)));
-    if (info.storageType === "opfs") return db;
+    const db = yield* open;
+    const storage = yield* storageType(db).pipe(Effect.onError(() => discard(db)));
+    if (storage === "opfs") return db;
 
     // SQLocal already swapped this client to the in-memory driver, so it
     // can never reach OPFS again; discard it before deciding why it failed.
     yield* discard(db);
-    if (!isCrossOriginIsolated()) {
+    if (!(yield* crossOriginIsolated)) {
       return yield* Effect.fail(
         new LocalStoreUnavailable({
           reason: "missing-isolation",
@@ -79,10 +76,14 @@ export function openOpfsDatabaseEffect<Db extends OpfsDatabase>({
     );
   });
 
+  const lockRetrySchedule = Schedule.exponential(baseRetryDelay).pipe(
+    Schedule.jittered,
+    Schedule.upTo({ times: maxRetries }),
+  );
+
   return attemptOpen.pipe(
     Effect.retry({
-      schedule: Schedule.jittered(Schedule.exponential(baseRetryDelay)),
-      times: maxRetries,
+      schedule: lockRetrySchedule,
       while: (error) => error._tag === "OpfsLockContention",
     }),
     Effect.catchTag("OpfsLockContention", () =>
@@ -94,5 +95,6 @@ export function openOpfsDatabaseEffect<Db extends OpfsDatabase>({
         }),
       ),
     ),
+    Effect.withSpan("LocalStore.openOpfsDatabase"),
   );
 }

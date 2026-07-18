@@ -1,5 +1,5 @@
 import { browser } from "$app/environment";
-import { Cause, Context, Effect, Layer, ManagedRuntime } from "effect";
+import { Cause, Context, Effect, Layer, ManagedRuntime, type Scope } from "effect";
 import type { SQLocal as SQLocalClient } from "sqlocal";
 
 import { LocalStoreUnavailable, openOpfsDatabaseEffect } from "./local-store-open";
@@ -140,10 +140,17 @@ async function migrateLegacyLocalStorageDatabase(
   }
 }
 
+function closeClientEffect(db: SQLocalClient) {
+  return Effect.tryPromise({
+    try: () => db.destroy(),
+    catch: (cause) => platformError("local-store.close", cause),
+  });
+}
+
 function openClientEffect(): Effect.Effect<
   SQLocalClient,
   PlatformError | LocalStoreUnavailable,
-  import("effect").Scope.Scope
+  Scope.Scope
 > {
   return Effect.acquireRelease(
     Effect.gen(function* () {
@@ -159,23 +166,28 @@ function openClientEffect(): Effect.Effect<
         try: () => import("sqlocal"),
         catch: (cause) => platformError("local-store.open", cause),
       });
-      // A file path selects SQLocal's worker-backed OPFS VFS. That keeps
-      // SQLite I/O off the UI thread and persists a real database file.
       const db = yield* openOpfsDatabaseEffect({
-        createDatabase: async () => new SQLocal({ databasePath, onInit: schemaStatements }),
-        isCrossOriginIsolated: () => globalThis.crossOriginIsolated === true,
+        // A file path selects SQLocal's worker-backed OPFS VFS. That keeps
+        // SQLite I/O off the UI thread and persists a real database file.
+        open: Effect.try({
+          try: () => new SQLocal({ databasePath, onInit: schemaStatements }),
+          catch: (cause) => platformError("local-store.open", cause),
+        }),
+        storageType: (client) =>
+          Effect.tryPromise({
+            try: async () => (await client.getDatabaseInfo()).storageType,
+            catch: (cause) => platformError("local-store.open", cause),
+          }),
+        close: closeClientEffect,
+        crossOriginIsolated: Effect.sync(() => globalThis.crossOriginIsolated === true),
       });
       yield* Effect.tryPromise({
         try: () => migrateLegacyLocalStorageDatabase(db, SQLocal),
         catch: (cause) => platformError("local-store.open", cause),
-      }).pipe(Effect.onError(() => Effect.tryPromise(() => db.destroy()).pipe(Effect.ignore)));
+      }).pipe(Effect.onError(() => closeClientEffect(db).pipe(Effect.ignore)));
       return db;
     }),
-    (db) =>
-      Effect.tryPromise({
-        try: () => db.destroy(),
-        catch: (cause) => platformError("local-store.close", cause),
-      }).pipe(Effect.orDie),
+    (db) => closeClientEffect(db).pipe(Effect.orDie),
   );
 }
 
