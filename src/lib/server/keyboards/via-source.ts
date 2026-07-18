@@ -9,7 +9,7 @@ import {
 } from "$lib/keyboard/via-definition";
 
 import { localKeyboardDefinitions } from "./local-defs";
-import { resolveQmkFirmwareMetadata, resolveQmkKeyboardIdentity } from "./qmk-target";
+import { resolveQmkFirmwareMetadata } from "./qmk-target";
 import { retryTransient } from "$lib/effect/self-healing";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
@@ -282,6 +282,40 @@ export function loadViaKeyboardIndex(): Promise<
   );
 }
 
+/**
+ * Best-effort QMK build-target metadata for a single VIA detail response.
+ *
+ * This deliberately does NOT resolve the USB-identity target here. The connect
+ * flow resolves the exact QMK target through the dedicated
+ * `resolveKeyboardIdentity` query (a separate Worker invocation with its own CPU
+ * budget) and `withResolvedQmkTarget` treats that as authoritative, so rebuilding
+ * the multi-megabyte QMK USB index inside the detail request was both redundant
+ * and the reason `getViaKeyboardDetail` exceeded the Worker CPU limit: it stacked
+ * that parse on top of the full VIA-catalog build in a single request.
+ *
+ * Only the cheap, path-based QMK match is kept — it is what the Settings
+ * firmware-target picker reads from `firmwareMetadata.qmk`, and it is I/O bound
+ * (small `info.json` fetches) rather than a large synchronous parse. Any failure
+ * degrades to `undefined` so the VIA entry is always returned instead of 503ing
+ * the whole connect flow.
+ */
+function detailFirmwareMetadataEffect(entry: KeyboardCatalogEntry) {
+  return Effect.matchEffect(
+    Effect.tryPromise({
+      try: () => resolveQmkFirmwareMetadata(entry, githubHeaders()),
+      catch: (cause) =>
+        new ViaCatalogFetchError(
+          cause instanceof Error ? cause.message : "QMK target resolution failed.",
+          true,
+        ),
+    }),
+    {
+      onFailure: () => Effect.succeed(undefined),
+      onSuccess: (metadata) => Effect.succeed(metadata),
+    },
+  );
+}
+
 export function loadViaKeyboardDetail(id: string) {
   return runWorkerEffect(
     "via.catalog.detail",
@@ -298,33 +332,7 @@ export function loadViaKeyboardDetail(id: string) {
       const cached = qmkMetadataCache.get(entry.id);
       let metadata = cached && cached.expiresAt > now() ? cached.metadata : undefined;
       if (!cached || cached.expiresAt <= now()) {
-        const identityEntry =
-          entry.vendorId !== undefined && entry.productId !== undefined
-            ? yield* Effect.tryPromise({
-                try: () =>
-                  resolveQmkKeyboardIdentity({
-                    productId: entry.productId,
-                    productName: entry.name,
-                    vendorId: entry.vendorId,
-                  }),
-                catch: (cause) =>
-                  new ViaCatalogFetchError(
-                    cause instanceof Error ? cause.message : "QMK identity resolution failed.",
-                    true,
-                  ),
-              })
-            : undefined;
-        metadata = identityEntry?.firmwareMetadata;
-        if (!metadata?.qmk) {
-          metadata = yield* Effect.tryPromise({
-            try: () => resolveQmkFirmwareMetadata(entry, githubHeaders()),
-            catch: (cause) =>
-              new ViaCatalogFetchError(
-                cause instanceof Error ? cause.message : "QMK target resolution failed.",
-                true,
-              ),
-          });
-        }
+        metadata = yield* detailFirmwareMetadataEffect(entry);
         qmkMetadataCache.set(entry.id, { expiresAt: now() + cacheTtlMs, metadata });
       }
 
