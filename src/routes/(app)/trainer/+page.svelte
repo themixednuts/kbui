@@ -13,15 +13,18 @@
     hasEnoughPracticeData,
     layoutFixtureFromProfile,
     loadLayerRolesEffect,
+    LAYER_ROLE_OPTIONS,
     loadNeverMovesEffect,
     loadRecentAcceptsEffect,
     addNeverMoveEffect,
     personalStatsFromPractice,
     practiceSampleCount,
     recordAcceptEffect,
+    setLayerRoleEffect,
     suggestCoach,
     type CoachSuggestion,
     type LayerRoleMapT,
+    type LayerRoleT,
   } from "$lib/coach";
 
   type CoachSuggestResultT = typeof CoachSuggestResult.Type;
@@ -113,6 +116,11 @@
   const boardMarked = $derived(
     pulseCompanionIds.length > 0 ? pulseCompanionIds : ([] as string[]),
   );
+  const activeLayerRole = $derived(
+    layerRoles?.assignments.find((assignment) => assignment.layerId === workbench.activeLayer) ??
+      null,
+  );
+  const recentSessions = $derived(sessions.slice(0, 8));
 
   /** Live workbench profile, or preview-after bindings when coach preview is on. */
   const boardProfile = $derived.by(() => {
@@ -191,6 +199,21 @@
       "practice.layer-roles",
       Effect.gen(function* () {
         const roles = yield* loadLayerRolesEffect(workbench.profile);
+        yield* Effect.sync(() => {
+          layerRoles = roles;
+        });
+      }),
+      (_label, message) => {
+        coachError = message;
+      },
+    );
+  }
+
+  function lockActiveLayerRole(role: LayerRoleT) {
+    forkApp(
+      "practice.lock-layer-role",
+      Effect.gen(function* () {
+        const roles = yield* setLayerRoleEffect(workbench.profile, workbench.activeLayer, role);
         yield* Effect.sync(() => {
           layerRoles = roles;
         });
@@ -489,7 +512,8 @@
         "practice.key",
         Effect.gen(function* () {
           const arm = yield* isPracticeArmKey(ev);
-          if (!arm) return;
+          const isBackspace = ev.key === "Backspace";
+          if (!arm && !(isBackspace && running)) return;
 
           if (!running) {
             yield* Effect.sync(() => {
@@ -501,6 +525,7 @@
           const atMs = Math.round(performance.now() - startedMs);
 
           if (mode === "nav" && navHandle) {
+            if (isBackspace) return;
             yield* Effect.sync(() => ev.preventDefault());
             const key = browserKeyToModalKey(ev.key.length === 1 ? ev.key : ev.key, {
               control: ev.ctrlKey,
@@ -529,7 +554,7 @@
           const stroke = yield* strokeFromKeyboardEvent(ev).pipe(
             Effect.catchTag("Practice.UnknownKeyStroke", () => Effect.succeed(null)),
           );
-          if (!stroke || stroke._tag === "Backspace") return;
+          if (!stroke) return;
           yield* Effect.sync(() => ev.preventDefault());
           const context = yield* buildStrokeContext(ev);
           const next = yield* applyPracticeInput(script, session!, {
@@ -769,6 +794,22 @@
       <Card.Content class="grid gap-kb-16 p-kb-16">
         <section class="grid gap-kb-8">
           <EditorLayerStack editor={workbench} allowAdd={false} />
+          <label class="flex flex-wrap items-center gap-kb-8 font-mono text-[11px] text-ink-3">
+            Layer role
+            <select
+              class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px] text-ink"
+              value={activeLayerRole?.role ?? "unknown"}
+              onchange={(e) => lockActiveLayerRole(e.currentTarget.value as LayerRoleT)}
+              aria-label="Lock layer role"
+            >
+              {#each LAYER_ROLE_OPTIONS as role (role)}
+                <option value={role}>{role}{activeLayerRole?.locked && activeLayerRole.role === role ? " (locked)" : ""}</option>
+              {/each}
+            </select>
+            {#if activeLayerRole?.locked}
+              <span>locked</span>
+            {/if}
+          </label>
           <div
             class="relative flex min-h-[360px] min-w-0 overflow-hidden rounded-keycap border border-line-2 bg-stage [&_.keyboard-board-viewport]:min-h-[300px]"
           >
@@ -907,6 +948,19 @@
 
         {#if coachError}
           <p class="font-mono text-[12px] text-[var(--danger-ink)]">{coachError}</p>
+        {/if}
+
+        {#if recentSessions.length > 0}
+          <div class="grid gap-kb-8">
+            <h2 class="font-mono text-[11px] tracking-[0.08em] text-ink-3 uppercase">Sessions</h2>
+            <ul class="grid gap-kb-6">
+              {#each recentSessions as item (item.id)}
+                <li class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
+                  {item.wpm ?? "—"} wpm · {item.accuracy}% · {item.mode}
+                </li>
+              {/each}
+            </ul>
+          </div>
         {/if}
       </Card.Content>
     </Card.Root>
