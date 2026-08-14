@@ -59,11 +59,11 @@
   // labels collapse to icons (firmware by 960px, lens by 800px) rather than
   // overflowing into the neighboring group.
   const editorToolbarClass =
-    "editor-toolbar grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-8 max-[640px]:px-kb-12 @max-[640px]/editor-main:grid-cols-[auto_minmax(0,1fr)_auto] @max-[640px]/editor-main:gap-x-kb-6 @max-[640px]/editor-main:px-kb-10 @max-[640px]/editor-main:py-kb-6";
+    "editor-toolbar grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-8 max-[640px]:px-kb-12 @max-[640px]/editor-main:grid-cols-[auto_minmax(0,1fr)_auto] @max-[640px]/editor-main:gap-x-kb-6 @max-[640px]/editor-main:px-kb-10 @max-[640px]/editor-main:py-kb-6";
   const primaryToolbarGroupClass =
-    "editor-primary-tools col-start-1 row-start-1 flex min-w-0 flex-nowrap items-center gap-kb-10 overflow-x-clip";
+    "editor-primary-tools col-start-1 row-start-1 flex flex-none flex-nowrap items-center gap-kb-10";
   const secondaryToolbarGroupClass =
-    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8 overflow-x-clip @max-[640px]/editor-main:col-start-3";
+    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8 overflow-x-auto @max-[640px]/editor-main:col-start-3";
   const layerRowClass =
     "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center @max-[640px]/editor-main:col-span-1 @max-[640px]/editor-main:col-start-2 @max-[640px]/editor-main:row-start-1";
   const syncNoticeClass =
