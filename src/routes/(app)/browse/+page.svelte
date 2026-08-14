@@ -8,8 +8,10 @@
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import CommunityKeymapCard from "$lib/components/browse/CommunityKeymapCard.svelte";
   import CommunityPreviewModal from "$lib/components/browse/CommunityPreviewModal.svelte";
-  import { Button, Chip, Input, SegmentedNav } from "$lib/components/ui";
+  import { Button, Chip, Input, NativeSelect, SegmentedNav, Spinner } from "$lib/components/ui";
   import { Switch } from "$lib/components/ui/switch/index.js";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import { untrack } from "svelte";
   import type {
     CommunityKeymapCard as CommunityKeymapCardDto,
@@ -72,12 +74,8 @@
     "toggle-filter inline-flex min-h-kb-30 items-center gap-kb-8 font-mono text-[11px] text-ink-2";
   const sortControlClass =
     "sort-control inline-flex min-w-0 items-center gap-kb-8 whitespace-nowrap max-[820px]:justify-self-start";
-  const listErrorClass =
-    "list-error flex min-h-kb-44 items-center gap-kb-10 rounded-lg border border-[var(--danger-border)] bg-danger-surface px-kb-12 py-kb-10 text-kb-12 text-danger-ink";
   const cardGridClass =
     "card-grid grid min-w-0 grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-kb-16 p-kb-24 max-[640px]:grid-cols-[minmax(0,1fr)] max-[640px]:p-kb-12";
-  const emptyPanelClass =
-    "empty-panel grid min-h-[260px] place-items-center content-center gap-kb-10 rounded-lg border border-dashed border-line-2 bg-surface font-mono text-kb-12 text-ink-3";
   const reportBackdropClass =
     "report-backdrop fixed inset-0 z-40 grid place-items-center bg-[rgba(20,18,16,0.48)] p-kb-18 backdrop-blur-[8px]";
   const reportModalClass =
@@ -90,8 +88,6 @@
   const reportFieldClass = "grid gap-kb-6";
   const reportFieldControlClass =
     "w-full min-w-0 rounded-md border border-line bg-surface text-kb-13 text-ink";
-  const reportErrorClass =
-    "report-error m-0 rounded-lg border border-[var(--danger-border)] bg-danger-surface px-kb-10 py-kb-8 text-kb-12 text-danger-ink";
   const reportActionsClass = "report-actions flex justify-end gap-kb-8";
 
   const initialCards = untrack(() => data.initialCards);
@@ -140,7 +136,7 @@
   const listKey = $derived(JSON.stringify(listInput));
   const resultCopy = $derived(`${cards.length} ${cards.length === 1 ? "map" : "maps"}`);
 
-  let lastListKey = JSON.stringify({ sort: "likes", limit: 24 });
+  let lastListKey = $state(JSON.stringify({ sort: "likes", limit: 24 }));
 
   $effect(() => {
     if (listKey === lastListKey) return;
@@ -316,6 +312,17 @@
     );
   }
 
+  function isReportReason(value: string): value is CommunityReportReason {
+    return (
+      value === "spam" ||
+      value === "unsafe" ||
+      value === "misleading" ||
+      value === "copyright" ||
+      value === "harassment" ||
+      value === "other"
+    );
+  }
+
   function openReport(detail: CommunityKeymapDetail) {
     if (!signedIn) {
       promptSignIn();
@@ -483,9 +490,9 @@
         <span class={filterBandLabelClass}>Scope</span>
         <div class={scopeGridClass}>
           <div class={scopeFiltersClass}>
-            <label class={toggleFilterClass}>
-              <Switch bind:checked={compatibleOnly} size="sm" aria-label="Compatible with my board" />
-              <span>Compatible with {currentBoardName}</span>
+            <label class={toggleFilterClass} title={`Compatible with ${currentBoardName}`}>
+              <Switch bind:checked={compatibleOnly} size="sm" aria-label={`Compatible with ${currentBoardName}`} />
+              <span>Compatible only</span>
             </label>
 
             <Button
@@ -513,7 +520,7 @@
           <Chip
             class="result-count min-w-[62px] justify-self-end max-[820px]:justify-self-start"
             title={loading ? "Updating community keymaps" : "Current result count"}
-          >{resultCopy}</Chip>
+          >{#if loading}<Spinner class="size-3" />{/if}{resultCopy}</Chip>
           <span class="sr-only" aria-live="polite">
             {loading ? "Updating community keymaps" : `${resultCopy} shown`}
           </span>
@@ -522,21 +529,28 @@
     </section>
 
     {#if listError}
-      <div class={listErrorClass} role="status">
-        <span class="material-symbols-outlined" aria-hidden="true">warning</span>
-        {listError}
-        <Button variant="ghost" size="sm" onclick={() => refreshList(listInput, listKey)}>Retry</Button>
-      </div>
+      <Alert.Root variant="destructive">
+        <Alert.Title>{listError}</Alert.Title>
+        <Alert.Action>
+          <Button variant="ghost" size="sm" onclick={() => refreshList(listInput, listKey)}>Retry</Button>
+        </Alert.Action>
+      </Alert.Root>
     {/if}
 
     {#if cards.length === 0 && !loading}
-      <div class={emptyPanelClass}>
-        <span class="material-symbols-outlined text-[28px]" aria-hidden="true">explore_off</span>
-        <strong>No matching keymaps</strong>
-        <Button variant="ghost" size="sm" onclick={clearFilters}>Clear filters</Button>
-      </div>
+      <Empty.Root>
+        <Empty.Header>
+          <Empty.Title>No matching keymaps</Empty.Title>
+        </Empty.Header>
+        <Empty.Content>
+          <Button variant="ghost" size="sm" onclick={clearFilters}>Clear filters</Button>
+        </Empty.Content>
+      </Empty.Root>
     {:else}
-      <div class={cardGridClass} aria-busy={loading}>
+      <div class={cn(cardGridClass, loading && "opacity-60")} aria-busy={loading}>
+        {#if loading}
+          <span class="sr-only">Updating community keymaps</span>
+        {/if}
         {#each cards as card (card.id)}
           <CommunityKeymapCard {card} onpreview={openPreview} ontag={setTag} />
         {/each}
@@ -601,14 +615,22 @@
 
         <label class={reportFieldClass}>
           <span class={reportLabelTextClass}>Reason</span>
-          <select class={cn(reportFieldControlClass, "h-[36px] px-kb-10 py-0")} bind:value={reportReason}>
-            <option value="spam">Spam</option>
-            <option value="unsafe">Unsafe</option>
-            <option value="misleading">Misleading</option>
-            <option value="copyright">Copyright</option>
-            <option value="harassment">Harassment</option>
-            <option value="other">Other</option>
-          </select>
+          <NativeSelect.Root
+            class="w-full"
+            value={reportReason}
+            aria-label="Report reason"
+            onchange={(event) => {
+              const next = event.currentTarget.value;
+              if (isReportReason(next)) reportReason = next;
+            }}
+          >
+            <NativeSelect.Option value="spam">Spam</NativeSelect.Option>
+            <NativeSelect.Option value="unsafe">Unsafe</NativeSelect.Option>
+            <NativeSelect.Option value="misleading">Misleading</NativeSelect.Option>
+            <NativeSelect.Option value="copyright">Copyright</NativeSelect.Option>
+            <NativeSelect.Option value="harassment">Harassment</NativeSelect.Option>
+            <NativeSelect.Option value="other">Other</NativeSelect.Option>
+          </NativeSelect.Root>
         </label>
 
         <label class={reportFieldClass}>
@@ -623,7 +645,9 @@
         </label>
 
         {#if reportError}
-          <p class={reportErrorClass} role="status">{reportError}</p>
+          <Alert.Root variant="destructive">
+            <Alert.Title>{reportError}</Alert.Title>
+          </Alert.Root>
         {/if}
 
         <div class={reportActionsClass}>

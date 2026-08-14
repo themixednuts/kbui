@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ArrowRight, ChevronsUpDown, Database } from "@lucide/svelte";
   import * as Card from "$lib/components/ui/card/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import { Chip } from "$lib/components/ui";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
@@ -55,10 +56,12 @@
         <ScrollArea class={changesScrollClass}>
           <div class={changesListClass}>
             {#if changes.length === 0}
-              <div class="empty-state grid min-h-[96px] place-items-center gap-kb-8 font-mono text-kb-12 text-ink-3">
-                <Database size={18} />
-                <span>No local edits</span>
-              </div>
+              <Empty.Root class="min-h-[96px] border-0 p-kb-8">
+                <Empty.Media variant="icon"><Database size={18} /></Empty.Media>
+                <Empty.Header>
+                  <Empty.Title class="text-kb-12 font-medium">No local edits</Empty.Title>
+                </Empty.Header>
+              </Empty.Root>
             {:else}
               {#each changes as change (change.id)}
                 <article class={changeRowClass}>

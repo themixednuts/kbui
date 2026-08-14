@@ -36,12 +36,16 @@
     GitHubFirmwareSyncResponse,
   } from "$lib/github-app/types";
   import {
+    Alert,
     Button,
     Card,
     CatalogPicker,
+    Empty,
     Input,
+    NativeSelect,
     SegmentedNav,
     SliderField,
+    Spinner,
     Switch,
     ToggleGroup,
   } from "$lib/components/ui";
@@ -116,6 +120,7 @@
   let correlationRetrying = $state(false);
   let extensionPairing = $state<CreatePairingTokenResponse | null>(null);
   let extensionBusy = $state(false);
+  let extensionHydrated = $state(false);
   let extensionRevokingId = $state<string | null>(null);
   let extensionError = $state<string | null>(null);
   let extensionNotice = $state<string | null>(null);
@@ -373,8 +378,6 @@
     "font-mono text-[10px] tracking-[0.12em] text-ink-3 uppercase";
   const monkeytypeInputClass = "h-kb-34 border-line-2 bg-paper font-mono text-[12px]";
   const monkeytypeHelpClass = "m-0 text-[11px] leading-[1.45] text-ink-3";
-  const monkeytypePresetSelectClass =
-    "h-kb-34 w-full rounded-md border border-line-2 bg-surface px-kb-10 font-mono text-[12px] text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
   const monkeytypeCommandRowClass =
     "monkeytype-command-row col-span-2 grid grid-cols-2 gap-kb-6 max-[640px]:col-span-1 max-[560px]:grid-cols-1";
   const integrationPrimaryButtonClass = cn(
@@ -382,10 +385,6 @@
     "integration-primary-action border-line-2 bg-surface-2 text-ink hover:border-line-3 hover:bg-surface-3",
   );
   const statusMessageClass = "m-0 rounded-lg px-kb-10 py-kb-9 text-kb-12 leading-[1.4]";
-  const errorMessageClass = cn(
-    statusMessageClass,
-    "border border-[var(--danger-border)] bg-danger-surface text-danger-ink",
-  );
   const noteMessageClass = cn(
     statusMessageClass,
     "border border-[var(--warning-border)] bg-warning-surface text-warning-ink",
@@ -408,7 +407,6 @@
     "h-kb-22 w-kb-26 rounded-md border border-[rgba(27,25,23,0.16)] [background:var(--accent-color)] shadow-[inset_0_-3px_0_rgba(27,25,23,0.14)]";
   const accentLabelClass =
     "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] font-strong";
-  const preferenceErrorClass = cn(errorMessageClass, "preference-error leading-[1.45]");
   const firmwareTargetFormClass = "grid min-w-0 grid-cols-2 gap-kb-10 max-[640px]:grid-cols-1";
   const firmwareTargetFinderClass =
     "col-span-2 grid min-w-0 gap-kb-7 rounded-keycap border border-line bg-paper-2 p-kb-10 max-[640px]:col-span-1";
@@ -504,6 +502,7 @@
       extensionDevices = [];
       extensionPairing = null;
       extensionLoadedFor = null;
+      extensionHydrated = false;
       extensionSyncedChoiceKey = "";
       firmwareGithubStatus = null;
       firmwareGithubLoadedFor = null;
@@ -516,7 +515,12 @@
       const effects = [];
       if (extensionLoadedFor !== userId) {
         extensionLoadedFor = userId;
-        effects.push(refreshExtensionDevicesEffect(false));
+        extensionHydrated = false;
+        effects.push(
+          refreshExtensionDevicesEffect(false).pipe(
+            Effect.ensuring(Effect.sync(() => (extensionHydrated = true))),
+          ),
+        );
       }
       if (firmwareGithubLoadedFor !== userId) {
         firmwareGithubLoadedFor = userId;
@@ -1702,8 +1706,7 @@
                   </Button>
                 </div>
                 <small class={firmwareTargetHelpClass}>
-                  Search the upstream ZMK board and shield metadata. Controller alternatives remain
-                  explicit when Studio cannot identify the compiled target.
+                  Search ZMK boards and shields.
                 </small>
               </div>
 
@@ -1778,19 +1781,13 @@
             {/if}
 
             {#if firmwareTargetError}
-              <p
-                class={cn(errorMessageClass, "col-span-2 max-[640px]:col-span-1")}
-                role="alert"
-              >
-                {firmwareTargetError}
-              </p>
+              <Alert.Root variant="destructive" class="col-span-2 max-[640px]:col-span-1">
+                <Alert.Title>{firmwareTargetError}</Alert.Title>
+              </Alert.Root>
             {:else if firmwareTargetNotice}
-              <p
-                class={cn(statusMessageClass, "col-span-2 border border-line bg-surface-2 text-ink-2 max-[640px]:col-span-1")}
-                role="status"
-              >
-                {firmwareTargetNotice}
-              </p>
+              <Alert.Root class="col-span-2 max-[640px]:col-span-1">
+                <Alert.Title>{firmwareTargetNotice}</Alert.Title>
+              </Alert.Root>
             {/if}
 
             <Button
@@ -1878,11 +1875,18 @@
 
             <label class={cn(monkeytypeFieldClass, "monkeytype-preset")}>
               <span class={monkeytypeFieldLabelClass}>PB mode</span>
-              <select class={monkeytypePresetSelectClass} bind:value={monkeytypePreset}>
+              <NativeSelect.Root
+                class="w-full"
+                value={monkeytypePreset}
+                aria-label="PB mode"
+                onchange={(event) => {
+                  monkeytypePreset = event.currentTarget.value;
+                }}
+              >
                 {#each monkeytypePresets as option (option.value)}
-                  <option value={option.value}>{option.label}</option>
+                  <NativeSelect.Option value={option.value}>{option.label}</NativeSelect.Option>
                 {/each}
-              </select>
+              </NativeSelect.Root>
             </label>
 
             <div class={monkeytypeCommandRowClass}>
@@ -1922,11 +1926,13 @@
           </form>
 
           {#if monkeytypeError || shell.monkeytype.error}
-            <p class={cn(errorMessageClass, "monkeytype-error")} role="status">
-              {monkeytypeError ?? shell.monkeytype.error}
-            </p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{monkeytypeError ?? shell.monkeytype.error}</Alert.Title>
+            </Alert.Root>
           {:else if shell.monkeytype.connected && shell.monkeytype.stale}
-            <p class={cn(noteMessageClass, "monkeytype-note")} role="status">Stats are stale. Refresh.</p>
+            <Alert.Root>
+              <Alert.Title>Stats are stale. Refresh.</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -1974,8 +1980,17 @@
             </Button>
           </div>
 
-          {#if extensionDevices.length === 0}
-            <p class={cn(noteMessageClass, "extension-note")} role="status">No paired devices.</p>
+          {#if !extensionHydrated}
+            <p class={cn(noteMessageClass, "extension-note")} role="status">
+              <Spinner class="mr-kb-6 inline size-3.5 align-[-2px]" />
+              Loading paired devices
+            </p>
+          {:else if extensionDevices.length === 0}
+            <Empty.Root class="border-0 p-kb-8">
+              <Empty.Header>
+                <Empty.Title class="text-kb-12 font-medium">No paired devices</Empty.Title>
+              </Empty.Header>
+            </Empty.Root>
           {:else}
             <div class={extensionDeviceListClass}>
               {#each extensionDevices as device (device.id)}
@@ -2053,9 +2068,13 @@
           {/if}
 
           {#if extensionError}
-            <p class={cn(errorMessageClass, "extension-error")} role="status">{extensionError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{extensionError}</Alert.Title>
+            </Alert.Root>
           {:else if extensionNotice}
-            <p class={cn(noteMessageClass, "extension-note")} role="status">{extensionNotice}</p>
+            <Alert.Root variant="success">
+              <Alert.Title>{extensionNotice}</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -2100,11 +2119,11 @@
             </div>
             <div class="grid gap-kb-6 rounded-lg border border-line-2 bg-paper p-kb-10">
               <p class="m-0 text-[11px] leading-[1.45] text-ink-3">
-                Removing this variant deletes only its generated <code>kbui/…</code> branch.
+                Removes this variant's <code>kbui/…</code> branch.
                 {#if firmwareGithubRepository.relationship === "managed"}
-                  To delete the managed repository, type its full name exactly.
+                  Type the repo full name to delete the managed repo.
                 {:else}
-                  This repository was adopted, so kbui will never delete it.
+                  Adopted repo. KBUI will not delete it.
                 {/if}
               </p>
               {#if firmwareGithubRepository.relationship === "managed"}
@@ -2182,13 +2201,13 @@
           </div>
 
           {#if firmwareGithubError}
-            <p class={cn(errorMessageClass, "firmware-github-error")} role="status">
-              {firmwareGithubError}
-            </p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{firmwareGithubError}</Alert.Title>
+            </Alert.Root>
           {:else if firmwareGithubNotice}
-            <p class={cn(noteMessageClass, "firmware-github-note")} role="status">
-              {firmwareGithubNotice}
-            </p>
+            <Alert.Root variant="success">
+              <Alert.Title>{firmwareGithubNotice}</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -2273,7 +2292,9 @@
           </section>
 
           {#if preferenceError}
-            <p class={preferenceErrorClass} role="status">{preferenceError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{preferenceError}</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>

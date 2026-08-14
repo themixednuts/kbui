@@ -30,8 +30,10 @@
   type CoachSuggestResultT = typeof CoachSuggestResult.Type;
   import { KeyboardBoard } from "$lib/components/board";
   import EditorLayerStack from "$lib/components/editor/EditorLayerStack.svelte";
-  import { Button, Chip } from "$lib/components/ui";
+  import { Button, Checkbox, Chip, NativeSelect, Spinner } from "$lib/components/ui";
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import type { EditingParadigm } from "$lib/modal-engine";
   import {
     abortSession,
@@ -90,6 +92,8 @@
   let coachResult = $state<CoachSuggestResultT | null>(null);
   let previewAfter = $state(false);
   let coachError = $state<string | null>(null);
+  let coachBusy = $state(false);
+  let preparing = $state(false);
   let navHandle = $state<NavDrillHandle | null>(null);
   let pulseHint = $state<string | null>(null);
   let pulseKeyIds = $state<string[]>([]);
@@ -264,6 +268,7 @@
     running = false;
     startedAt = null;
     progressLabel = null;
+    preparing = true;
     forkApp(
       "practice.prepare",
       Effect.gen(function* () {
@@ -298,7 +303,7 @@
           return;
         }
         yield* Effect.sync(() => updatePulse());
-      }),
+      }).pipe(Effect.ensuring(Effect.sync(() => (preparing = false)))),
       (_label, message) => {
         coachError = message;
       },
@@ -620,7 +625,9 @@
   });
 
   function openCoach(requirePersonal: boolean) {
+    if (coachBusy) return;
     coachError = null;
+    coachBusy = true;
     forkApp(
       "coach.suggest",
       Effect.gen(function* () {
@@ -645,7 +652,7 @@
           layerRoles = roles;
           coachResult = result;
         });
-      }),
+      }).pipe(Effect.ensuring(Effect.sync(() => (coachBusy = false)))),
       (_label, message) => {
         coachError = message;
       },
@@ -683,6 +690,14 @@
 
   function coachSuggestion(): CoachSuggestion | null {
     return coachResult?._tag === "Suggestion" ? coachResult.suggestion : null;
+  }
+
+  function isGoalKind(value: string): value is "until-complete" | "timed" {
+    return value === "until-complete" || value === "timed";
+  }
+
+  function isBuiltinParadigm(value: string): value is "helix" | "vim" | "vscode" {
+    return value === "helix" || value === "vim" || value === "vscode";
   }
 
   function acceptSuggestion() {
@@ -736,47 +751,63 @@
             </Button>
           {/each}
         </div>
-        <label class="ml-auto flex items-center gap-kb-6 font-mono text-[11px] text-ink-3">
-          <input
-            type="checkbox"
+        <label class="ml-auto flex items-center gap-kb-6 font-mono text-[11px] text-ink-3 max-[640px]:ml-0">
+          <Checkbox
             checked={adaptive}
             disabled={mode === "nav" || running}
-            onchange={(e) => {
-              adaptive = e.currentTarget.checked;
+            aria-label="Adaptive drills"
+            onCheckedChange={(next) => {
+              adaptive = next === true;
               if (!running) prepareIdle();
             }}
           />
           Adaptive
         </label>
-        <select
-          class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px]"
+        <NativeSelect.Root
+          class="w-auto min-w-28 font-mono text-[11px] max-[640px]:w-full"
+          size="sm"
           value={goalKind}
           disabled={running}
-          onchange={(e) => {
-            goalKind = e.currentTarget.value as "until-complete" | "timed";
+          aria-label="Drill length"
+          onchange={(event) => {
+            const next = event.currentTarget.value;
+            if (!isGoalKind(next)) return;
+            goalKind = next;
             if (!running) prepareIdle();
           }}
         >
-          <option value="until-complete">Until done</option>
-          <option value="timed">60s</option>
-        </select>
+          <NativeSelect.Option value="until-complete">Until done</NativeSelect.Option>
+          <NativeSelect.Option value="timed">60s</NativeSelect.Option>
+        </NativeSelect.Root>
         {#if mode === "nav"}
-          <select
-            class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px]"
-            bind:value={paradigm}
+          <NativeSelect.Root
+            class="w-auto min-w-28 font-mono text-[11px] max-[640px]:w-full"
+            size="sm"
+            value={paradigm}
             disabled={running}
+            aria-label="Nav paradigm"
+            onchange={(event) => {
+              const next = event.currentTarget.value;
+              if (!isBuiltinParadigm(next)) return;
+              paradigm = next;
+            }}
           >
-            <option value="helix">Helix</option>
-            <option value="vim">Vim</option>
-            <option value="vscode">VS Code</option>
-          </select>
+            <NativeSelect.Option value="helix">Helix</NativeSelect.Option>
+            <NativeSelect.Option value="vim">Vim</NativeSelect.Option>
+            <NativeSelect.Option value="vscode">VS Code</NativeSelect.Option>
+          </NativeSelect.Root>
         {/if}
         <Button
           size="sm"
+          disabled={preparing && !running}
           onclick={() => (running ? stopTimerAndPersist("aborted") : prepareIdle())}
         >
-          <Gauge size={14} />
-          {running ? "Abort" : "New"}
+          {#if preparing && !running}
+            <Spinner />
+          {:else}
+            <Gauge size={14} />
+          {/if}
+          {running ? "Abort" : preparing ? "Loading" : "New"}
         </Button>
         {#if running}
           <Chip tone={script.goal._tag === "Timed" ? "warning" : "neutral"}>
@@ -794,16 +825,21 @@
           <EditorLayerStack editor={workbench} allowAdd={false} />
           <label class="flex flex-wrap items-center gap-kb-8 font-mono text-[11px] text-ink-3">
             Layer role
-            <select
-              class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px] text-ink"
+            <NativeSelect.Root
+              class="w-auto font-mono text-[11px]"
+              size="sm"
               value={activeLayerRole?.role ?? "unknown"}
-              onchange={(e) => lockActiveLayerRole(e.currentTarget.value as LayerRoleT)}
               aria-label="Layer role"
+              onchange={(e) => lockActiveLayerRole(e.currentTarget.value as LayerRoleT)}
             >
               {#each LAYER_ROLE_OPTIONS as role (role)}
-                <option value={role}>{role}{activeLayerRole?.locked && activeLayerRole.role === role ? " (locked)" : ""}</option>
+                <NativeSelect.Option value={role}
+                  >{role}{activeLayerRole?.locked && activeLayerRole.role === role
+                    ? " (locked)"
+                    : ""}</NativeSelect.Option
+                >
               {/each}
-            </select>
+            </NativeSelect.Root>
             {#if activeLayerRole?.locked}
               <span>locked</span>
             {/if}
@@ -836,21 +872,29 @@
           <div
             class="mt-buffer overflow-x-auto rounded-keycap border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
             aria-label="Practice buffer"
+            aria-busy={preparing}
           >
-            {#each cells as cell (cell.id)}
-              {#if cell.kind === "newline"}
-                <br />
-              {:else}
-                {@const phase = cellPhase(cell)}
-                <span
-                  class="mt-cell"
-                  class:mt-typed={phase === "typed"}
-                  class:mt-current={phase === "current"}
-                  class:mt-ghost={phase === "ghost"}
-                  class:mt-indent={cell.kind === "indent"}
-                >{cell.display}</span>
-              {/if}
-            {/each}
+            {#if preparing && cells.length === 0}
+              <span class="inline-flex items-center gap-kb-8 text-[12px] text-ink-3">
+                <Spinner />
+                Loading drill
+              </span>
+            {:else}
+              {#each cells as cell (cell.id)}
+                {#if cell.kind === "newline"}
+                  <br />
+                {:else}
+                  {@const phase = cellPhase(cell)}
+                  <span
+                    class="mt-cell"
+                    class:mt-typed={phase === "typed"}
+                    class:mt-current={phase === "current"}
+                    class:mt-ghost={phase === "ghost"}
+                    class:mt-indent={cell.kind === "indent"}
+                  >{cell.display}</span>
+                {/if}
+              {/each}
+            {/if}
           </div>
         </section>
 
@@ -898,13 +942,30 @@
       </Card.Header>
       <Card.Content class="grid gap-kb-12">
         {#if !enoughData}
-          <Button size="sm" variant="ghost" onclick={() => openCoach(false)}>Suggest</Button>
+          <Button size="sm" variant="ghost" disabled={coachBusy} onclick={() => openCoach(false)}>
+            {#if coachBusy}<Spinner />{/if}
+            {coachBusy ? "Loading" : "Suggest"}
+          </Button>
         {:else}
-          <Button size="sm" onclick={() => openCoach(true)}>Refresh</Button>
+          <Button size="sm" disabled={coachBusy} onclick={() => openCoach(true)}>
+            {#if coachBusy}<Spinner />{/if}
+            {coachBusy ? "Loading" : "Refresh"}
+          </Button>
         {/if}
 
-        {#if coachResult?._tag === "LowData" || coachResult?._tag === "Empty"}
-          <p class="font-mono text-[12px] text-ink-3">{coachResult.message}</p>
+        {#if coachBusy && !coachResult}
+          <Empty.Root class="min-h-[72px] border-0 p-kb-8">
+            <Empty.Header>
+              <Empty.Media variant="icon"><Spinner /></Empty.Media>
+              <Empty.Title class="text-kb-12 font-medium text-ink-3">Asking coach</Empty.Title>
+            </Empty.Header>
+          </Empty.Root>
+        {:else if coachResult?._tag === "LowData" || coachResult?._tag === "Empty"}
+          <Empty.Root class="min-h-[72px] border-0 p-kb-8">
+            <Empty.Header>
+              <Empty.Title class="text-kb-12 font-medium">{coachResult.message}</Empty.Title>
+            </Empty.Header>
+          </Empty.Root>
         {:else if coachSuggestion()}
           {@const suggestion = coachSuggestion()!}
           <div class="grid gap-kb-8">
@@ -936,7 +997,7 @@
               {/each}
             </ul>
             <label class="flex items-center gap-kb-6 font-mono text-[11px] text-ink-3">
-              <input type="checkbox" bind:checked={previewAfter} />
+              <Checkbox bind:checked={previewAfter} aria-label="Preview suggestion" />
               Preview
             </label>
             <div class="flex flex-wrap gap-kb-6">
@@ -948,7 +1009,9 @@
         {/if}
 
         {#if coachError}
-          <p class="font-mono text-[12px] text-[var(--danger-ink)]">{coachError}</p>
+          <Alert.Root variant="destructive">
+            <Alert.Title>{coachError}</Alert.Title>
+          </Alert.Root>
         {/if}
 
         {#if recentSessions.length > 0}

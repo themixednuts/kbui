@@ -33,7 +33,6 @@
   import KeyInspectorPanel from "$lib/components/keymap/KeyInspectorPanel.svelte";
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
-  import type { LiveSyncLocalOnlyReasonSummary } from "$lib/keyboard/live-sync-classification";
   import type { FirmwareEditIntent } from "$lib/keyboard/schema";
   import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
   import { cn } from "$lib/utils.js";
@@ -168,9 +167,6 @@
   const localOnlyReasonPreview = $derived(
     shell.connected ? liveSync.localOnlySummary.reasons.slice(0, 4) : [],
   );
-  const localOnlyCategorySummary = $derived(
-    shell.connected ? localOnlyCategoryText(liveSync.localOnlySummary.reasons) : "",
-  );
 
   $effect(() => {
     if (shell.placeMode && editor.lens !== "keys") editor.setLens("keys");
@@ -216,11 +212,6 @@
     }
 
     editor.toggleKey(keyId);
-  }
-
-  function localOnlyCategoryText(reasons: readonly LiveSyncLocalOnlyReasonSummary[]) {
-    const labels = [...new Set(reasons.map((reason) => reason.label))];
-    return labels.join(", ");
   }
 </script>
 
@@ -339,8 +330,7 @@
             <div>
               <strong class={syncNoticeTitleClass}>
                 {connectedLocalOnlyChanges.length}
-                {connectedLocalOnlyChanges.length === 1 ? "change applied" : "changes applied"}
-                locally, not written to the board{localOnlyCategorySummary ? `. ${localOnlyCategorySummary}` : ""}
+                {connectedLocalOnlyChanges.length === 1 ? "local-only change" : "local-only changes"}
               </strong>
               <ul class={syncNoticeLocalListClass}>
                 {#each localOnlyReasonPreview as reason (`${reason.category}:${reason.reason}`)}

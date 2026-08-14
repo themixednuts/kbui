@@ -12,7 +12,9 @@
   } from "@lucide/svelte";
 
   import KeyboardBoard from "$lib/components/board/KeyboardBoard.svelte";
-  import { Button } from "$lib/components/ui";
+  import { Button, Spinner } from "$lib/components/ui";
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import type { CommunityKeymapDetail } from "$lib/community/types";
   import { decodeDeviceProfileFromStorageOrNull } from "$lib/keyboard/schema";
   import { cn } from "$lib/utils.js";
@@ -90,11 +92,6 @@
     "grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-10 rounded-[8px] border border-line bg-paper-2 px-kb-10 py-kb-9";
   const signalTermClass = "inline-flex items-center gap-kb-7 font-mono text-[11px] text-ink-2";
   const signalValueClass = "m-0 font-mono text-[13px] font-bold";
-  const actionFeedbackClass = "action-feedback m-0 rounded-lg px-kb-10 py-kb-8 text-kb-12 leading-[1.35]";
-  const actionFeedbackErrorClass =
-    "error border border-[var(--danger-border)] bg-danger-surface text-danger-ink";
-  const actionFeedbackSuccessClass =
-    "success border border-[color-mix(in_oklch,var(--mint)_46%,var(--line-2))] bg-[color-mix(in_oklch,var(--mint)_15%,var(--surface))] text-[oklch(0.35_0.12_150)]";
   const actionStackClass = "action-stack mt-auto grid gap-kb-8 pt-kb-8";
   const actionButtonClass = "w-full justify-center";
   const likedActionClass =
@@ -180,7 +177,7 @@
         {:else}
           <div>
             <h2 class={modalHeadingClass}>{loading ? "Loading preview" : "Preview unavailable"}</h2>
-            <p class={modalBylineClass}>{error ?? "Community keymap detail could not be loaded."}</p>
+            <p class={modalBylineClass}>{error ?? "Could not load this keymap."}</p>
           </div>
         {/if}
       </div>
@@ -198,15 +195,25 @@
     </header>
 
     {#if error}
-      <div class={cn("modal-error", modalStateClass, "text-danger-ink")} role="status">
-        <AlertTriangle size={16} aria-hidden="true" />
-        {error}
-      </div>
-    {:else if loading || !detail || !profile}
+      <Empty.Root class={cn("modal-error", "min-h-[340px] border-0")} role="status">
+        <Empty.Header>
+          <Empty.Media variant="icon"><AlertTriangle size={16} /></Empty.Media>
+          <Empty.Title>Preview unavailable</Empty.Title>
+          <Empty.Description>{error}</Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
+    {:else if loading}
       <div class={cn("modal-loading", modalStateClass)} role="status">
-        <span class="material-symbols-outlined" aria-hidden="true">hourglass_empty</span>
+        <Spinner />
         Loading keymap
       </div>
+    {:else if !detail || !profile}
+      <Empty.Root class="min-h-[340px] border-0">
+        <Empty.Header>
+          <Empty.Title>Preview unavailable</Empty.Title>
+          <Empty.Description>Could not decode this keymap.</Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
     {:else}
       <div class={modalContentClass}>
         <div class={boardPanelClass}>
@@ -263,7 +270,9 @@
         </div>
 
         <aside class={detailPanelClass}>
-          <p class={noteClass}>{detail.note}</p>
+          {#if detail.note?.trim()}
+            <p class={noteClass}>{detail.note}</p>
+          {/if}
 
           <div class={cn("tag-row", wrapRowClass)}>
             {#each detail.tags as tag (tag)}
@@ -287,9 +296,13 @@
           </dl>
 
           {#if actionError}
-            <p class={cn(actionFeedbackClass, actionFeedbackErrorClass)} role="status">{actionError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{actionError}</Alert.Title>
+            </Alert.Root>
           {:else if actionNotice}
-            <p class={cn(actionFeedbackClass, actionFeedbackSuccessClass)} role="status">{actionNotice}</p>
+            <Alert.Root variant="success">
+              <Alert.Title>{actionNotice}</Alert.Title>
+            </Alert.Root>
           {/if}
 
           <div class={actionStackClass} aria-label="Community actions">
