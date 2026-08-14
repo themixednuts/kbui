@@ -8,7 +8,7 @@ import { Effect } from "effect";
 
 import { platformError } from "./lib/effect/errors";
 import { selfHeal } from "./lib/effect/self-healing";
-import { runWorkerEffect } from "./lib/effect/worker-runtime";
+import { runServiceWorkerEffect } from "./lib/effect/service-worker-runtime";
 
 const worker = self as unknown as ServiceWorkerGlobalScope;
 const CACHE_PREFIX = "klakson-cache-";
@@ -83,7 +83,7 @@ const precacheAssetsEffect = Effect.gen(function* () {
 
 worker.addEventListener("install", (event) => {
   event.waitUntil(
-    runWorkerEffect(
+    runServiceWorkerEffect(
       "service-worker.install",
       Effect.andThen(
         precacheAssetsEffect,
@@ -98,7 +98,7 @@ worker.addEventListener("install", (event) => {
 
 worker.addEventListener("activate", (event) => {
   event.waitUntil(
-    runWorkerEffect(
+    runServiceWorkerEffect(
       "service-worker.activate",
       Effect.gen(function* () {
         const keys = yield* Effect.tryPromise({
@@ -130,7 +130,7 @@ worker.addEventListener("message", (event) => {
   const data = event.data as { type?: string } | null;
   if (data?.type !== "klakson:force-refresh") return;
   event.waitUntil(
-    runWorkerEffect(
+    runServiceWorkerEffect(
       "service-worker.force-refresh",
       Effect.andThen(
         clearKlaksonCachesEffect,
@@ -156,7 +156,7 @@ worker.addEventListener("fetch", (event) => {
   if (url.origin !== worker.location.origin || !PRECACHE_ASSETS.includes(url.pathname)) return;
 
   event.respondWith(
-    runWorkerEffect(
+    runServiceWorkerEffect(
       "service-worker.fetch",
       Effect.gen(function* () {
         const cached = yield* Effect.tryPromise({

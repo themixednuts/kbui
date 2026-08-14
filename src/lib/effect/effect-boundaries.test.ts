@@ -107,6 +107,7 @@ describe("Effect v4 architecture boundaries", () => {
   it("keeps runtime execution at declared boundary and synchronous facade modules", () => {
     const asynchronousBoundaries = new Set([
       "src/lib/app/runtime.ts",
+      "src/lib/effect/service-worker-runtime.ts",
       "src/lib/effect/worker-runtime.ts",
     ]);
     const synchronousFacades = new Set(["src/lib/app/runtime.ts", "src/lib/keyboard/schema.ts"]);
