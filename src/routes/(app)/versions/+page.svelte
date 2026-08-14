@@ -944,7 +944,11 @@
           <div>
             <Card.Title>Version history</Card.Title>
             <Card.Description class={timelineDescriptionClass}>
-              {workbench.variants.length} variants / {workbench.savePoints.length} save points
+              {workbench.variants.length}
+              {workbench.variants.length === 1 ? "variant" : "variants"}
+              /
+              {workbench.savePoints.length}
+              {workbench.savePoints.length === 1 ? "save point" : "save points"}
             </Card.Description>
           </div>
         </Card.Header>
