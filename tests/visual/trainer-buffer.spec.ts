@@ -74,13 +74,11 @@ test("keeps the practice caret visible at the end of a long line", async ({ page
     .poll(async () => {
       const caretBox = await caret.boundingBox();
       const bufferBox = await buffer.boundingBox();
-      return Boolean(
-        caretBox &&
-        bufferBox &&
-        caretBox.width > 0 &&
-        caretBox.height > 0 &&
-        isInside(caretBox, bufferBox),
-      );
+      if (!caretBox || !bufferBox || caretBox.width <= 0 || caretBox.height <= 0) return false;
+      if (!isInside(caretBox, bufferBox)) return false;
+      const insetRight = bufferBox.x + bufferBox.width - (caretBox.x + caretBox.width);
+      const insetLeft = caretBox.x - bufferBox.x;
+      return insetRight >= 16 && insetLeft >= 8;
     })
     .toBe(true);
 

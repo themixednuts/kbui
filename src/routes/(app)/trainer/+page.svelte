@@ -37,6 +37,7 @@
     abortSession,
     applyPracticeInput,
     applyScrollDelta,
+    PRACTICE_CARET_PAD_PX,
     browserKeyToModalKey,
     bufferCells,
     confidenceChips,
@@ -870,34 +871,37 @@
           <div
             bind:this={bufferEl}
             class="mt-buffer overflow-x-auto rounded-keycap border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
+            style="--practice-caret-pad: {PRACTICE_CARET_PAD_PX}px"
             aria-label="Practice buffer"
           >
-            {#each cells as cell (cell.id)}
-              {@const phase = cellPhase(cell)}
-              {#if cell.kind === "newline"}
-                {#if phase === "current"}
+            <div class="mt-buffer-lines">
+              {#each cells as cell (cell.id)}
+                {@const phase = cellPhase(cell)}
+                {#if cell.kind === "newline"}
+                  {#if phase === "current"}
+                    <span
+                      class="mt-cell mt-current"
+                      data-kind="newline"
+                      data-cell={cell.id}
+                      data-caret=""
+                      aria-hidden="true"
+                    >{" "}</span>
+                  {/if}
+                  <br />
+                {:else}
                   <span
-                    class="mt-cell mt-current"
-                    data-kind="newline"
+                    class="mt-cell"
+                    class:mt-typed={phase === "typed"}
+                    class:mt-current={phase === "current"}
+                    class:mt-ghost={phase === "ghost"}
+                    class:mt-indent={cell.kind === "indent"}
+                    data-kind={cell.kind}
                     data-cell={cell.id}
-                    data-caret=""
-                    aria-hidden="true"
-                  >{" "}</span>
+                    data-caret={phase === "current" ? "" : undefined}
+                  >{cell.display}</span>
                 {/if}
-                <br />
-              {:else}
-                <span
-                  class="mt-cell"
-                  class:mt-typed={phase === "typed"}
-                  class:mt-current={phase === "current"}
-                  class:mt-ghost={phase === "ghost"}
-                  class:mt-indent={cell.kind === "indent"}
-                  data-kind={cell.kind}
-                  data-cell={cell.id}
-                  data-caret={phase === "current" ? "" : undefined}
-                >{cell.display}</span>
-              {/if}
-            {/each}
+              {/each}
+            </div>
           </div>
         </section>
 
@@ -1016,8 +1020,14 @@
   .mt-buffer {
     white-space: pre;
     tab-size: 4;
-    scroll-padding-inline: 2rem;
+    scroll-padding-inline: var(--practice-caret-pad, 2rem);
     scroll-padding-block: 1rem;
+  }
+  /* Overflow padding does not extend scrollWidth; this inner pad does. */
+  .mt-buffer-lines {
+    display: inline-block;
+    min-width: 100%;
+    padding-inline-end: var(--practice-caret-pad, 2rem);
   }
   .mt-cell {
     display: inline-block;
