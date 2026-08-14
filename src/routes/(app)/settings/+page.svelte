@@ -502,7 +502,7 @@
       extensionDevices = [];
       extensionPairing = null;
       extensionLoadedFor = null;
-      extensionHydrated = false;
+      extensionHydrated = true;
       extensionSyncedChoiceKey = "";
       firmwareGithubStatus = null;
       firmwareGithubLoadedFor = null;
@@ -1815,12 +1815,9 @@
     >
       {#if settingsSection === "integrations"}
       {#if !monkeytypeSignedIn}
-        <p
-          class={cn(noteMessageClass, "integration-auth-note col-span-2 max-[820px]:col-span-1")}
-          role="status"
-        >
-          Sign in with GitHub to manage integrations.
-        </p>
+        <Alert.Root class="col-span-2 max-[820px]:col-span-1">
+          <Alert.Title>Sign in with GitHub to manage integrations.</Alert.Title>
+        </Alert.Root>
       {/if}
 
       <Card.Root
@@ -1980,7 +1977,13 @@
             </Button>
           </div>
 
-          {#if !extensionHydrated}
+          {#if !monkeytypeSignedIn}
+            <Empty.Root class="border-0 p-kb-8">
+              <Empty.Header>
+                <Empty.Title class="text-kb-12 font-medium">Sign in to pair</Empty.Title>
+              </Empty.Header>
+            </Empty.Root>
+          {:else if !extensionHydrated}
             <p class={cn(noteMessageClass, "extension-note")} role="status">
               <Spinner class="mr-kb-6 inline size-3.5 align-[-2px]" />
               Loading paired devices
