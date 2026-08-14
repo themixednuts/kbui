@@ -63,7 +63,9 @@
   const primaryToolbarGroupClass =
     "editor-primary-tools col-start-1 row-start-1 flex flex-none flex-nowrap items-center gap-kb-10";
   const secondaryToolbarGroupClass =
-    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8 overflow-x-auto @max-[640px]/editor-main:col-start-3";
+    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 justify-end @max-[640px]/editor-main:col-start-3";
+  const secondaryToolbarClusterClass =
+    "flex w-max max-w-full min-w-0 flex-nowrap items-center gap-kb-8 overflow-x-auto";
   const layerRowClass =
     "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center @max-[640px]/editor-main:col-span-1 @max-[640px]/editor-main:col-start-2 @max-[640px]/editor-main:row-start-1";
   const syncNoticeClass =
@@ -229,56 +231,58 @@
       </div>
 
       <div class={secondaryToolbarGroupClass}>
-        <SegmentedNav
-          items={firmwareTargetItems}
-          value={firmwareEditIntent}
-          onselect={setFirmwareEditIntent}
-          ariaLabel="Firmware edit target"
-          class="firmware-edit-intent @max-[960px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8 @max-[520px]/editor-main:hidden"
-        />
+        <div class={secondaryToolbarClusterClass}>
+          <SegmentedNav
+            items={firmwareTargetItems}
+            value={firmwareEditIntent}
+            onselect={setFirmwareEditIntent}
+            ariaLabel="Firmware edit target"
+            class="firmware-edit-intent @max-[960px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8 @max-[520px]/editor-main:hidden"
+          />
 
-        <!-- Hidden only on phone-sized viewports, where a side inspector is
-             impossible either way. It stays available whenever the pane is merely
-             narrow — that is exactly when you need it to switch back to the dock. -->
-        <SegmentedNav
-          items={layoutItems}
-          value={editor.editorLayout}
-          onselect={(layout) => editor.setEditorLayout(layout)}
-          iconOnlyAt="topbar"
-          ariaLabel="Editor layout"
-          class="editor-layout-seg max-[720px]:hidden"
-        />
+          <!-- Hidden only on phone-sized viewports, where a side inspector is
+               impossible either way. It stays available whenever the pane is merely
+               narrow — that is exactly when you need it to switch back to the dock. -->
+          <SegmentedNav
+            items={layoutItems}
+            value={editor.editorLayout}
+            onselect={(layout) => editor.setEditorLayout(layout)}
+            iconOnlyAt="topbar"
+            ariaLabel="Editor layout"
+            class="editor-layout-seg max-[720px]:hidden"
+          />
 
-        {#if editor.persistenceError}
-          <Chip tone="error" title={editor.persistenceError}>Could not save draft</Chip>
-        {/if}
+          {#if editor.persistenceError}
+            <Chip tone="error" title={editor.persistenceError}>Could not save draft</Chip>
+          {/if}
 
-        <Chip
-          dot={liveSync.dot}
-          title={liveSync.title}
-          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px] @max-[640px]/editor-main:max-w-none @max-[400px]/editor-main:px-kb-8"
-        >
-          <span class="@max-[400px]/editor-main:hidden">{liveSync.label}</span>
-        </Chip>
-
-        {#if liveSync.failedLanes.length > 0}
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="retry-via-sync"
-            title="Retry failed live sync"
-            onclick={() => liveSync.retryFailed()}
+          <Chip
+            dot={liveSync.dot}
+            title={liveSync.title}
+            class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px] @max-[640px]/editor-main:max-w-none @max-[400px]/editor-main:px-kb-8"
           >
-            <span class="material-symbols-outlined" aria-hidden="true">sync_problem</span>
-            Retry
-          </Button>
-        {/if}
-
-        {#if editor.lens === "lighting"}
-          <Chip dot={lightingChipDot} title={`${editor.lightingSelection.count} selected`}>
-            {editor.lightingSelection.count} selected
+            <span class="@max-[400px]/editor-main:hidden">{liveSync.label}</span>
           </Chip>
-        {/if}
+
+          {#if liveSync.failedLanes.length > 0}
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="retry-via-sync"
+              title="Retry failed live sync"
+              onclick={() => liveSync.retryFailed()}
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">sync_problem</span>
+              Retry
+            </Button>
+          {/if}
+
+          {#if editor.lens === "lighting"}
+            <Chip dot={lightingChipDot} title={`${editor.lightingSelection.count} selected`}>
+              {editor.lightingSelection.count} selected
+            </Chip>
+          {/if}
+        </div>
       </div>
 
       <div class={layerRowClass}>

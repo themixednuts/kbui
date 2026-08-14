@@ -208,6 +208,14 @@ test("keeps mid-width toolbar controls from overlapping", async ({ page }) => {
   await expect(syncChip).toBeVisible();
 
   const secondaryTools = toolbar.locator(".editor-secondary-tools");
+  const [firmwareBox, secondaryBox] = await Promise.all([
+    firmware.boundingBox(),
+    secondaryTools.boundingBox(),
+  ]);
+  expect(firmwareBox).not.toBeNull();
+  expect(secondaryBox).not.toBeNull();
+  expect(firmwareBox!.x).toBeGreaterThanOrEqual(secondaryBox!.x - 1);
+
   await expectNoOverlap(primaryTools, secondaryTools);
   await expectNoOverlap(lens, firmware);
   await expectNoOverlap(firmware, layout);
