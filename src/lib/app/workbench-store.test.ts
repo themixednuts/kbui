@@ -377,6 +377,24 @@ describe("workbench store save points", () => {
     expect(workbench.dirty).toBe(1);
   });
 
+  it("discards uncommitted edits back to the current base", async () => {
+    const workbench = new WorkbenchStore({ persist: false });
+    workbench.selectKey("k2-4");
+    workbench.applyKeycode("KC_G");
+    await workbench.createSavePoint("Keep", {
+      id: "sp-keep",
+      createdAt: "2026-07-04T12:00:00.000Z",
+    });
+    workbench.applyKeycode("KC_H");
+    expect(workbench.dirty).toBe(1);
+
+    await workbench.discardUncommittedChanges();
+
+    expect(workbench.profile.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    expect(workbench.baseProfile.layers[0].bindings["k2-4"].code).toBe("KC_G");
+    expect(workbench.dirty).toBe(0);
+  });
+
   it("branches a new variant from a selected save point snapshot", async () => {
     const workbench = new WorkbenchStore({ persist: false });
     workbench.selectKey("k2-4");

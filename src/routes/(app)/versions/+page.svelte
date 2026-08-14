@@ -10,6 +10,7 @@
     History,
     RotateCcw,
     Trash2,
+    Undo2,
     UploadCloud,
     Workflow,
     Zap,
@@ -86,6 +87,7 @@
   let pendingFirmwareBuild = $state(false);
   let saving = $state(false);
   let restoring = $state(false);
+  let discarding = $state(false);
   let branching = $state(false);
   let deleting = $state(false);
 
@@ -174,7 +176,6 @@
   const changeMetricCountClass = "font-mono text-[24px] font-strong";
   const versionsCardHeaderClass =
     "versions-card-header min-h-kb-44 border-line px-kb-16 py-kb-13";
-  const versionsCardTitleClass = "text-[12px] tracking-[0.08em]";
   const versionsCardBodyClass = "versions-card-body grid gap-kb-13 p-kb-16";
   const sideCopyClass = "side-copy m-0 text-[12px] leading-[1.6] text-ink-2";
   const deliveryGridClass =
@@ -325,6 +326,22 @@
           Effect.sync(() => (actionError = messageFor(error, "Could not restore save point"))),
         ),
         Effect.ensuring(Effect.sync(() => (restoring = false))),
+      ),
+    );
+  }
+
+  function discardUncommitted() {
+    if (workbench.changes.length === 0 || discarding) return;
+
+    actionError = null;
+    discarding = true;
+    forkApp(
+      "versions.discard-uncommitted",
+      workbench.discardUncommittedChangesEffect().pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => (actionError = messageFor(error, "Could not discard edits"))),
+        ),
+        Effect.ensuring(Effect.sync(() => (discarding = false))),
       ),
     );
   }
@@ -704,7 +721,7 @@
       <aside class={versionsSidebarClass} aria-label="Save point actions">
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Save point</Card.Title>
+            <Card.Title>Save point</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <p class={sideCopyClass}>
@@ -731,6 +748,15 @@
               <BookmarkPlus size={15} />
               {saving ? "Saving" : "Save point"}
             </Button>
+            <Button
+              variant="destructive"
+              class={fullActionClass}
+              disabled={workbench.changes.length === 0 || discarding}
+              onclick={discardUncommitted}
+            >
+              <Undo2 size={15} />
+              {discarding ? "Discarding" : "Discard edits"}
+            </Button>
           </Card.Content>
         </Card.Root>
 
@@ -748,7 +774,7 @@
 
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Where edits go</Card.Title>
+            <Card.Title>Where edits go</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <div class={deliveryGridClass} aria-label="Where edits go">
@@ -917,7 +943,7 @@
       <Card.Root class={timelineCardClass}>
         <Card.Header class={cn(versionsCardHeaderClass, timelineTitleClass)}>
           <div>
-            <Card.Title class={versionsCardTitleClass}>Version history</Card.Title>
+            <Card.Title>Version history</Card.Title>
             <Card.Description class={timelineDescriptionClass}>
               {workbench.variants.length} variants / {workbench.savePoints.length} save points
             </Card.Description>
@@ -996,7 +1022,7 @@
       <aside class={cn(versionsSidebarClass, historySidebarClass)} aria-label="Selected save point">
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Save point</Card.Title>
+            <Card.Title>Save point</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             {#if selectedSavePoint}
@@ -1078,7 +1104,7 @@
 
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>New variant</Card.Title>
+            <Card.Title>New variant</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <label class={fieldClass}>
