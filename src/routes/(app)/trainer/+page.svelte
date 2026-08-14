@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Effect } from "effect";
   import { Gauge, Sparkles } from "@lucide/svelte";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import { forkApp, runAppSync } from "$lib/app/runtime";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
@@ -36,6 +36,7 @@
   import {
     abortSession,
     applyPracticeInput,
+    applyScrollDelta,
     browserKeyToModalKey,
     bufferCells,
     confidenceChips,
@@ -54,6 +55,7 @@
     resolveTextPulse,
     RUST_TEXT_DRILL_V1,
     savePracticeSessionEffect,
+    scrollDeltaToKeepInView,
     sessionProgress,
     strokeFromKeyboardEvent,
     summarizeSession,
@@ -97,6 +99,7 @@
   let ignoreNextLayerHop = $state(false);
   let layerRoles = $state<LayerRoleMapT | null>(null);
   let cells = $state<BufferCell[]>([]);
+  let bufferEl = $state<HTMLDivElement | undefined>(undefined);
   let showActions = $state(false);
   let sampleCount = $state(0);
   let enoughData = $state(false);
@@ -169,18 +172,12 @@
 
   function cellPhase(cell: BufferCell): "typed" | "current" | "ghost" {
     if (!session) return "ghost";
-    // Idle ready: caret on the first atom so typing can arm the session.
-    if (!running) {
-      if (cell.atomIndex > session.atomIndex) return "ghost";
-      if (cell.atomIndex < session.atomIndex) return "ghost";
-      return "current";
-    }
-    if (cell.atomIndex < session.atomIndex) return "typed";
     if (cell.atomIndex > session.atomIndex) return "ghost";
+    if (cell.atomIndex < session.atomIndex) return running ? "typed" : "ghost";
 
     if (cell.kind === "indent") {
       const sub = Number(cell.id.split("-").at(-1) ?? "0");
-      if (sub < session.indent.pendingSpaces) return "typed";
+      if (sub < session.indent.pendingSpaces) return running ? "typed" : "ghost";
       if (sub === session.indent.pendingSpaces) return "current";
       return "ghost";
     }
@@ -512,6 +509,30 @@
       }
     }, 200);
     return () => window.clearInterval(tick);
+  });
+
+  $effect(() => {
+    const scroller = bufferEl;
+    const cellCount = cells.length;
+    const atomIndex = session?.atomIndex ?? 0;
+    const pending = session?.indent.pendingSpaces ?? 0;
+    if (!scroller || cellCount === 0) return;
+    void running;
+    void atomIndex;
+    void pending;
+    let cancelled = false;
+    void tick().then(() => {
+      if (cancelled) return;
+      const caret = scroller.querySelector<HTMLElement>("[data-caret]");
+      if (!caret) return;
+      applyScrollDelta(
+        scroller,
+        scrollDeltaToKeepInView(scroller.getBoundingClientRect(), caret.getBoundingClientRect()),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
   });
 
   $effect(() => {
@@ -847,20 +868,33 @@
 
         <section class="grid gap-kb-8">
           <div
+            bind:this={bufferEl}
             class="mt-buffer overflow-x-auto rounded-keycap border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
             aria-label="Practice buffer"
           >
             {#each cells as cell (cell.id)}
+              {@const phase = cellPhase(cell)}
               {#if cell.kind === "newline"}
+                {#if phase === "current"}
+                  <span
+                    class="mt-cell mt-current"
+                    data-kind="newline"
+                    data-cell={cell.id}
+                    data-caret=""
+                    aria-hidden="true"
+                  >{" "}</span>
+                {/if}
                 <br />
               {:else}
-                {@const phase = cellPhase(cell)}
                 <span
                   class="mt-cell"
                   class:mt-typed={phase === "typed"}
                   class:mt-current={phase === "current"}
                   class:mt-ghost={phase === "ghost"}
                   class:mt-indent={cell.kind === "indent"}
+                  data-kind={cell.kind}
+                  data-cell={cell.id}
+                  data-caret={phase === "current" ? "" : undefined}
                 >{cell.display}</span>
               {/if}
             {/each}
@@ -982,6 +1016,8 @@
   .mt-buffer {
     white-space: pre;
     tab-size: 4;
+    scroll-padding-inline: 2rem;
+    scroll-padding-block: 1rem;
   }
   .mt-cell {
     display: inline-block;

@@ -63,6 +63,13 @@ export {
   type BufferDocument,
   type IndentDetectState,
 } from "./buffer";
+export {
+  applyScrollDelta,
+  PRACTICE_CARET_PAD_PX,
+  scrollDeltaToKeepInView,
+  type BoxEdges,
+  type ScrollableBox,
+} from "./caret-in-view";
 export type {
   BufferAtom,
   BufferCursor,
