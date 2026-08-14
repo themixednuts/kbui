@@ -55,23 +55,23 @@
   const searchBoxClass =
     "search-box grid h-kb-34 w-[min(100%,420px)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-lg border border-line-2 bg-card px-kb-12 py-0 shadow-card";
   const filterPanelClass =
-    "filter-panel grid min-w-0 gap-kb-12 border-b border-line bg-paper px-kb-24 py-kb-12 max-[640px]:px-kb-12";
+    "filter-panel grid min-w-0 gap-kb-8 border-b border-line bg-paper px-kb-24 py-kb-10 max-[640px]:px-kb-12";
   const filterBandClass =
-    "filter-band grid min-w-0 grid-cols-[58px_minmax(0,1fr)] items-start gap-x-kb-12 max-[640px]:grid-cols-[minmax(0,1fr)] max-[640px]:gap-y-kb-7";
+    "filter-band grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-kb-10";
   const filterBandLabelClass =
-    "filter-band-label pt-kb-8 font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase max-[640px]:pt-0";
-  const filterGroupClass = "flex min-w-0 flex-wrap items-center gap-kb-8";
+    "filter-band-label font-mono text-[10px] tracking-[0.1em] text-ink-3 uppercase";
+  const tagStripClass =
+    "tag-strip flex min-w-0 flex-nowrap items-center gap-kb-6 overflow-x-auto overscroll-x-contain [scrollbar-width:thin]";
   const scopeGridClass =
-    "scope-grid grid min-w-0 grid-cols-[minmax(250px,1fr)_auto_auto] items-center gap-kb-10 max-[820px]:grid-cols-[minmax(0,1fr)] max-[820px]:items-start";
+    "scope-grid flex min-w-0 flex-wrap items-center gap-x-kb-10 gap-y-kb-6";
   const scopeFiltersClass = "scope-filters flex min-w-0 flex-wrap items-center gap-kb-10";
   const filterButtonClass =
-    "h-[28px] min-h-[28px] rounded-pill border-line bg-paper-2 px-kb-10 py-0 font-mono text-[11px] text-ink-2 hover:border-line-2 hover:bg-paper-2 hover:text-ink";
+    "h-[28px] min-h-[28px] shrink-0 rounded-pill border-line bg-paper-2 px-kb-10 py-0 font-mono text-[11px] text-ink-2 hover:border-line-2 hover:bg-paper-2 hover:text-ink";
   const activeFilterButtonClass =
     "active border-transparent bg-ink text-paper hover:bg-ink hover:text-paper";
   const toggleFilterClass =
     "toggle-filter inline-flex min-h-kb-30 items-center gap-kb-8 font-mono text-[11px] text-ink-2";
-  const sortControlClass =
-    "sort-control inline-flex min-w-0 items-center gap-kb-8 whitespace-nowrap max-[820px]:justify-self-start";
+  const sortControlClass = "sort-control inline-flex min-w-0 items-center gap-kb-8 whitespace-nowrap";
   const listErrorClass =
     "list-error flex min-h-kb-44 items-center gap-kb-10 rounded-lg border border-[var(--danger-border)] bg-danger-surface px-kb-12 py-kb-10 text-kb-12 text-danger-ink";
   const cardGridClass =
@@ -118,6 +118,7 @@
   let reportReason = $state<CommunityReportReason>("spam");
   let reportDetail = $state("");
   let reportError = $state<string | null>(null);
+  let tagStripEl = $state<HTMLDivElement | undefined>(undefined);
 
   const currentBoardName = $derived(profileDisplayName(workbench.profile));
   const signedIn = $derived(shell.account.status === "signed-in");
@@ -406,6 +407,18 @@
     activeTag = tag;
   }
 
+  $effect(() => {
+    const scroller = tagStripEl;
+    void activeTag;
+    if (!scroller) return;
+    const current = scroller.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!current) return;
+    const chip = current.getBoundingClientRect();
+    const box = scroller.getBoundingClientRect();
+    if (chip.right > box.right) scroller.scrollLeft += chip.right - box.right + 16;
+    else if (chip.left < box.left) scroller.scrollLeft -= box.left - chip.left + 16;
+  });
+
   function clearFilters() {
     activeTag = undefined;
     search = "";
@@ -453,7 +466,7 @@
     <section class={filterPanelClass} aria-label="Browse filters">
       <div class={filterBandClass}>
         <span class={filterBandLabelClass}>Tags</span>
-        <div class={cn("tag-strip", filterGroupClass)} aria-label="Tag filters">
+        <div bind:this={tagStripEl} class={tagStripClass} aria-label="Tag filters">
           <Button
             type="button"
             variant="ghost"
@@ -483,9 +496,13 @@
         <span class={filterBandLabelClass}>Scope</span>
         <div class={scopeGridClass}>
           <div class={scopeFiltersClass}>
-            <label class={toggleFilterClass}>
-              <Switch bind:checked={compatibleOnly} size="sm" aria-label="Compatible with my board" />
-              <span>Compatible with {currentBoardName}</span>
+            <label class={toggleFilterClass} title={`Compatible with ${currentBoardName}`}>
+              <Switch
+                bind:checked={compatibleOnly}
+                size="sm"
+                aria-label={`Compatible with ${currentBoardName}`}
+              />
+              <span>Compatible</span>
             </label>
 
             <Button
@@ -500,20 +517,23 @@
             </Button>
           </div>
 
-          <div class={sortControlClass}>
-            <span class={eyebrowClass}>Sort</span>
-            <SegmentedNav
-              items={sortItems}
-              value={sort}
-              onselect={(next) => (sort = next)}
-              ariaLabel="Community keymap sort"
-            />
-          </div>
+          <div class="ml-auto flex min-w-0 items-center gap-kb-8">
+            <div class={sortControlClass}>
+              <span class={cn(eyebrowClass, "max-md:sr-only")}>Sort</span>
+              <SegmentedNav
+                items={sortItems}
+                value={sort}
+                onselect={(next) => (sort = next)}
+                iconOnlyAt="sm"
+                ariaLabel="Community keymap sort"
+              />
+            </div>
 
-          <Chip
-            class="result-count min-w-[62px] justify-self-end max-[820px]:justify-self-start"
-            title={loading ? "Updating community keymaps" : "Current result count"}
-          >{resultCopy}</Chip>
+            <Chip
+              class="result-count min-w-[62px] shrink-0"
+              title={loading ? "Updating community keymaps" : "Current result count"}
+            >{resultCopy}</Chip>
+          </div>
           <span class="sr-only" aria-live="polite">
             {loading ? "Updating community keymaps" : `${resultCopy} shown`}
           </span>

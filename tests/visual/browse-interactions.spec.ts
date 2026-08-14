@@ -13,7 +13,7 @@ test("keeps browse filters grouped and cycles preview layers", async ({ page }) 
   ).toBeLessThanOrEqual(1);
   expect(
     await filterPanel.locator(".scope-grid").evaluate((scope) => getComputedStyle(scope).display),
-  ).toBe("grid");
+  ).toBe("flex");
 
   const previewButtons = page.locator(".community-card .card-hit-target");
   expect(await previewButtons.count()).toBeGreaterThan(0);
@@ -116,4 +116,45 @@ test("keeps the route width stable when its vertical scrollbar comes and goes", 
   await search.fill("");
   await expect(page.locator(".community-card")).toHaveCount(6);
   expect(await shellContent.evaluate((main) => main.clientWidth)).toBe(initial.clientWidth);
+});
+
+test("keeps browse filters to two compact rows in a narrow pane", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 557, height: 800 });
+  await page.goto("/browse", { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+
+  const filterPanel = page.getByRole("region", { name: "Browse filters" });
+  await expect(filterPanel.locator(".filter-band")).toHaveCount(2);
+  expect(
+    await filterPanel.evaluate((panel) => panel.scrollWidth - panel.clientWidth),
+  ).toBeLessThanOrEqual(1);
+
+  const panelBox = await filterPanel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.height).toBeLessThan(140);
+
+  const tagStrip = filterPanel.locator(".tag-strip");
+  expect(await tagStrip.evaluate((el) => getComputedStyle(el).flexWrap)).toBe("nowrap");
+  expect(
+    await tagStrip.evaluate((el) => {
+      const tops = new Set(
+        [...el.querySelectorAll("button")].map((button) =>
+          Math.round(button.getBoundingClientRect().top),
+        ),
+      );
+      return tops.size;
+    }),
+  ).toBe(1);
+  expect(await tagStrip.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(8);
+
+  const bandColumns = await filterPanel
+    .locator(".filter-band")
+    .first()
+    .evaluate((band) => getComputedStyle(band).gridTemplateColumns.split(" ").length);
+  expect(bandColumns).toBe(2);
+
+  await expect(filterPanel.getByRole("switch", { name: /Compatible with / })).toBeVisible();
+  await expect(filterPanel.getByRole("button", { name: "New", exact: true })).toBeVisible();
+
+  await filterPanel.screenshot({ path: testInfo.outputPath("browse-filters-557.png") });
 });
