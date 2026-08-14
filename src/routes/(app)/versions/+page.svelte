@@ -10,6 +10,7 @@
     History,
     RotateCcw,
     Trash2,
+    Undo2,
     UploadCloud,
     Workflow,
     Zap,
@@ -38,11 +39,13 @@
   import FlashOverlay from "$lib/components/flash/FlashOverlay.svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import Chip from "$lib/components/ui/Chip.svelte";
-  import { Input } from "$lib/components/ui";
+  import { Input, Spinner } from "$lib/components/ui";
   import { Sheet } from "$lib/components/ui/sheet";
   import SegmentedNav from "$lib/components/ui/SegmentedNav.svelte";
   import type { SegmentItem } from "$lib/components/ui/types";
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import VersionChangesPanel from "$lib/components/versioning/VersionChangesPanel.svelte";
   import type {
     GitHubFirmwareAppStatus,
@@ -86,6 +89,8 @@
   let pendingFirmwareBuild = $state(false);
   let saving = $state(false);
   let restoring = $state(false);
+  let discarding = $state(false);
+  let flashing = $state(false);
   let branching = $state(false);
   let deleting = $state(false);
 
@@ -152,10 +157,6 @@
   const versionsToolbarClass =
     "versions-toolbar flex min-w-0 items-center gap-kb-10 max-[820px]:flex-wrap";
   const toolbarSpacerClass = "toolbar-spacer min-w-kb-12 flex-1 max-[820px]:hidden";
-  const versionsAlertClass =
-    "versions-alert rounded-lg border border-[var(--danger-border)] bg-danger-surface px-kb-12 py-kb-10 font-mono text-kb-12 text-danger-ink";
-  const versionsStatusClass =
-    "versions-status rounded-lg border border-[var(--success-border)] bg-success-surface px-kb-12 py-kb-10 font-mono text-kb-12 leading-[1.45] text-success-ink";
   const versionsGridClass =
     "versions-grid grid min-h-0 grid-cols-[minmax(0,1fr)_320px] items-start gap-kb-18 max-[1180px]:grid-cols-[minmax(0,1fr)]";
   const historyGridClass = "history-grid items-stretch";
@@ -174,7 +175,6 @@
   const changeMetricCountClass = "font-mono text-[24px] font-strong";
   const versionsCardHeaderClass =
     "versions-card-header min-h-kb-44 border-line px-kb-16 py-kb-13";
-  const versionsCardTitleClass = "text-[12px] tracking-[0.08em]";
   const versionsCardBodyClass = "versions-card-body grid gap-kb-13 p-kb-16";
   const sideCopyClass = "side-copy m-0 text-[12px] leading-[1.6] text-ink-2";
   const deliveryGridClass =
@@ -209,10 +209,6 @@
   const timelineTitleClass = "timeline-title justify-between";
   const timelineDescriptionClass = "mt-kb-4 font-mono text-[11px] text-ink-3";
   const timelineBodyClass = "timeline-body px-kb-16 pt-kb-18 pb-kb-22";
-  const timelineEmptyClass =
-    "timeline-empty grid min-h-[180px] place-items-center gap-kb-8 text-center font-mono text-[12px] text-ink-3";
-  const sideEmptyClass =
-    "side-empty grid min-h-[180px] place-items-center gap-kb-8 text-center font-mono text-[12px] text-ink-3";
   const timelineTracksClass =
     "timeline-tracks grid grid-cols-[repeat(3,minmax(180px,1fr))] items-start gap-kb-18 max-[820px]:grid-cols-[minmax(0,1fr)]";
   const timelineTrackClass = "timeline-track min-w-0";
@@ -224,7 +220,6 @@
     "track-note mt-kb-10 flex min-w-0 items-center gap-kb-6 font-mono text-[10px] text-ink-3 [&_span]:overflow-hidden [&_span]:text-ellipsis [&_span]:whitespace-nowrap";
   const trackLineClass =
     "track-line relative mt-kb-12 grid gap-kb-8 pl-kb-18 before:absolute before:top-kb-4 before:bottom-kb-4 before:left-kb-5 before:w-kb-2 before:rounded-pill before:bg-[var(--track-color,var(--ink))] before:opacity-80 before:content-['']";
-  const trackEmptyClass = "track-empty min-h-kb-38 font-mono text-[11px] text-ink-3";
   const savepointRowClass =
     "savepoint-row relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)] rounded-keycap border border-transparent py-kb-8 pr-kb-8 pl-kb-10 text-left hover:border-line hover:bg-paper-2 [&.selected]:border-line [&.selected]:bg-paper-2";
   const savepointDotClass =
@@ -329,6 +324,22 @@
     );
   }
 
+  function discardUncommitted() {
+    if (workbench.changes.length === 0 || discarding) return;
+
+    actionError = null;
+    discarding = true;
+    forkApp(
+      "versions.discard-uncommitted",
+      workbench.discardUncommittedChangesEffect().pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => (actionError = messageFor(error, "Could not discard edits"))),
+        ),
+        Effect.ensuring(Effect.sync(() => (discarding = false))),
+      ),
+    );
+  }
+
   function branchFromSelectedSavePoint() {
     if (!selectedSavePoint || branching) return;
 
@@ -384,9 +395,10 @@
   }
 
   function flashSelectedSavePoint() {
-    if (!selectedSavePoint) return;
+    if (!selectedSavePoint || flashing) return;
     actionError = null;
     flashStatus = null;
+    flashing = true;
 
     forkApp(
       "versions.flash-save-point",
@@ -423,6 +435,7 @@
         Effect.catch((error) =>
           Effect.sync(() => (actionError = messageFor(error, "Could not flash save point"))),
         ),
+        Effect.ensuring(Effect.sync(() => (flashing = false))),
       ),
     );
   }
@@ -668,15 +681,15 @@
   </header>
 
   {#if actionError || workbench.versioningError}
-    <div class={versionsAlertClass} role="status">
-      {actionError ?? workbench.versioningError}
-    </div>
+    <Alert.Root variant="destructive">
+      <Alert.Title>{actionError ?? workbench.versioningError}</Alert.Title>
+    </Alert.Root>
   {/if}
 
   {#if flashStatus}
-    <div class={versionsStatusClass} role="status">
-      {flashStatus}
-    </div>
+    <Alert.Root variant="success">
+      <Alert.Title>{flashStatus}</Alert.Title>
+    </Alert.Root>
   {/if}
 
   {#if tab === "changes"}
@@ -704,13 +717,12 @@
       <aside class={versionsSidebarClass} aria-label="Save point actions">
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Save point</Card.Title>
+            <Card.Title>Save point</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <p class={sideCopyClass}>
-              Bundle these {workbench.changes.length} change{workbench.changes.length === 1
-                ? ""
-                : "s"} into a named point on <strong>{workbench.activeVariant.name}</strong>.
+              Save {workbench.changes.length} edit{workbench.changes.length === 1 ? "" : "s"} on
+              <strong>{workbench.activeVariant.name}</strong>.
             </p>
 
             <label class={fieldClass}>
@@ -731,6 +743,15 @@
               <BookmarkPlus size={15} />
               {saving ? "Saving" : "Save point"}
             </Button>
+            <Button
+              variant="destructive"
+              class={fullActionClass}
+              disabled={workbench.changes.length === 0 || discarding}
+              onclick={discardUncommitted}
+            >
+              <Undo2 size={15} />
+              {discarding ? "Discarding" : "Discard edits"}
+            </Button>
           </Card.Content>
         </Card.Root>
 
@@ -738,40 +759,38 @@
           <Card.Content class={cleanBodyClass}>
             {#if workbench.changes.length === 0}
               <CheckCircle2 size={18} />
-              <span>Draft matches the current base.</span>
+              <span>No uncommitted edits.</span>
             {:else}
               <GitCommit size={18} />
-              <span>{workbench.changes.length} local change{workbench.changes.length === 1 ? "" : "s"} waiting.</span>
+              <span>{workbench.changes.length} local edit{workbench.changes.length === 1 ? "" : "s"} waiting.</span>
             {/if}
           </Card.Content>
         </Card.Root>
 
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Delivery</Card.Title>
+            <Card.Title>Where edits go</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
-            <div class={deliveryGridClass} aria-label="Change delivery summary">
+            <div class={deliveryGridClass} aria-label="Where edits go">
               <div class={deliveryLaneClass}>
                 <div class={deliveryLaneTextClass}>
                   <span class={deliveryLaneLabelClass}>Live write</span>
-                  <small class={deliveryLaneCopyClass}>
-                    {profile.protocol === "zmk-studio" ? "ZMK Studio bindings" : "VIA dynamic keymap"}
-                  </small>
+                  <small class={deliveryLaneCopyClass}>Written to the board now</small>
                 </div>
                 <strong class={deliveryLaneValueClass}>{liveSummary.liveWritable}</strong>
               </div>
               <div class={deliveryLaneClass}>
                 <div class={deliveryLaneTextClass}>
                   <span class={deliveryLaneLabelClass}>Build required</span>
-                  <small class={deliveryLaneCopyClass}>Generated firmware source</small>
+                  <small class={deliveryLaneCopyClass}>Needs a firmware build</small>
                 </div>
                 <strong class={deliveryLaneValueClass}>{liveSummary.rebuildRequired}</strong>
               </div>
               <div class={deliveryLaneClass}>
                 <div class={deliveryLaneTextClass}>
                   <span class={deliveryLaneLabelClass}>Profile only</span>
-                  <small class={deliveryLaneCopyClass}>Saved in local metadata</small>
+                  <small class={deliveryLaneCopyClass}>Stays in this profile</small>
                 </div>
                 <strong class={deliveryLaneValueClass}>{liveSummary.localOnly}</strong>
               </div>
@@ -810,7 +829,7 @@
                 <dt class={branchKeyClass}>Updates</dt>
                 <dd class={branchValueClass}>
                   {firmwareBuildEvents.connected
-                    ? "live · self-healing"
+                    ? "live"
                     : "reconnecting"}
                 </dd>
               </div>
@@ -852,7 +871,7 @@
                     <strong>Complete the firmware target before building.</strong>
                     <ul class={firmwareDiagnosticListClass}>
                       {#each blockingFirmwareDiagnostics as item}
-                        <li><span class="font-mono">{item.path ?? item.code}</span> — {item.message}</li>
+                        <li><span class="font-mono">{item.path ?? item.code}</span>. {item.message}</li>
                       {/each}
                     </ul>
                     <Button
@@ -874,7 +893,7 @@
                   onclick={() => requestFirmwareGithubSync(true)}
                 >
                   <Workflow size={15} />
-                  {firmwareGithubAction === "build" ? "Dispatching…" : "Build firmware"}
+                  {firmwareGithubAction === "build" ? "Dispatching" : "Build firmware"}
                 </Button>
                 <Button
                   variant="outline"
@@ -885,7 +904,7 @@
                 >
                   <UploadCloud size={14} />
                   {firmwareGithubAction === "sync"
-                    ? "Syncing…"
+                    ? "Syncing"
                     : managedFirmwareRepository
                       ? "Sync branch"
                       : "Create repo & sync"}
@@ -906,9 +925,13 @@
             {/if}
 
             {#if firmwareGithubError}
-              <p class={versionsAlertClass} role="status">{firmwareGithubError}</p>
+              <Alert.Root variant="destructive">
+                <Alert.Title>{firmwareGithubError}</Alert.Title>
+              </Alert.Root>
             {:else if firmwareGithubNotice}
-              <p class={versionsStatusClass} role="status">{firmwareGithubNotice}</p>
+              <Alert.Root variant="success">
+                <Alert.Title>{firmwareGithubNotice}</Alert.Title>
+              </Alert.Root>
             {/if}
           </Card.Content>
         </Card.Root>
@@ -919,19 +942,26 @@
       <Card.Root class={timelineCardClass}>
         <Card.Header class={cn(versionsCardHeaderClass, timelineTitleClass)}>
           <div>
-            <Card.Title class={versionsCardTitleClass}>Version history</Card.Title>
+            <Card.Title>Version history</Card.Title>
             <Card.Description class={timelineDescriptionClass}>
-              {workbench.variants.length} variants / {workbench.savePoints.length} save points
+              {workbench.variants.length}
+              {workbench.variants.length === 1 ? "variant" : "variants"}
+              /
+              {workbench.savePoints.length}
+              {workbench.savePoints.length === 1 ? "save point" : "save points"}
             </Card.Description>
           </div>
         </Card.Header>
 
         <Card.Content class={timelineBodyClass}>
           {#if workbench.savePoints.length === 0}
-            <div class={timelineEmptyClass}>
-              <History size={24} />
-              <span>No save points yet. Create one from the Changes tab.</span>
-            </div>
+            <Empty.Root class="min-h-[180px] border-0">
+              <Empty.Header>
+                <Empty.Media variant="icon"><History size={24} /></Empty.Media>
+                <Empty.Title>No save points yet</Empty.Title>
+                <Empty.Description>Make one from Changes.</Empty.Description>
+              </Empty.Header>
+            </Empty.Root>
           {:else}
             <div class={timelineTracksClass}>
               {#each workbench.savePointTracks as track (track.id)}
@@ -965,7 +995,9 @@
 
                   <div class={trackLineClass} style={`--track-color: ${track.color}`}>
                     {#if track.points.length === 0}
-                      <div class={trackEmptyClass}>No save points on this variant</div>
+                      <Empty.Root class="min-h-kb-38 border-0 p-0">
+                        <Empty.Title class="text-kb-12 font-medium">No save points</Empty.Title>
+                      </Empty.Root>
                     {:else}
                       {#each track.points as point (point.id)}
                         <button
@@ -998,7 +1030,7 @@
       <aside class={cn(versionsSidebarClass, historySidebarClass)} aria-label="Selected save point">
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Save point</Card.Title>
+            <Card.Title>Save point</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             {#if selectedSavePoint}
@@ -1035,9 +1067,9 @@
                   <RotateCcw size={14} />
                   {restoring ? "Restoring" : "Restore"}
                 </Button>
-                <Button variant="coral" size="sm" onclick={flashSelectedSavePoint}>
-                  <Zap size={14} />
-                  Flash this
+                <Button variant="coral" size="sm" disabled={flashing} onclick={flashSelectedSavePoint}>
+                  {#if flashing}<Spinner />{:else}<Zap size={14} />{/if}
+                  {flashing ? "Opening" : "Flash this"}
                 </Button>
               </div>
 
@@ -1065,7 +1097,9 @@
               </div>
 
             {:else}
-              <div class={sideEmptyClass}>Select a save point to inspect.</div>
+              <Empty.Root class="min-h-[180px] border-0">
+                <Empty.Title>Pick a save point</Empty.Title>
+              </Empty.Root>
             {/if}
           </Card.Content>
         </Card.Root>
@@ -1080,7 +1114,7 @@
 
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Branch off a variant</Card.Title>
+            <Card.Title>New variant</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <label class={fieldClass}>
@@ -1089,7 +1123,7 @@
                 class={versionInputClass}
                 value={selectedSavePoint
                   ? `${selectedVariant?.name ?? selectedSavePoint.variantId} @ ${pointLabel(selectedSavePoint.id)}`
-                  : "Select a save point"}
+                  : "Pick a save point"}
                 readonly
               />
             </label>

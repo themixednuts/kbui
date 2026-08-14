@@ -8,7 +8,8 @@
   } from "$lib/app/editor-store.svelte";
   import KeyBindingLogicPicker from "$lib/components/keymap/KeyBindingLogicPicker.svelte";
   import TargetOsChip from "$lib/components/keymap/TargetOsChip.svelte";
-  import { Button, Input, SegmentedNav, SliderField } from "$lib/components/ui";
+  import { Button, Input, NativeSelect, SegmentedNav, SliderField } from "$lib/components/ui";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import type { SegmentItem } from "$lib/components/ui/types";
   import {
     canonicalCodeForFirmwareInput,
@@ -179,16 +180,18 @@
   )}
 >
   {#if selectionCount === 0}
-    <div
+    <Empty.Root
       class={cn(
-        "empty-state grid min-h-[150px] place-items-center gap-[8px] p-[18px] text-center text-ink-3",
-        compact && "col-span-full min-h-[98px]",
+        "border-0",
+        compact ? "col-span-full min-h-[98px] p-kb-8" : "min-h-[150px]",
       )}
     >
-      <Keyboard size={24} strokeWidth={1.5} aria-hidden="true" />
-      <strong class="text-[13px] text-ink">No key selected</strong>
-      <p class="m-0 text-[12px] leading-[1.4]">Select a key on the board to edit its binding.</p>
-    </div>
+      <Empty.Header>
+        <Empty.Media variant="icon"><Keyboard size={24} strokeWidth={1.5} /></Empty.Media>
+        <Empty.Title>No key selected</Empty.Title>
+        <Empty.Description>Select a key on the board.</Empty.Description>
+      </Empty.Header>
+    </Empty.Root>
   {:else}
     <header
       class={cn(
@@ -355,16 +358,16 @@
                     ? "Search ZMK behavior bindings"
                     : "Search all QMK keycodes"}
                 />
-                <select
+                <NativeSelect.Root
+                  class="h-[34px] min-h-[34px] w-full font-mono text-[10px]"
                   bind:value={catalogGroup}
-                  class="h-[34px] min-w-0 rounded-md border border-line-2 bg-surface px-[9px] font-mono text-[10px] text-ink outline-none focus:border-ink"
                   aria-label={firmware === "zmk" ? "ZMK binding category" : "QMK keycode category"}
                 >
-                  <option value="all">All categories</option>
+                  <NativeSelect.Option value="all">All categories</NativeSelect.Option>
                   {#each catalogGroups as group (group)}
-                    <option value={group}>{catalogGroupLabels[group] ?? group}</option>
+                    <NativeSelect.Option value={group}>{catalogGroupLabels[group] ?? group}</NativeSelect.Option>
                   {/each}
-                </select>
+                </NativeSelect.Root>
               </div>
 
               <div class="catalog-results flex max-h-[250px] flex-wrap content-start gap-[6px] overflow-y-auto pr-[3px]">
@@ -387,7 +390,9 @@
                     {/if}
                   </Button>
                 {:else}
-                  <p class="m-0 py-[8px] text-[11px] text-ink-3">No matching keycodes.</p>
+                  <Empty.Root class="min-h-0 border-0 p-kb-8">
+                    <Empty.Title class="text-kb-12 font-medium">No matching keycodes</Empty.Title>
+                  </Empty.Root>
                 {/each}
               </div>
             </div>
@@ -401,7 +406,7 @@
             compact && "mt-[10px] pt-[10px]",
           )}
         >
-          <span class={fieldLabelClass}>Workspace logic</span>
+          <span class={fieldLabelClass}>Library bindings</span>
           <KeyBindingLogicPicker
             items={editor.logicBindings}
             activeCode={selectedCodeSummary.mixed ? "" : selectedBinding.code}

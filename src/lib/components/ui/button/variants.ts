@@ -10,7 +10,7 @@ export const buttonVariants = tv({
       coral: "border-coral bg-coral text-on-accent shadow-cap hover:bg-[var(--accent-solid-hover)]",
       solid: "border-ink bg-ink text-surface hover:bg-ink-2",
       outline:
-        "border-line-2 bg-surface text-ink shadow-xs hover:border-ink hover:bg-surface-2 aria-expanded:bg-surface-2 aria-expanded:text-ink",
+        "border-line-2 bg-surface text-ink hover:border-ink hover:bg-surface-2 aria-expanded:bg-surface-2 aria-expanded:text-ink",
       secondary:
         "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
       ghost:
@@ -19,9 +19,9 @@ export const buttonVariants = tv({
         "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30",
       link: "text-primary underline-offset-4 hover:underline",
       segment:
-        "rounded-pill border-transparent bg-transparent text-ink-2 hover:bg-card hover:text-ink",
+        "rounded-sm border-transparent bg-transparent text-ink-2 hover:bg-card hover:text-ink",
       "segment-active":
-        "rounded-pill border-transparent bg-card text-ink shadow-card hover:bg-card hover:text-ink",
+        "rounded-sm border-transparent bg-card text-ink shadow-none hover:bg-card hover:text-ink",
     },
     size: {
       default: "h-[var(--control-height)] gap-kb-8 px-kb-12",

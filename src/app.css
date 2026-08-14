@@ -336,7 +336,9 @@
   --space-420: 420px;
   --space-560: 560px;
 
-  /* Shape taxonomy: token, control, panel, status. */
+  /* Chrome: 1px --line-2 on controls and surfaces. Radius: --r-1 checkboxes,
+   * --r-2 buttons/fields/segs, --r-3 cards/panels, --r-pill badges/avatars/switches,
+   * --r-keycap physical keys only. */
   --r-1: 5px;
   --r-2: 8px;
   --r-3: 12px;
@@ -360,7 +362,7 @@
 }
 
 /*
- * Graphite — the dark, tool-like visual direction from the Klakson v2 redesign.
+ * Graphite is the dark, tool-like visual direction from the KBUI v2 redesign.
  * Applied by stamping `data-theme="graphite"` (and `.dark`) on <html>. Only the
  * colour / material tokens are overridden; spacing, radii and type carry across
  * from :root. Accent (`--coral`) may be overridden inline by the Accent service
@@ -670,19 +672,6 @@ html,
 [data-sonner-toast][data-type="info"].app-toast {
   border-color: var(--line-2) !important;
   background: var(--surface) !important;
-}
-
-/* The editor toolbar responds to its pane, not the viewport. This keeps the
- * primary editing tools and secondary view/status tools in coherent rows when
- * the resizable inspector narrows the board. */
-@container editor-main (max-width: 850px) {
-  .editor-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .editor-secondary-tools {
-    justify-content: flex-start;
-  }
 }
 
 .keycap {

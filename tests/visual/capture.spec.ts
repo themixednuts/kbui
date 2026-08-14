@@ -90,7 +90,7 @@ const targets: CaptureTarget[] = [
     name: "versions.png",
     ready: async (page) => {
       await waitForAppRouteHeading(page, "Versions");
-      const deliverySummary = page.getByLabel("Change delivery summary");
+      const deliverySummary = page.getByLabel("Where edits go");
       await expect(deliverySummary).toBeVisible();
       await expect(deliverySummary.locator(".delivery-lane")).toHaveCount(4);
     },

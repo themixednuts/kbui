@@ -33,7 +33,6 @@
   import KeyInspectorPanel from "$lib/components/keymap/KeyInspectorPanel.svelte";
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
   import type { SegmentItem } from "$lib/components/ui/types";
-  import type { LiveSyncLocalOnlyReasonSummary } from "$lib/keyboard/live-sync-classification";
   import type { FirmwareEditIntent } from "$lib/keyboard/schema";
   import { swatchToKeyLighting } from "$lib/keyboard/lighting-swatches";
   import { cn } from "$lib/utils.js";
@@ -52,19 +51,23 @@
     "editor-main grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 [container:editor-main/inline-size] max-[640px]:p-0";
   const editorMainSplitClass =
     "grid-rows-[auto_minmax(0,1fr)] gap-0 p-0";
-  // Two deliberate rows at every size: mode + targets/status on top, the layer
-  // strip full-width beneath. The toolbar lives inside a resizable pane, so pane
-  // width — not viewport width — is what actually constrains it; a fixed two-row
-  // shape stays correct at any pane size. Nothing wraps: the layer strip scrolls
-  // and labels collapse to icons rather than breaking to new lines.
+  // Wide panes keep two rows: lens + firmware/status on top, layers full-width
+  // beneath. When the pane (not the window) drops below 640px, collapse to one
+  // row — lens | scrolling layers | status — so the top row does not leave a
+  // large empty gap. The layout switcher stays visible whenever the viewport
+  // can still host a side inspector. Nothing wraps: the layer strip scrolls and
+  // labels collapse to icons (firmware by 960px, lens by 800px) rather than
+  // overflowing into the neighboring group.
   const editorToolbarClass =
-    "editor-toolbar grid min-h-[55px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-10 max-[640px]:px-kb-12";
+    "editor-toolbar grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-8 max-[640px]:px-kb-12 @max-[640px]/editor-main:grid-cols-[auto_minmax(0,1fr)_auto] @max-[640px]/editor-main:gap-x-kb-6 @max-[640px]/editor-main:px-kb-10 @max-[640px]/editor-main:py-kb-6";
   const primaryToolbarGroupClass =
-    "editor-primary-tools col-start-1 row-start-1 flex min-w-0 flex-nowrap items-center gap-kb-10";
+    "editor-primary-tools col-start-1 row-start-1 flex flex-none flex-nowrap items-center gap-kb-10";
   const secondaryToolbarGroupClass =
-    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8";
+    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 justify-end @max-[640px]/editor-main:col-start-3";
+  const secondaryToolbarClusterClass =
+    "flex w-max max-w-full min-w-0 flex-nowrap items-center gap-kb-8 overflow-x-auto";
   const layerRowClass =
-    "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center";
+    "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center @max-[640px]/editor-main:col-span-1 @max-[640px]/editor-main:col-start-2 @max-[640px]/editor-main:row-start-1";
   const syncNoticeClass =
     "sync-notice grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-kb-10 rounded-lg border border-line bg-surface px-kb-12 py-kb-10 text-kb-12";
   const syncNoticeRebuildClass =
@@ -86,13 +89,11 @@
   const noticeCategoryClass =
     "notice-category mr-kb-5 font-mono text-[10px] font-bold text-ink uppercase";
   const boardStageClass =
-    "board-stage relative flex min-h-[360px] min-w-0 overflow-hidden border-0 bg-stage shadow-none";
-  const boardStageResponsiveClass =
-    "max-[1180px]:min-h-[390px] max-[980px]:min-h-[340px]";
+    "board-stage relative flex h-full min-h-0 min-w-0 overflow-hidden border-0 bg-stage shadow-none";
   const boardStageSplitClass =
-    "min-h-[300px] rounded-none border-transparent bg-stage shadow-none";
+    "rounded-none border-transparent bg-stage shadow-none";
   const fallthroughChipClass =
-    "fallthrough-chip absolute top-kb-12 right-kb-12 z-20 h-kb-28 min-h-kb-28 gap-kb-6 rounded-pill border-line-2 bg-[color-mix(in_oklch,var(--card-surface)_86%,transparent)] px-kb-10 py-0 font-mono text-[11px] text-ink-2 shadow-card backdrop-blur-[5px] hover:border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] hover:bg-card hover:text-ink data-[active=true]:border-[color-mix(in_oklch,var(--teal)_48%,var(--line-2))] data-[active=true]:bg-[color-mix(in_oklch,var(--teal)_12%,var(--card-surface))] data-[active=true]:text-teal-ink [&_svg]:size-[13px]";
+    "fallthrough-chip absolute top-kb-12 right-kb-12 z-20 h-kb-28 min-h-kb-28 gap-kb-6 rounded-md border-line-2 bg-[color-mix(in_oklch,var(--card-surface)_86%,transparent)] px-kb-10 py-0 font-mono text-[11px] text-ink-2 shadow-none backdrop-blur-[5px] hover:border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] hover:bg-card hover:text-ink data-[active=true]:border-[color-mix(in_oklch,var(--teal)_48%,var(--line-2))] data-[active=true]:bg-[color-mix(in_oklch,var(--teal)_12%,var(--card-surface))] data-[active=true]:text-teal-ink [&_svg]:size-[13px]";
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
   let flashOverlayOpen = $state(false);
@@ -103,9 +104,9 @@
   ];
 
   const layoutItems: SegmentItem<EditorLayoutId>[] = [
-    { value: "auto", label: "Auto", icon: Sparkles, title: "Match the board — dock for splits, panel otherwise" },
-    { value: "inspector", label: "Panel", icon: PanelRight, title: "Board hero with a right-hand inspector" },
-    { value: "dock", label: "Dock", icon: PanelBottom, title: "Board centered with a bottom inspector dock" },
+    { value: "auto", label: "Auto", icon: Sparkles, title: "Splits use the dock. Other boards use the side panel." },
+    { value: "inspector", label: "Panel", icon: PanelRight, title: "Board on the left, inspector on the right." },
+    { value: "dock", label: "Dock", icon: PanelBottom, title: "Board in the middle, inspector along the bottom." },
   ];
 
   const boardModel = $derived(
@@ -152,13 +153,13 @@
       value: "live",
       label: liveEditLabel,
       icon: Zap,
-      title: `Write edits straight to the keyboard (${liveEditLabel})`,
+      title: `Writes each edit to the keyboard (${liveEditLabel})`,
     },
     {
       value: "source",
       label: sourceEditLabel,
       icon: FileCode2,
-      title: `Collect edits into generated firmware source (${sourceEditLabel})`,
+      title: `Saves edits for a firmware build (${sourceEditLabel})`,
     },
   ]);
   const failedPreview = $derived(liveSync.failedLanes.slice(0, 3));
@@ -167,9 +168,6 @@
   const connectedLocalOnlyChanges = $derived(shell.connected ? liveSync.localOnlyChanges : []);
   const localOnlyReasonPreview = $derived(
     shell.connected ? liveSync.localOnlySummary.reasons.slice(0, 4) : [],
-  );
-  const localOnlyCategorySummary = $derived(
-    shell.connected ? localOnlyCategoryText(liveSync.localOnlySummary.reasons) : "",
   );
 
   $effect(() => {
@@ -217,11 +215,6 @@
 
     editor.toggleKey(keyId);
   }
-
-  function localOnlyCategoryText(reasons: readonly LiveSyncLocalOnlyReasonSummary[]) {
-    const labels = [...new Set(reasons.map((reason) => reason.label))];
-    return labels.join(", ");
-  }
 </script>
 
 {#snippet editorMain()}
@@ -233,61 +226,63 @@
           value={editor.lens}
           onselect={(lens) => editor.setLens(lens)}
           ariaLabel="Editor lens"
-          class="@max-[560px]/editor-main:[&_[data-label]]:hidden"
+          class="@max-[800px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8"
         />
       </div>
 
       <div class={secondaryToolbarGroupClass}>
-        <SegmentedNav
-          items={firmwareTargetItems}
-          value={firmwareEditIntent}
-          onselect={setFirmwareEditIntent}
-          ariaLabel="Firmware edit target"
-          class="firmware-edit-intent @max-[820px]/editor-main:[&_[data-label]]:hidden"
-        />
+        <div class={secondaryToolbarClusterClass}>
+          <SegmentedNav
+            items={firmwareTargetItems}
+            value={firmwareEditIntent}
+            onselect={setFirmwareEditIntent}
+            ariaLabel="Firmware edit target"
+            class="firmware-edit-intent @max-[960px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8 @max-[520px]/editor-main:hidden"
+          />
 
-        <!-- Hidden only on phone-sized viewports, where a side inspector is
-             impossible either way. It stays available whenever the pane is merely
-             narrow — that is exactly when you need it to switch back to the dock. -->
-        <SegmentedNav
-          items={layoutItems}
-          value={editor.editorLayout}
-          onselect={(layout) => editor.setEditorLayout(layout)}
-          iconOnlyAt="topbar"
-          ariaLabel="Editor layout"
-          class="editor-layout-seg max-[720px]:hidden"
-        />
+          <!-- Hidden only on phone-sized viewports, where a side inspector is
+               impossible either way. It stays available whenever the pane is merely
+               narrow — that is exactly when you need it to switch back to the dock. -->
+          <SegmentedNav
+            items={layoutItems}
+            value={editor.editorLayout}
+            onselect={(layout) => editor.setEditorLayout(layout)}
+            iconOnlyAt="topbar"
+            ariaLabel="Editor layout"
+            class="editor-layout-seg max-[720px]:hidden"
+          />
 
-        {#if editor.persistenceError}
-          <Chip tone="error" title={editor.persistenceError}>Draft save issue</Chip>
-        {/if}
+          {#if editor.persistenceError}
+            <Chip tone="error" title={editor.persistenceError}>Could not save draft</Chip>
+          {/if}
 
-        <Chip
-          dot={liveSync.dot}
-          title={liveSync.title}
-          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px]"
-        >
-          {liveSync.label}
-        </Chip>
-
-        {#if liveSync.failedLanes.length > 0}
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="retry-via-sync"
-            title="Retry failed live sync"
-            onclick={() => liveSync.retryFailed()}
+          <Chip
+            dot={liveSync.dot}
+            title={liveSync.title}
+            class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px] @max-[640px]/editor-main:max-w-none @max-[400px]/editor-main:px-kb-8"
           >
-            <span class="material-symbols-outlined" aria-hidden="true">sync_problem</span>
-            Retry
-          </Button>
-        {/if}
-
-        {#if editor.lens === "lighting"}
-          <Chip dot={lightingChipDot} title={`${editor.lightingSelection.count} selected`}>
-            {editor.lightingSelection.count} selected
+            <span class="@max-[400px]/editor-main:hidden">{liveSync.label}</span>
           </Chip>
-        {/if}
+
+          {#if liveSync.failedLanes.length > 0}
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="retry-via-sync"
+              title="Retry failed live sync"
+              onclick={() => liveSync.retryFailed()}
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">sync_problem</span>
+              Retry
+            </Button>
+          {/if}
+
+          {#if editor.lens === "lighting"}
+            <Chip dot={lightingChipDot} title={`${editor.lightingSelection.count} selected`}>
+              {editor.lightingSelection.count} selected
+            </Chip>
+          {/if}
+        </div>
       </div>
 
       <div class={layerRowClass}>
@@ -339,8 +334,7 @@
             <div>
               <strong class={syncNoticeTitleClass}>
                 {connectedLocalOnlyChanges.length}
-                {connectedLocalOnlyChanges.length === 1 ? "change applied" : "changes applied"}
-                locally - not written to device{localOnlyCategorySummary ? `: ${localOnlyCategorySummary}` : ""}
+                {connectedLocalOnlyChanges.length === 1 ? "local-only change" : "local-only changes"}
               </strong>
               <ul class={syncNoticeLocalListClass}>
                 {#each localOnlyReasonPreview as reason (`${reason.category}:${reason.reason}`)}
@@ -372,7 +366,7 @@
 
     {#if editor.lens === "keys"}
       <section
-        class={cn(boardStageClass, splitLayout ? boardStageSplitClass : boardStageResponsiveClass)}
+        class={cn(boardStageClass, splitLayout && boardStageSplitClass)}
         aria-label="Keyboard editor"
       >
         <Button
@@ -413,13 +407,7 @@
       {/if}
     {:else}
       <section
-        class={cn(
-          boardStageClass,
-          "lighting-stage min-h-[460px]",
-          splitLayout
-            ? cn(boardStageSplitClass, "min-h-[312px]")
-            : boardStageResponsiveClass,
-        )}
+        class={cn(boardStageClass, "lighting-stage", splitLayout && boardStageSplitClass)}
         aria-label="Keyboard lighting editor"
       >
         <KeyboardBoard

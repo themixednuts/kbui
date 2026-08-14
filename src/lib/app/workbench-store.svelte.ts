@@ -316,6 +316,20 @@ export class WorkbenchStore extends EditorStore {
     });
   }
 
+  discardUncommittedChanges() {
+    return runApp("workbench.discard-uncommitted", this.discardUncommittedChangesEffect());
+  }
+
+  discardUncommittedChangesEffect() {
+    return Effect.gen({ self: this }, function* () {
+      yield* this.loadProfileAsDraftEffect(cloneDevice(this.baseProfile), {
+        origin: this.baseProfile.origin,
+      });
+      this.versioningError = null;
+      return this.profile;
+    });
+  }
+
   branchFromSavePoint(name = "", options: BranchFromSavePointOptions = {}) {
     return runApp(
       "workbench.branch-from-save-point",

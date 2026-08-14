@@ -25,7 +25,7 @@
 	}
 
 	$effect(() => {
-		if (browser && updated.current) notifyUpdate("A new app build is ready. Reload to switch to it.");
+		if (browser && updated.current) notifyUpdate("A new build is ready. Reload.");
 	});
 
 	const updateAttachment = appUpdateAttachment({

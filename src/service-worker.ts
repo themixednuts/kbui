@@ -11,7 +11,8 @@ import { selfHeal } from "./lib/effect/self-healing";
 import { runServiceWorkerEffect } from "./lib/effect/service-worker-runtime";
 
 const worker = self as unknown as ServiceWorkerGlobalScope;
-const CACHE_PREFIX = "klakson-cache-";
+const CACHE_PREFIX = "kbui-cache-";
+const LEGACY_CACHE_PREFIX = "klakson-cache-";
 const CACHE_NAME = `${CACHE_PREFIX}${version}`;
 const PRECACHE_ASSETS = [...build, ...files];
 
@@ -27,13 +28,13 @@ function isNetworkOnlyPath(pathname: string) {
   return NETWORK_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
-const clearKlaksonCachesEffect = Effect.gen(function* () {
+const clearAppCachesEffect = Effect.gen(function* () {
   const keys = yield* Effect.tryPromise({
     try: () => caches.keys(),
     catch: (cause) => platformError("service-worker.list-caches", cause),
   });
   yield* Effect.forEach(
-    keys.filter((key) => key.startsWith(CACHE_PREFIX)),
+    keys.filter((key) => key.startsWith(CACHE_PREFIX) || key.startsWith(LEGACY_CACHE_PREFIX)),
     (key) =>
       selfHeal(
         Effect.tryPromise({
@@ -106,7 +107,11 @@ worker.addEventListener("activate", (event) => {
           catch: (cause) => platformError("service-worker.list-caches", cause),
         });
         yield* Effect.forEach(
-          keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME),
+          keys.filter(
+            (key) =>
+              (key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME) ||
+              key.startsWith(LEGACY_CACHE_PREFIX),
+          ),
           (key) =>
             selfHeal(
               Effect.tryPromise({
@@ -128,12 +133,12 @@ worker.addEventListener("activate", (event) => {
 
 worker.addEventListener("message", (event) => {
   const data = event.data as { type?: string } | null;
-  if (data?.type !== "klakson:force-refresh") return;
+  if (data?.type !== "kbui:force-refresh" && data?.type !== "klakson:force-refresh") return;
   event.waitUntil(
     runServiceWorkerEffect(
       "service-worker.force-refresh",
       Effect.andThen(
-        clearKlaksonCachesEffect,
+        clearAppCachesEffect,
         Effect.tryPromise({
           try: () => worker.skipWaiting(),
           catch: (cause) => platformError("service-worker.skip-waiting", cause),

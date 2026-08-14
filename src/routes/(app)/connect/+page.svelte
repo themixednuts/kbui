@@ -4,7 +4,7 @@
   import { ArrowRight, FolderOpen, Usb } from "@lucide/svelte";
   import { Effect } from "effect";
   import { runApp, type AppServices } from "$lib/app/runtime";
-  import { Button } from "$lib/components/ui";
+  import { Button, Spinner } from "$lib/components/ui";
   import {
     connectZmkStudioAndActivateEffect,
     connectViaAndActivateEffect,
@@ -52,31 +52,28 @@
   const webBluetoothSupported = $derived(!browser || Boolean(navigator.bluetooth));
   const webSerialSupported = $derived(!browser || Boolean(navigator.serial));
 
-  // ── v2 design: centered "Step 1 · Detect" column with a device card ──────────
   const pageClass =
     "connect-view flex min-h-full items-center justify-center p-kb-40 max-[640px]:p-kb-16";
   const colClass = "connect-onboarding w-[560px] max-w-full";
-  const kickerClass = "font-mono text-[10px] uppercase tracking-[0.18em] text-ink-3";
-  const h1Class = "m-0 mb-kb-10 text-[34px] leading-[1.05] tracking-[-0.01em] text-ink";
+  const h1Class = "m-0 mb-kb-10 text-[24px] leading-[1.05] text-ink";
   const proseClass = "m-0 mb-kb-24 max-w-[460px] text-[15px] leading-[1.55] text-ink-2";
   const cardClass =
-    "connect-card overflow-hidden rounded-lg border border-line bg-surface shadow-card";
+    "connect-card overflow-hidden rounded-lg border border-line-2 bg-surface shadow-card";
   const cardHeadClass =
     "flex items-center gap-kb-10 border-b border-line px-kb-16 py-kb-13";
-  const cardHeadTitleClass =
-    "m-0 font-mono text-[11px] font-normal uppercase tracking-[0.1em] text-ink-3";
+  const cardHeadTitleClass = "m-0 text-kb-14 font-semibold leading-tight text-ink";
   const rowsClass = "grid gap-kb-6 p-kb-8";
   const rowClass =
-    "connect-option grid min-w-0 grid-cols-[46px_minmax(0,1fr)_auto] items-center gap-kb-14 rounded-[10px] p-kb-12 text-left transition-[background,opacity] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)]";
+    "connect-option grid min-w-0 grid-cols-[46px_minmax(0,1fr)_auto] items-center gap-kb-14 rounded-[10px] p-kb-12 text-left transition-[background,opacity] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] max-[480px]:grid-cols-[46px_minmax(0,1fr)] max-[480px]:[&_[data-slot=button]]:col-start-2 max-[480px]:[&_[data-slot=button]]:justify-self-start";
   const rowActiveClass = "bg-surface-2 hover:bg-[color-mix(in_oklch,var(--surface-2)_70%,var(--surface))]";
   const rowDangerClass = "!border !border-[var(--danger-border)] bg-danger-surface";
   const rowDisabledClass = "bg-transparent opacity-55";
   const tagClass =
     "grid h-[44px] w-[46px] place-items-center rounded-[9px] border border-line-2 bg-surface font-mono text-[11px] tracking-[0.04em] text-ink-2";
   const rowTitleClass =
-    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[14px] text-ink";
+    "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[14px] text-ink max-[480px]:whitespace-normal";
   const rowMetaClass =
-    "mt-kb-3 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-ink-3";
+    "mt-kb-3 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-ink-3 max-[480px]:whitespace-normal";
   const footerClass =
     "mt-kb-16 flex items-center justify-between gap-kb-8 px-kb-4 max-[560px]:flex-col max-[560px]:items-stretch";
   const statusMessageClass =
@@ -144,12 +141,7 @@
         shell,
         transport: createWebBluetoothZmkStudioTransport(),
         workbench,
-      }).pipe(
-        Effect.map(
-          (result) =>
-            `${result.message}. Real BLE is hardware-unverified until tested with a ZMK Studio board.`,
-        ),
-      ),
+      }).pipe(Effect.map((result) => result.message)),
     );
   }
 
@@ -167,12 +159,7 @@
         shell,
         transport: createWebSerialZmkStudioTransport(),
         workbench,
-      }).pipe(
-        Effect.map(
-          (result) =>
-            `${result.message}. Real USB serial is hardware-unverified until tested with a ZMK Studio board.`,
-        ),
-      ),
+      }).pipe(Effect.map((result) => result.message)),
     );
   }
 
@@ -246,6 +233,7 @@
   variant?: "primary" | "outline";
   danger?: boolean;
   unavailable?: boolean;
+  busy?: boolean;
 })}
   <div
     class={cn(rowClass, opts.danger ? rowDangerClass : opts.unavailable ? rowDisabledClass : rowActiveClass)}
@@ -264,6 +252,7 @@
       onclick={opts.onclick}
       class={opts.danger ? "!border-[var(--danger-border)] !text-danger-ink" : ""}
     >
+      {#if opts.busy}<Spinner class="size-3.5" />{/if}
       {opts.action}
     </Button>
   </div>
@@ -271,12 +260,9 @@
 
 <section class={pageClass}>
   <div class={colClass}>
-    <div class={kickerClass}>Step 1 · Detect</div>
     <h1 class={h1Class}>Connect a keyboard</h1>
     <p class={proseClass}>
-      Plug in over USB or pair over Bluetooth. Klakson reads your layout straight from the board's
-      VIA / ZMK metadata — no setup files. You can also import a VIA definition or start on a blank
-      local profile.
+      Connect over USB or Bluetooth. Import a VIA JSON, or start without a device.
     </p>
 
     <div class={cardClass}>
@@ -290,42 +276,46 @@
           {@render deviceRow({
             tag: "USB",
             title: busyAction === "disconnect" ? "Disconnecting device" : shell.device.board ?? "Connected device",
-            meta: "Keep the draft and stop live writes",
-            action: busyAction === "disconnect" ? "..." : "Disconnect",
+            meta: "Keeps the local draft.",
+            action: busyAction === "disconnect" ? "Disconnecting" : "Disconnect",
             testid: "disconnect-device",
             onclick: disconnectDevice,
             danger: true,
+            busy: busyAction === "disconnect",
           })}
         {/if}
 
         {@render deviceRow({
           tag: "HID",
-          title: busyAction === "real" ? "Opening browser prompt" : "Connect device (VIA)",
-          meta: "VIA over WebHID · imports a matched keymap",
-          action: busyAction === "real" ? "..." : "Connect",
+          title: busyAction === "real" ? "Opening browser prompt" : "VIA over USB",
+          meta: "Imports the matched keymap.",
+          action: busyAction === "real" ? "Connecting" : "Connect",
           testid: "connect-device",
           onclick: connectDevice,
           variant: "primary",
+          busy: busyAction === "real",
         })}
 
         {@render deviceRow({
           tag: "BLE",
-          title: busyAction === "zmk-ble" ? "Opening Bluetooth prompt" : "Connect over Bluetooth (ZMK)",
-          meta: webBluetoothSupported ? "ZMK Studio over Bluetooth" : "Web Bluetooth unavailable in this browser",
-          action: busyAction === "zmk-ble" ? "..." : "Pair",
+          title: busyAction === "zmk-ble" ? "Opening Bluetooth prompt" : "Bluetooth (ZMK)",
+          meta: webBluetoothSupported ? "ZMK Studio. Experimental." : "Web Bluetooth unavailable",
+          action: busyAction === "zmk-ble" ? "Pairing" : "Pair",
           testid: "connect-zmk-ble",
           onclick: connectZmkBluetooth,
           unavailable: !webBluetoothSupported,
+          busy: busyAction === "zmk-ble",
         })}
 
         {@render deviceRow({
           tag: "USB",
-          title: busyAction === "zmk-usb" ? "Opening serial prompt" : "Connect over USB (ZMK)",
-          meta: webSerialSupported ? "ZMK Studio over USB" : "Web Serial unavailable in this browser",
-          action: busyAction === "zmk-usb" ? "..." : "Connect",
+          title: busyAction === "zmk-usb" ? "Opening serial prompt" : "USB (ZMK)",
+          meta: webSerialSupported ? "ZMK Studio. Experimental." : "Web Serial unavailable",
+          action: busyAction === "zmk-usb" ? "Connecting" : "Connect",
           testid: "connect-zmk-usb",
           onclick: connectZmkSerial,
           unavailable: !webSerialSupported,
+          busy: busyAction === "zmk-usb",
         })}
       </div>
     </div>

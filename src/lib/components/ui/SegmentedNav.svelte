@@ -35,7 +35,7 @@
 </script>
 
 <nav
-  class="seg inline-flex flex-none items-center gap-kb-2 rounded-pill border border-line bg-surface-3 p-kb-3 {iconOnly} {extra}"
+  class="seg inline-flex flex-none items-center gap-kb-2 rounded-md border border-line-2 bg-surface-3 p-kb-3 {iconOnly} {extra}"
   aria-label={ariaLabel}
 >
   {#each items as item (item.value)}
@@ -49,7 +49,7 @@
       data-testid={item.testid}
       data-sveltekit-preload-data={item.href ? "hover" : undefined}
       class={cn(
-        "flex-none rounded-pill px-kb-14 font-mono text-[11px] tracking-[0.04em] no-underline",
+        "flex-none rounded-sm px-kb-14 font-mono text-[11px] tracking-[0.04em] no-underline",
         active && "active",
       )}
       aria-current={item.href && active ? "page" : undefined}

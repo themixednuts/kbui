@@ -375,7 +375,7 @@
     type="button"
     variant="outline"
     size="xs"
-    class="zoom-readout absolute right-kb-12 bottom-kb-12 h-kb-22 min-w-[42px] rounded-[6px] border-line-2 bg-[color-mix(in_oklch,var(--surface)_82%,transparent)] px-[7px] py-0 font-mono text-kb-10 leading-none text-ink-2 shadow-card hover:border-[color-mix(in_oklch,var(--ink)_34%,transparent)] hover:bg-surface hover:text-ink"
+    class="zoom-readout absolute right-kb-12 bottom-kb-12 h-kb-22 min-w-[42px] rounded-md border-line-2 bg-[color-mix(in_oklch,var(--surface)_82%,transparent)] px-[7px] py-0 font-mono text-kb-10 leading-none text-ink-2 shadow-none hover:border-line-3 hover:bg-surface hover:text-ink"
     title="Reset keyboard zoom"
     onclick={() => (zoom = 1)}
   >

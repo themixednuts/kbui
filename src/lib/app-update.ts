@@ -5,8 +5,8 @@ import { runApp, startScopedApp } from "$lib/app/runtime";
 import { platformError, type PlatformError } from "$lib/effect/errors";
 import { effectAttachment } from "$lib/effect/svelte";
 
-const APP_CACHE_PREFIX = "klakson-cache-";
-const FORCE_REFRESH_MESSAGE = "klakson:force-refresh";
+const APP_CACHE_PREFIX = "kbui-cache-";
+const FORCE_REFRESH_MESSAGE = "kbui:force-refresh";
 const appUpdateRetrySchedule = Schedule.spaced("3 seconds").pipe(
   Schedule.jittered,
   Schedule.upTo({ times: 3 }),
@@ -23,8 +23,7 @@ function retryAppUpdate<A>(effect: Effect.Effect<A, PlatformError>) {
   );
 }
 
-export const STALE_BUILD_DESCRIPTION =
-  "This page is using outdated app files. Reload to switch to the current build.";
+export const STALE_BUILD_DESCRIPTION = "This tab is on an old build. Reload.";
 
 type UpdateNotificationOptions = {
   checkForUpdate: () => Promise<unknown>;

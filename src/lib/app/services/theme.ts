@@ -3,7 +3,7 @@ import { Context, Effect, FiberMap, Layer } from "effect";
 import * as Preferences from "./preferences.ts";
 
 /** User-facing appearance preference. Warm and graphite remain the concrete
- * Klakson skins, but they now resolve from familiar light/dark/system choices. */
+ * KBUI skins, but they now resolve from familiar light/dark/system choices. */
 export type ThemeId = "light" | "dark" | "system";
 export type ResolvedThemeId = "warm" | "graphite";
 
@@ -13,7 +13,8 @@ export interface ThemeOption {
   icon: string;
 }
 
-export const STORAGE_KEY = "klakson.theme.v1";
+export const STORAGE_KEY = "kbui.theme.v1";
+export const LEGACY_STORAGE_KEY = "klakson.theme.v1";
 export const DEFAULT_THEME: ThemeId = "system";
 
 export const themeOptions: readonly ThemeOption[] = [
@@ -87,7 +88,14 @@ export const layer = Layer.effect(
     });
 
     return Service.of({
-      load: Effect.map(preferences.get(STORAGE_KEY), storedTheme),
+      load: Effect.map(
+        Effect.gen(function* () {
+          const current = yield* preferences.get(STORAGE_KEY);
+          if (current !== null) return current;
+          return yield* preferences.get(LEGACY_STORAGE_KEY);
+        }),
+        storedTheme,
+      ),
       save: Effect.fn("Theme.save")((id: ThemeId) => preferences.set(STORAGE_KEY, id)),
       reset: preferences.remove(STORAGE_KEY),
       apply,

@@ -27,7 +27,7 @@ App-scoped preferences are not written to `profile.settings`:
 
 ## Accent Persistence
 
-The accent picker stores a stable accent id in `localStorage` through `src/lib/app/services/preferences.ts` under `klakson.accent.v1`.
+The accent picker stores a stable accent id in `localStorage` through `src/lib/app/services/preferences.ts` under `kbui.accent.v1`, falling back to the legacy `klakson.accent.v1` key.
 
 `Accent.saveAndApply(id)` persists the id and applies the matching OKLCH value by calling:
 

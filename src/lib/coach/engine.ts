@@ -72,7 +72,7 @@ export const suggestCoach = Effect.fn("Coach.suggestCoach")(function* (input: Su
   const personalSamples = personal.reduce((n, p) => n + p.samples, 0);
   if (input.requirePersonal && personalSamples < PERSONAL_SAMPLE_THRESHOLD) {
     return CoachSuggestResult.cases.LowData.make({
-      message: "Practice more to unlock personalized layer suggestions.",
+      message: "Practice more before suggestions use your own stats.",
       sampleCount: personalSamples,
     });
   }
@@ -85,7 +85,7 @@ export const suggestCoach = Effect.fn("Coach.suggestCoach")(function* (input: Su
 
   if (movableIdx.length < 2) {
     return CoachSuggestResult.cases.Empty.make({
-      message: "No movable layer bindings available under sacred/numpad constraints.",
+      message: "No keys I can swap. Sacred and numpad keys stay put.",
     });
   }
 
@@ -166,8 +166,8 @@ export const suggestCoach = Effect.fn("Coach.suggestCoach")(function* (input: Su
     return CoachSuggestResult.cases.Empty.make({
       message:
         candidates.length > 0
-          ? "Improving swaps found but blocked by churn budget / never-list. Practice more or raise delta."
-          : "No improving movable swap found for this corpus.",
+          ? "Better swaps exist, but they hit the never-list or recent-move limit. Practice more, or reject fewer suggestions."
+          : "No swap on this layout beats the current score.",
     });
   }
 
@@ -175,18 +175,14 @@ export const suggestCoach = Effect.fn("Coach.suggestCoach")(function* (input: Su
   const b = start[chosen.j]!;
   const basedOnPersonal = personalSamples >= PERSONAL_SAMPLE_THRESHOLD;
   const confidence =
-    chosen.delta > 1.5 && basedOnPersonal
-      ? "high"
-      : chosen.delta > 0.4
-        ? "medium"
-        : "low";
+    chosen.delta > 1.5 && basedOnPersonal ? "high" : chosen.delta > 0.4 ? "medium" : "low";
 
   return CoachSuggestResult.cases.Suggestion.make({
     suggestion: {
       moveId: chosen.moveId,
       rationale: basedOnPersonal
-        ? `Swap improves Oxeylyzer score by ${chosen.delta.toFixed(2)} using latency/errors/confusion.`
-        : `Swap improves Oxeylyzer score by ${chosen.delta.toFixed(2)} (corpus-only).`,
+        ? `This swap raises the Oxeylyzer score by ${chosen.delta.toFixed(2)} from your latency, errors, and mix-ups.`
+        : `This swap raises the Oxeylyzer score by ${chosen.delta.toFixed(2)} from the coding corpus.`,
       confidence,
       scoreDelta: chosen.delta,
       diffs: yield* diffsFromSwap(a, b),

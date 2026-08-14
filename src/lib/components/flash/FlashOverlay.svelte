@@ -19,6 +19,7 @@
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
   import type { LiveSyncChangeNotice } from "$lib/app/via-live-sync.svelte";
   import Button from "$lib/components/ui/Button.svelte";
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import type {
     GitHubFirmwareAppStatus,
     GitHubFirmwareArtifactDownloadResponse,
@@ -198,8 +199,6 @@
   const commandLogClass =
     "command-log m-0 min-h-[170px] max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[8px] bg-ink px-[16px] py-[14px] font-mono text-[11px] leading-[1.65] text-paper";
   const hardwareNoteClass = "hardware-note mt-[-4px] mb-0 text-[11px] leading-[1.4] text-ink-3";
-  const copyErrorClass =
-    "copy-error mt-[-4px] mb-0 text-kb-11 leading-[1.4] text-danger-ink";
   const copyActionsClass = "copy-actions max-[720px]:grid max-[720px]:grid-cols-[minmax(0,1fr)]";
   const modalActionsClass =
     "modal-actions flex flex-wrap justify-end gap-[8px] max-[720px]:grid max-[720px]:grid-cols-[minmax(0,1fr)]";
@@ -335,8 +334,17 @@
       copyError = null;
       fsSupport = currentFileSystemSupport();
       browserBuildAvailable = canOfferBrowserBuild(transactionProfile, generated);
-      maybeLoadGithubStatus();
     });
+  });
+
+  $effect(() => {
+    if (!open) return;
+    const accountKey =
+      shell.account.status === "signed-in"
+        ? (shell.account.id ?? shell.account.login)
+        : shell.account.status;
+    untrack(() => maybeLoadGithubStatus());
+    void accountKey;
   });
 
   function resetOverlayState() {
@@ -346,6 +354,8 @@
     transactionVariant = null;
     copied = false;
     copyError = null;
+    githubLoadedFor = null;
+    githubStatus = null;
     resetUf2State();
   }
 
@@ -616,7 +626,7 @@
       return;
     }
     if (!githubConnected) {
-      githubError = "Install the GitHub App in Settings before building firmware.";
+      githubError = "Install the GitHub App in Settings.";
       return;
     }
     if (!result.buildReady) {
@@ -1207,8 +1217,8 @@
           <div class={diagnosticTitleClass}>
             <span class={cn(diagnosticIconClass, diagnosticIconErrorClass)} aria-hidden="true">report</span>
             <div>
-              <strong class={diagnosticTitleStrongClass}>Not build-ready - missing: {diagnosticSummary(errorDiagnostics)}</strong>
-              <small class={diagnosticTitleSmallClass}>Fill these required inputs before compiling, browser-building, or flashing firmware generated from this source.</small>
+              <strong class={diagnosticTitleStrongClass}>Not build-ready. Missing: {diagnosticSummary(errorDiagnostics)}</strong>
+              <small class={diagnosticTitleSmallClass}>Fix these before a build or flash.</small>
             </div>
           </div>
           <ul class={diagnosticListClass}>
@@ -1227,8 +1237,8 @@
           <div class={diagnosticTitleClass}>
             <span class={cn(diagnosticIconClass, diagnosticIconWarningClass)} aria-hidden="true">warning</span>
             <div>
-              <strong class={diagnosticTitleStrongClass}>Incomplete coverage - review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
-              <small class={diagnosticTitleSmallClass}>These source sections compile to placeholders, TODOs, or board-specific review points.</small>
+              <strong class={diagnosticTitleStrongClass}>Incomplete coverage. Review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
+              <small class={diagnosticTitleSmallClass}>Placeholders still compile. Review before flashing.</small>
             </div>
           </div>
           <ul class={diagnosticListClass}>
@@ -1248,7 +1258,7 @@
             <span class={panelIconClass} aria-hidden="true">draft</span>
             <div>
               <strong class={panelTitleClass}>Firmware artifact</strong>
-              <small class={panelSmallClass}>{uf2Plan ? uf2Plan.artifact.fileName : "Select a compiled .uf2 from a local build"}</small>
+              <small class={panelSmallClass}>{uf2Plan ? uf2Plan.artifact.fileName : "Choose a compiled .uf2"}</small>
             </div>
           </div>
 
@@ -1261,13 +1271,15 @@
           {:else}
             <p class={panelCopyClass}>
               {result.buildReady
-                ? "Build externally for now, then bring the UF2 back here."
-                : "Resolve the source diagnostics before compiling or flashing firmware from this export. The zip remains available so you can fill the required metadata."}
+                ? "Build elsewhere, then load the UF2 here."
+                : "Fix source errors first. The zip is still available."}
             </p>
           {/if}
 
           {#if uf2Error}
-            <p class={copyErrorClass} role="status">{uf2Error}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{uf2Error}</Alert.Title>
+            </Alert.Root>
           {/if}
 
           {#if browserBuildAvailable}
@@ -1284,7 +1296,9 @@
           {/if}
 
           {#if browserBuildError}
-            <p class={copyErrorClass} role="status">{browserBuildError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{browserBuildError}</Alert.Title>
+            </Alert.Root>
           {/if}
 
           {#if browserBuildResult}
@@ -1325,9 +1339,13 @@
           </div>
 
           {#if githubError}
-            <p class={copyErrorClass} role="status">{githubError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{githubError}</Alert.Title>
+            </Alert.Root>
           {:else if githubNotice}
-            <p class={hardwareNoteClass} role="status">{githubNotice}</p>
+            <Alert.Root variant="success">
+              <Alert.Title>{githubNotice}</Alert.Title>
+            </Alert.Root>
           {/if}
 
           {#if githubBuildResult}
@@ -1382,7 +1400,7 @@
 
           {#if viaJumpAvailable}
             <p class={panelCopyClass}>
-              A VIA keyboard is connected. You can request bootloader mode, then choose the mounted UF2 volume.
+              VIA is connected. Request bootloader mode, then pick the UF2 volume.
             </p>
             <Button variant="coral" size="sm" disabled={!uf2Plan || jumping} onclick={enterBootloaderVia}>
               <span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>
@@ -1390,7 +1408,7 @@
             </Button>
           {:else}
             <p class={panelCopyClass}>
-              Put the board into bootloader mode manually, then wait for the UF2 drive to mount.
+              Enter bootloader mode, then wait for the UF2 drive.
             </p>
             <ol class={manualStepsClass}>
               <li>Unplug if needed.</li>
@@ -1451,11 +1469,13 @@
       <pre class={commandLogClass}>{commandLog}</pre>
 
       <p class={hardwareNoteClass}>
-        Direct copy requires a verified processor family, matching UF2 family ID, expected bootloader volume, and a successful post-flash reconnect readback.
+        Copy needs a matching MCU family, UF2 family ID, bootloader volume, and a successful reconnect readback.
       </p>
 
       {#if copyError}
-        <p class={copyErrorClass} role="status">{copyError}</p>
+        <Alert.Root variant="destructive">
+          <Alert.Title>{copyError}</Alert.Title>
+        </Alert.Root>
       {/if}
 
       <footer class={modalActionsClass}>

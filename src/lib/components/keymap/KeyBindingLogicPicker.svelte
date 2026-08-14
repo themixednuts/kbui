@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LogicBindingOption } from "$lib/keyboard/logic-bindings";
   import { Button, Chip } from "$lib/components/ui";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import { cn } from "$lib/utils.js";
 
   type Props = {
@@ -27,11 +28,14 @@
 </script>
 
 {#if items.length === 0}
-  <p class="logic-empty m-0 px-[2px] py-kb-8 text-[12px] leading-[1.45] text-ink-3">
-    Nothing in the Logic builder yet.
-    <a class="text-ink underline underline-offset-2" href="/library" data-sveltekit-preload-data="hover">Create macros &amp; tap dances</a>
-    first.
-  </p>
+  <Empty.Root class="logic-empty min-h-0 border-0 p-kb-8">
+    <Empty.Header>
+      <Empty.Title class="text-kb-12 font-medium">No macros or tap dances</Empty.Title>
+      <Empty.Description>
+        <a href="/library" data-sveltekit-preload-data="hover">Make one in Library</a>
+      </Empty.Description>
+    </Empty.Header>
+  </Empty.Root>
 {:else}
   <ul class="logic-list m-0 flex list-none flex-col gap-kb-4 pt-0 pr-[2px] pb-kb-4 pl-0">
     {#each bindable as item (item.id)}

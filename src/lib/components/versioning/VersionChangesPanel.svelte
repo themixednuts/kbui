@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ArrowRight, ChevronsUpDown, Database } from "@lucide/svelte";
   import * as Card from "$lib/components/ui/card/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import { Chip } from "$lib/components/ui";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
@@ -19,7 +20,7 @@
   const changesHeaderClass =
     "changes-panel-header w-full min-w-0 items-center gap-kb-10 border-b border-line px-kb-18 py-kb-14";
   const changesTitleClass =
-    "changes-panel-title m-0 min-w-0 flex-1 font-mono text-[13px] font-semibold tracking-[0.06em] text-ink-2 uppercase";
+    "changes-panel-title m-0 min-w-0 flex-1 text-kb-14 font-semibold leading-tight";
   const changesChevronClass =
     "changes-panel-chevron flex-none text-ink-3 transition-transform duration-150 group-data-[state=open]/changes-panel:rotate-180";
   const changesScrollClass =
@@ -55,10 +56,12 @@
         <ScrollArea class={changesScrollClass}>
           <div class={changesListClass}>
             {#if changes.length === 0}
-              <div class="empty-state grid min-h-[96px] place-items-center gap-kb-8 font-mono text-kb-12 text-ink-3">
-                <Database size={18} />
-                <span>No local changes</span>
-              </div>
+              <Empty.Root class="min-h-[96px] border-0 p-kb-8">
+                <Empty.Media variant="icon"><Database size={18} /></Empty.Media>
+                <Empty.Header>
+                  <Empty.Title class="text-kb-12 font-medium">No local edits</Empty.Title>
+                </Empty.Header>
+              </Empty.Root>
             {:else}
               {#each changes as change (change.id)}
                 <article class={changeRowClass}>
@@ -68,9 +71,9 @@
                     <small class="{changeCopyClass} mt-kb-2 text-ink-3">{change.scope} · {change.kind}</small>
                     {#if change.before || change.after}
                       <div class="mt-kb-6 flex min-w-0 items-center gap-kb-6">
-                        <span class={diffBeforeClass} title={change.before || "—"}>{change.before || "—"}</span>
+                        <span class={diffBeforeClass} title={change.before || "--"}>{change.before || "--"}</span>
                         <ArrowRight size={13} class="shrink-0 text-ink-3" aria-hidden="true" />
-                        <span class={diffAfterClass} title={change.after || "—"}>{change.after || "—"}</span>
+                        <span class={diffAfterClass} title={change.after || "--"}>{change.after || "--"}</span>
                       </div>
                     {/if}
                   </div>

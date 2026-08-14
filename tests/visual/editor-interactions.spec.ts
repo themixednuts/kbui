@@ -1,4 +1,24 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+function boxesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+  slack = 1,
+) {
+  return (
+    a.x < b.x + b.width - slack &&
+    a.x + a.width - slack > b.x &&
+    a.y < b.y + b.height - slack &&
+    a.y + a.height - slack > b.y
+  );
+}
+
+async function expectNoOverlap(left: Locator, right: Locator) {
+  const [leftBox, rightBox] = await Promise.all([left.boundingBox(), right.boundingBox()]);
+  expect(leftBox).not.toBeNull();
+  expect(rightBox).not.toBeNull();
+  expect(boxesOverlap(leftBox!, rightBox!)).toBe(false);
+}
 
 test("keeps the compact inspector coherent and resizable", async ({ page }) => {
   await page.setViewportSize({ width: 1269, height: 740 });
@@ -88,9 +108,8 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   await expect(page.locator('[data-key-id="k1-1"] .marker-slot.combo')).toHaveText("Esc");
   await expect(page.locator('[data-key-id="k1-2"] .marker-slot.combo')).toHaveText("Esc");
 
-  // The toolbar keeps a deliberate two-row shape: mode + firmware target/status
-  // on top, the layer strip full-width beneath. It must never wrap raggedly or
-  // overflow horizontally, at any pane width.
+  // Wide panes keep two rows: mode + firmware/status on top, layers beneath.
+  // The strip scrolls rather than wrapping, and the bar never overflows.
   const toolbar = page.locator(".editor-toolbar");
   const primaryTools = toolbar.locator(".editor-primary-tools");
   const layerRow = toolbar.locator(".editor-layer-row");
@@ -102,7 +121,6 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   expect(layerBox).not.toBeNull();
   expect(layerBox!.y).toBeGreaterThan(primaryBox!.y + 4);
   expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
-  // Layers scroll rather than wrapping onto extra rows.
   expect(
     await toolbar.locator(".layer-buttons").evaluate((strip) => getComputedStyle(strip).flexWrap),
   ).toBe("nowrap");
@@ -145,4 +163,134 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   expect(nodeBox).not.toBeNull();
   expect(Math.abs(keyBox!.width - nodeBox!.width)).toBeLessThan(1);
   expect(Math.abs(keyBox!.height - nodeBox!.height)).toBeLessThan(1);
+});
+
+test("keeps mid-width toolbar controls from overlapping", async ({ page }) => {
+  // 62px rail + 831px editor matches the pane where labeled firmware pills
+  // used to paint over Keys/Lighting. Lighting is active so the selection
+  // chip is in the same row, which is the tightest two-row case.
+  await page.setViewportSize({ width: 893, height: 800 });
+  await page.goto("/editor", { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+
+  const toolbar = page.locator(".editor-toolbar");
+  await toolbar
+    .getByRole("navigation", { name: "Editor lens" })
+    .getByRole("button", { name: "Lighting" })
+    .click();
+
+  const lens = toolbar.getByRole("navigation", { name: "Editor lens" });
+  const firmware = toolbar.getByRole("navigation", { name: "Firmware edit target" });
+  const layout = toolbar.getByRole("navigation", { name: "Editor layout" });
+  const syncChip = toolbar.locator(".editor-sync-chip");
+  const selectedChip = toolbar.getByText("0 selected", { exact: true });
+  const primaryTools = toolbar.locator(".editor-primary-tools");
+  const layerRow = toolbar.locator(".editor-layer-row");
+
+  const [toolbarBox, primaryBox, layerBox] = await Promise.all([
+    toolbar.boundingBox(),
+    primaryTools.boundingBox(),
+    layerRow.boundingBox(),
+  ]);
+  expect(toolbarBox).not.toBeNull();
+  expect(primaryBox).not.toBeNull();
+  expect(layerBox).not.toBeNull();
+  expect(toolbarBox!.width).toBeGreaterThan(800);
+  expect(toolbarBox!.width).toBeLessThan(960);
+  expect(layerBox!.y).toBeGreaterThan(primaryBox!.y + 4);
+
+  await expect(firmware).toBeVisible();
+  await expect(layout).toBeVisible();
+  await expect(lens.getByText("Lighting", { exact: true })).toBeVisible();
+  await expect(firmware.getByText("VIA live", { exact: true })).toBeHidden();
+  await expect(firmware.getByText("QMK source", { exact: true })).toBeHidden();
+  await expect(selectedChip).toBeVisible();
+  await expect(syncChip).toBeVisible();
+
+  const secondaryTools = toolbar.locator(".editor-secondary-tools");
+  const [firmwareBox, secondaryBox] = await Promise.all([
+    firmware.boundingBox(),
+    secondaryTools.boundingBox(),
+  ]);
+  expect(firmwareBox).not.toBeNull();
+  expect(secondaryBox).not.toBeNull();
+  expect(firmwareBox!.x).toBeGreaterThanOrEqual(secondaryBox!.x - 1);
+
+  await expectNoOverlap(primaryTools, secondaryTools);
+  await expectNoOverlap(lens, firmware);
+  await expectNoOverlap(firmware, layout);
+  await expectNoOverlap(layout, syncChip);
+  await expectNoOverlap(syncChip, selectedChip);
+
+  const lightingLabel = lens.getByText("Lighting", { exact: true });
+  const [lightingBox, primaryClient] = await Promise.all([
+    lightingLabel.boundingBox(),
+    primaryTools.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: el.clientWidth, height: el.clientHeight };
+    }),
+  ]);
+  expect(lightingBox).not.toBeNull();
+  expect(lightingBox!.x + lightingBox!.width).toBeLessThanOrEqual(
+    primaryClient.x + primaryClient.width + 1,
+  );
+  expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
+});
+
+test("collapses the editor toolbar to one row in a narrow pane", async ({ page }) => {
+  // 62px rail + ~495px editor matches the squeezed editor pane; below 640px
+  // the toolbar must sit in one row instead of leaving a two-row empty gap.
+  await page.setViewportSize({ width: 557, height: 740 });
+  await page.goto("/editor", { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+
+  const toolbar = page.locator(".editor-toolbar");
+  const primaryTools = toolbar.locator(".editor-primary-tools");
+  const layerRow = toolbar.locator(".editor-layer-row");
+  const [toolbarBox, primaryBox, layerBox] = await Promise.all([
+    toolbar.boundingBox(),
+    primaryTools.boundingBox(),
+    layerRow.boundingBox(),
+  ]);
+  expect(toolbarBox).not.toBeNull();
+  expect(primaryBox).not.toBeNull();
+  expect(layerBox).not.toBeNull();
+  expect(toolbarBox!.width).toBeLessThan(640);
+  expect(Math.abs(layerBox!.y - primaryBox!.y)).toBeLessThan(4);
+  expect(layerBox!.x).toBeGreaterThan(primaryBox!.x + primaryBox!.width - 1);
+  expect(toolbarBox!.height).toBeLessThan(64);
+  expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
+  expect(
+    await toolbar.locator(".layer-buttons").evaluate((strip) => getComputedStyle(strip).flexWrap),
+  ).toBe("nowrap");
+  await expect(toolbar.locator(".add-layer")).toBeVisible();
+  await expect(toolbar.locator(".add-layer").getByText("Layer")).toBeHidden();
+  await expect(toolbar.getByRole("navigation", { name: "Firmware edit target" })).toBeHidden();
+  await expect(toolbar.getByRole("button", { name: "Base", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Fn", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Nav", exact: true })).toBeVisible();
+  await expect(toolbar.getByText("Disconnected", { exact: true })).toBeVisible();
+
+  const pane = page.locator(".keymap-main-pane");
+  const stage = page.locator(".board-stage");
+  const stackCard = page.locator(".active-stack-card");
+  const stackBody = stackCard.locator(".stack-body");
+  const inheritNote = stackCard.locator(".inherit-note");
+  const [paneBox, stageBox, cardBox, bodyBox, noteBox] = await Promise.all([
+    pane.boundingBox(),
+    stage.boundingBox(),
+    stackCard.boundingBox(),
+    stackBody.boundingBox(),
+    inheritNote.boundingBox(),
+  ]);
+  expect(paneBox).not.toBeNull();
+  expect(stageBox).not.toBeNull();
+  expect(cardBox).not.toBeNull();
+  expect(bodyBox).not.toBeNull();
+  expect(noteBox).not.toBeNull();
+  expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(paneBox!.y + paneBox!.height + 1);
+  expect(stageBox!.y + stageBox!.height).toBeLessThanOrEqual(cardBox!.y + 1);
+  expect(noteBox!.y + noteBox!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height + 1);
+  expect(Math.abs(noteBox!.y - bodyBox!.y)).toBeLessThan(8);
+  await expect(inheritNote).toContainText("Hatched keys inherit from below");
 });

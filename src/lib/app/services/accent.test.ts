@@ -1,7 +1,14 @@
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { DEFAULT_ACCENT_ID, STORAGE_KEY, accentById, load, saveAndApply } from "./accent";
+import {
+  DEFAULT_ACCENT_ID,
+  LEGACY_STORAGE_KEY,
+  STORAGE_KEY,
+  accentById,
+  load,
+  saveAndApply,
+} from "./accent";
 import * as Preferences from "./preferences";
 
 type MutableGlobal = typeof globalThis & {
@@ -76,6 +83,12 @@ describe("accent preferences", () => {
     expect(await Effect.runPromise(load.pipe(Effect.provide(Preferences.layer)))).toBe(
       DEFAULT_ACCENT_ID,
     );
+  });
+
+  it("reads a legacy accent storage key when the current key is empty", async () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, "lilac");
+
+    expect(await Effect.runPromise(load.pipe(Effect.provide(Preferences.layer)))).toBe("lilac");
   });
 
   it("persists and applies the selected accent to the app theme variable", async () => {

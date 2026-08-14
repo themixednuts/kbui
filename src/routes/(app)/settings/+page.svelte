@@ -36,12 +36,16 @@
     GitHubFirmwareSyncResponse,
   } from "$lib/github-app/types";
   import {
+    Alert,
     Button,
     Card,
     CatalogPicker,
+    Empty,
     Input,
+    NativeSelect,
     SegmentedNav,
     SliderField,
+    Spinner,
     Switch,
     ToggleGroup,
   } from "$lib/components/ui";
@@ -116,6 +120,7 @@
   let correlationRetrying = $state(false);
   let extensionPairing = $state<CreatePairingTokenResponse | null>(null);
   let extensionBusy = $state(false);
+  let extensionHydrated = $state(false);
   let extensionRevokingId = $state<string | null>(null);
   let extensionError = $state<string | null>(null);
   let extensionNotice = $state<string | null>(null);
@@ -212,7 +217,7 @@
   const splitTransportCopy = $derived.by(() => {
     if (isZmkDevice(profile)) return "ZMK wireless splits use BLE.";
     if (isSplitKeyboard(profile)) return "Choose the link between halves.";
-    return "Split options unlock for split layouts.";
+    return "Split options apply when the board is split.";
   });
 
   const osItems = [
@@ -373,8 +378,6 @@
     "font-mono text-[10px] tracking-[0.12em] text-ink-3 uppercase";
   const monkeytypeInputClass = "h-kb-34 border-line-2 bg-paper font-mono text-[12px]";
   const monkeytypeHelpClass = "m-0 text-[11px] leading-[1.45] text-ink-3";
-  const monkeytypePresetSelectClass =
-    "h-kb-34 w-full rounded-md border border-line-2 bg-surface px-kb-10 font-mono text-[12px] text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
   const monkeytypeCommandRowClass =
     "monkeytype-command-row col-span-2 grid grid-cols-2 gap-kb-6 max-[640px]:col-span-1 max-[560px]:grid-cols-1";
   const integrationPrimaryButtonClass = cn(
@@ -382,10 +385,6 @@
     "integration-primary-action border-line-2 bg-surface-2 text-ink hover:border-line-3 hover:bg-surface-3",
   );
   const statusMessageClass = "m-0 rounded-lg px-kb-10 py-kb-9 text-kb-12 leading-[1.4]";
-  const errorMessageClass = cn(
-    statusMessageClass,
-    "border border-[var(--danger-border)] bg-danger-surface text-danger-ink",
-  );
   const noteMessageClass = cn(
     statusMessageClass,
     "border border-[var(--warning-border)] bg-warning-surface text-warning-ink",
@@ -408,7 +407,6 @@
     "h-kb-22 w-kb-26 rounded-md border border-[rgba(27,25,23,0.16)] [background:var(--accent-color)] shadow-[inset_0_-3px_0_rgba(27,25,23,0.14)]";
   const accentLabelClass =
     "overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] font-strong";
-  const preferenceErrorClass = cn(errorMessageClass, "preference-error leading-[1.45]");
   const firmwareTargetFormClass = "grid min-w-0 grid-cols-2 gap-kb-10 max-[640px]:grid-cols-1";
   const firmwareTargetFinderClass =
     "col-span-2 grid min-w-0 gap-kb-7 rounded-keycap border border-line bg-paper-2 p-kb-10 max-[640px]:col-span-1";
@@ -504,6 +502,7 @@
       extensionDevices = [];
       extensionPairing = null;
       extensionLoadedFor = null;
+      extensionHydrated = true;
       extensionSyncedChoiceKey = "";
       firmwareGithubStatus = null;
       firmwareGithubLoadedFor = null;
@@ -516,7 +515,12 @@
       const effects = [];
       if (extensionLoadedFor !== userId) {
         extensionLoadedFor = userId;
-        effects.push(refreshExtensionDevicesEffect(false));
+        extensionHydrated = false;
+        effects.push(
+          refreshExtensionDevicesEffect(false).pipe(
+            Effect.ensuring(Effect.sync(() => (extensionHydrated = true))),
+          ),
+        );
       }
       if (firmwareGithubLoadedFor !== userId) {
         firmwareGithubLoadedFor = userId;
@@ -681,7 +685,7 @@
         return yield* Effect.fail(
           platformError(
             "firmware-target.zmk-missing",
-            `No ZMK board or shield target matched “${query}”.`,
+            `No ZMK board or shield matched "${query}".`,
           ),
         );
       }
@@ -1011,14 +1015,14 @@
         taggedRuns = runsResult.success;
       } else {
         failures.push(
-          clientErrorMessage(runsResult.failure, "Tagged runs could not be loaded."),
+          clientErrorMessage(runsResult.failure, "Could not load tagged runs."),
         );
       }
       if (statsResult._tag === "Success") {
         typingRunStats = statsResult.success;
       } else {
         failures.push(
-          clientErrorMessage(statsResult.failure, "Tagged run stats could not be loaded."),
+          clientErrorMessage(statsResult.failure, "Could not load tagged run stats."),
         );
       }
       if (failures.length > 0) extensionError = failures.join(" ");
@@ -1057,7 +1061,7 @@
             () =>
               (extensionError = clientErrorMessage(
                 error,
-                "Tagged run correlation could not be retried.",
+                "Could not retry tagged-run matching.",
               )),
           ),
         ),
@@ -1534,7 +1538,7 @@
       <Card.Root class={cn(settingsCardClass, "transport-card col-span-full")}>
         <Card.Header class={settingsCardHeaderClass}>
           <div class={cardTitleStackClass}>
-            <Card.Title>Split Transport</Card.Title>
+            <Card.Title>Split transport</Card.Title>
             <Card.Description>{splitTransportCopy}</Card.Description>
           </div>
           <span class={transportChipClass}>{activeTransport.name}</span>
@@ -1572,8 +1576,8 @@
             <Card.Title>Firmware target</Card.Title>
             <Card.Description>
               {profile.firmware === "qmk"
-                ? "Select the QMK keyboard and layout used by GitHub builds."
-                : "Select the ZMK controller and shield targets used by GitHub builds."}
+                ? "GitHub builds use this QMK keyboard and layout."
+                : "GitHub builds use this ZMK board and these shields."}
             </Card.Description>
           </div>
           <span class={integrationScopeClass} data-connected={generatedFirmware.buildReady}>
@@ -1597,11 +1601,10 @@
                       ? "Loading catalog…"
                       : `${qmkCatalogOptions.length} matches`
                   }
-                  title="Select a VIA definition and resolve its exact QMK build target"
+                  title="Pick a VIA keyboard to fill the QMK fields"
                 />
                 <small class={firmwareTargetHelpClass}>
-                  Selecting a VIA definition resolves the QMK keyboard path, layout macro, upstream
-                  repository, and pinned revision automatically.
+                  Pick a VIA keyboard. KBUI fills the QMK path, layout, repo, and revision.
                 </small>
               </div>
 
@@ -1683,7 +1686,7 @@
                   <Input
                     class={cn(firmwareTargetInputClass, "min-w-0 flex-1")}
                     bind:value={zmkTargetQuery}
-                    placeholder="corne, nice!nano, glove80…"
+                    placeholder="corne, nice!nano, glove80"
                     autocomplete="off"
                     spellcheck="false"
                     onkeydown={(event) => {
@@ -1703,8 +1706,7 @@
                   </Button>
                 </div>
                 <small class={firmwareTargetHelpClass}>
-                  Search the upstream ZMK board and shield metadata. Controller alternatives remain
-                  explicit when Studio cannot identify the compiled target.
+                  Search ZMK boards and shields.
                 </small>
               </div>
 
@@ -1766,33 +1768,26 @@
             {/if}
 
             <p class={firmwareTargetHelpClass}>
-              These values are stored with this keyboard profile and determine generated source,
-              branch contents, and build artifacts. The current editor key order is saved the first
-              time you set a target.
+              Saved on this profile. Builds and generated source use these fields. The editor key
+              order is stored the first time you save a target.
             </p>
 
             {#if blockingFirmwareDiagnostics.length > 0}
               <div class={firmwareTargetDiagnosticListClass} role="alert">
                 {#each blockingFirmwareDiagnostics as item (firmwareDiagnosticKey(item))}
-                  <span><strong>{item.path ?? item.code}</strong> — {item.message}</span>
+                  <span><strong>{item.path ?? item.code}</strong>. {item.message}</span>
                 {/each}
               </div>
             {/if}
 
             {#if firmwareTargetError}
-              <p
-                class={cn(errorMessageClass, "col-span-2 max-[640px]:col-span-1")}
-                role="alert"
-              >
-                {firmwareTargetError}
-              </p>
+              <Alert.Root variant="destructive" class="col-span-2 max-[640px]:col-span-1">
+                <Alert.Title>{firmwareTargetError}</Alert.Title>
+              </Alert.Root>
             {:else if firmwareTargetNotice}
-              <p
-                class={cn(statusMessageClass, "col-span-2 border border-line bg-surface-2 text-ink-2 max-[640px]:col-span-1")}
-                role="status"
-              >
-                {firmwareTargetNotice}
-              </p>
+              <Alert.Root class="col-span-2 max-[640px]:col-span-1">
+                <Alert.Title>{firmwareTargetNotice}</Alert.Title>
+              </Alert.Root>
             {/if}
 
             <Button
@@ -1802,7 +1797,7 @@
               class={integrationPrimaryButtonClass}
               disabled={firmwareTargetSaving}
             >
-              {firmwareTargetSaving ? "Saving…" : "Save firmware target"}
+              {firmwareTargetSaving ? "Saving" : "Save firmware target"}
             </Button>
             <Button variant="ghost" size="sm" href="/versions" class={commandButtonClass}>
               Review build
@@ -1820,12 +1815,9 @@
     >
       {#if settingsSection === "integrations"}
       {#if !monkeytypeSignedIn}
-        <p
-          class={cn(noteMessageClass, "integration-auth-note col-span-2 max-[820px]:col-span-1")}
-          role="status"
-        >
-          Sign in with GitHub to manage integrations.
-        </p>
+        <Alert.Root class="col-span-2 max-[820px]:col-span-1">
+          <Alert.Title>Sign in with GitHub to manage integrations.</Alert.Title>
+        </Alert.Root>
       {/if}
 
       <Card.Root
@@ -1839,7 +1831,7 @@
             <Card.Title>Monkeytype</Card.Title>
           </div>
           <span class={integrationScopeClass} data-connected={shell.monkeytype.connected}>
-            {shell.monkeytype.connected ? "connected" : "data source"}
+            {shell.monkeytype.connected ? "connected" : "offline"}
           </span>
         </Card.Header>
         <Card.Content class={monkeytypeSettingsClass}>
@@ -1859,10 +1851,10 @@
                 spellcheck="false"
                 aria-invalid={monkeytypeNeedsApeKey}
                 aria-describedby="monkeytype-apekey-help"
-                placeholder={shell.monkeytype.connected ? "Stored key stays encrypted" : "Paste ApeKey"}
+                placeholder={shell.monkeytype.connected ? "Leave blank to keep the stored key" : "Paste ApeKey"}
               />
               <p id="monkeytype-apekey-help" class={monkeytypeHelpClass}>
-                Create an active ApeKey in Monkeytype. It is stored encrypted.
+                Create an ApeKey in Monkeytype. KBUI stores it encrypted.
               </p>
             </label>
 
@@ -1880,11 +1872,18 @@
 
             <label class={cn(monkeytypeFieldClass, "monkeytype-preset")}>
               <span class={monkeytypeFieldLabelClass}>PB mode</span>
-              <select class={monkeytypePresetSelectClass} bind:value={monkeytypePreset}>
+              <NativeSelect.Root
+                class="w-full"
+                value={monkeytypePreset}
+                aria-label="PB mode"
+                onchange={(event) => {
+                  monkeytypePreset = event.currentTarget.value;
+                }}
+              >
                 {#each monkeytypePresets as option (option.value)}
-                  <option value={option.value}>{option.label}</option>
+                  <NativeSelect.Option value={option.value}>{option.label}</NativeSelect.Option>
                 {/each}
-              </select>
+              </NativeSelect.Root>
             </label>
 
             <div class={monkeytypeCommandRowClass}>
@@ -1924,11 +1923,13 @@
           </form>
 
           {#if monkeytypeError || shell.monkeytype.error}
-            <p class={cn(errorMessageClass, "monkeytype-error")} role="status">
-              {monkeytypeError ?? shell.monkeytype.error}
-            </p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{monkeytypeError ?? shell.monkeytype.error}</Alert.Title>
+            </Alert.Root>
           {:else if shell.monkeytype.connected && shell.monkeytype.stale}
-            <p class={cn(noteMessageClass, "monkeytype-note")} role="status">Stale sync</p>
+            <Alert.Root>
+              <Alert.Title>Stats are stale. Refresh.</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -1936,7 +1937,7 @@
       <Card.Root class={cn(settingsCardClass, "extension-card")}>
         <Card.Header class={settingsCardHeaderClass}>
           <div class={cardTitleStackClass}>
-            <Card.Title>Monkeytype run tagger</Card.Title>
+            <Card.Title>Monkeytype tagging</Card.Title>
           </div>
           <span class={extensionScopeClass} data-connected={activeExtensionDevices.length > 0}>
             {activeExtensionDevices.length} paired
@@ -1976,8 +1977,23 @@
             </Button>
           </div>
 
-          {#if extensionDevices.length === 0}
-            <p class={cn(noteMessageClass, "extension-note")} role="status">No paired devices.</p>
+          {#if !monkeytypeSignedIn}
+            <Empty.Root class="border-0 p-kb-8">
+              <Empty.Header>
+                <Empty.Title class="text-kb-12 font-medium">Sign in to pair</Empty.Title>
+              </Empty.Header>
+            </Empty.Root>
+          {:else if !extensionHydrated}
+            <p class={cn(noteMessageClass, "extension-note")} role="status">
+              <Spinner class="mr-kb-6 inline size-3.5 align-[-2px]" />
+              Loading paired devices
+            </p>
+          {:else if extensionDevices.length === 0}
+            <Empty.Root class="border-0 p-kb-8">
+              <Empty.Header>
+                <Empty.Title class="text-kb-12 font-medium">No paired devices</Empty.Title>
+              </Empty.Header>
+            </Empty.Root>
           {:else}
             <div class={extensionDeviceListClass}>
               {#each extensionDevices as device (device.id)}
@@ -1987,7 +2003,7 @@
                   </span>
                   <div class={extensionDeviceCopyClass}>
                     <strong class={extensionDeviceTitleClass}
-                      >{device.label ?? "Monkeytype tagger"}</strong
+                      >{device.label ?? "Monkeytype tagging"}</strong
                     >
                     <small class={extensionDeviceMetaClass}>
                       {device.extensionVersion ?? "unknown"} · last {shortDate(device.lastSeenAt)}
@@ -2055,9 +2071,13 @@
           {/if}
 
           {#if extensionError}
-            <p class={cn(errorMessageClass, "extension-error")} role="status">{extensionError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{extensionError}</Alert.Title>
+            </Alert.Root>
           {:else if extensionNotice}
-            <p class={cn(noteMessageClass, "extension-note")} role="status">{extensionNotice}</p>
+            <Alert.Root variant="success">
+              <Alert.Title>{extensionNotice}</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -2102,11 +2122,11 @@
             </div>
             <div class="grid gap-kb-6 rounded-lg border border-line-2 bg-paper p-kb-10">
               <p class="m-0 text-[11px] leading-[1.45] text-ink-3">
-                Removing this variant deletes only its generated <code>kbui/…</code> branch.
+                Removes this variant's <code>kbui/…</code> branch.
                 {#if firmwareGithubRepository.relationship === "managed"}
-                  To delete the managed repository, type its full name exactly.
+                  Type the repo full name to delete the managed repo.
                 {:else}
-                  This repository was adopted, so kbui will never delete it.
+                  Adopted repo. KBUI will not delete it.
                 {/if}
               </p>
               {#if firmwareGithubRepository.relationship === "managed"}
@@ -2184,13 +2204,13 @@
           </div>
 
           {#if firmwareGithubError}
-            <p class={cn(errorMessageClass, "firmware-github-error")} role="status">
-              {firmwareGithubError}
-            </p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{firmwareGithubError}</Alert.Title>
+            </Alert.Root>
           {:else if firmwareGithubNotice}
-            <p class={cn(noteMessageClass, "firmware-github-note")} role="status">
-              {firmwareGithubNotice}
-            </p>
+            <Alert.Root variant="success">
+              <Alert.Title>{firmwareGithubNotice}</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -2199,7 +2219,7 @@
       <Card.Root class={cn(settingsCardClass, "app-card")}>
         <Card.Header class={settingsCardHeaderClass}>
           <div class={cardTitleStackClass}>
-            <Card.Title>App Preferences</Card.Title>
+            <Card.Title>App preferences</Card.Title>
           </div>
           <span class={appScopeClass}>local</span>
         </Card.Header>
@@ -2275,7 +2295,9 @@
           </section>
 
           {#if preferenceError}
-            <p class={preferenceErrorClass} role="status">{preferenceError}</p>
+            <Alert.Root variant="destructive">
+              <Alert.Title>{preferenceError}</Alert.Title>
+            </Alert.Root>
           {/if}
         </Card.Content>
       </Card.Root>

@@ -9,8 +9,8 @@
 </script>
 
 <svelte:head>
-	<title>Klakson</title>
-	<meta name="application-name" content="Klakson" />
+	<title>KBUI</title>
+	<meta name="application-name" content="KBUI" />
 	<link rel="icon" href={favicon} />
 </svelte:head>
 

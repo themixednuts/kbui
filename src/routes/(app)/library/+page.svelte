@@ -11,8 +11,9 @@
   import { getShellContext } from "$lib/app/shell-store.svelte";
   import { displayCode } from "$lib/app/editor-store.svelte";
   import { getWorkbenchContext } from "$lib/app/workbench-store.svelte";
-  import { Button, Chip, Input, SegmentedNav } from "$lib/components/ui";
+  import { Button, Chip, Input, NativeSelect, SegmentedNav } from "$lib/components/ui";
   import * as Card from "$lib/components/ui/card/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import type { SegmentItem } from "$lib/components/ui/types";
   import {
     comboChordLabels,
@@ -95,13 +96,11 @@
   const libraryInputClass =
     "library-input h-kb-34 w-full min-w-0 rounded-keycap border-line-2 bg-surface px-kb-10 text-[13px] text-ink [font:inherit] focus-visible:border-ink";
   const monoInputClass = cn(libraryInputClass, "font-mono");
-  const librarySelectClass =
-    "h-kb-34 w-full min-w-0 rounded-keycap border border-line-2 bg-surface px-kb-10 text-[13px] text-ink outline-none focus-visible:border-ink focus-visible:ring-3 focus-visible:ring-ring/50";
   const choiceRowClass = "choice-row flex flex-wrap gap-kb-6";
   const choiceButtonClass =
     "h-kb-28 min-h-kb-28 rounded-[7px] border-line-2 bg-surface px-kb-9 py-kb-4 font-mono text-[10px] text-ink-2 hover:border-line-3 hover:bg-surface-2 hover:text-ink";
   const comboKeyGridClass =
-    "combo-key-grid grid max-h-[210px] grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-kb-5 overflow-auto pr-kb-2";
+    "combo-key-grid grid max-h-[210px] grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-kb-5 overflow-auto pr-kb-2 max-[640px]:grid-cols-1";
   const comboKeyButtonClass =
     "grid min-h-[42px] min-w-0 content-center gap-kb-2 rounded-[7px] border border-line-2 bg-surface p-kb-5 font-mono text-ink-2";
   const choiceSelectedClass = "selected border-[rgba(15,147,140,0.45)] bg-[#9de2d8] text-[#062826]";
@@ -113,10 +112,6 @@
   const sideActionsClass =
     "side-actions grid grid-cols-[repeat(2,minmax(0,1fr))] gap-kb-8 pt-kb-2 max-[640px]:grid-cols-[minmax(0,1fr)]";
   const chipIconClass = "material-symbols-outlined chip-icon text-[14px]";
-  const emptyPanelClass =
-    "empty-panel grid min-h-[180px] place-items-center content-center gap-kb-8 font-mono text-[12px] text-ink-3";
-  const compactEmptyPanelClass = cn(emptyPanelClass, "compact min-h-[120px]");
-  const emptyPanelIconClass = "material-symbols-outlined text-[24px]";
 
   const normalizedSelection = $derived(
     normalizeLibrarySelection(selectedIds, tab, idsForTab(tab)),
@@ -322,11 +317,14 @@
       <Card.Content class={libraryCardBodyClass}>
         {#if tab === "macros"}
           {#if workbench.profile.macros.length === 0}
-            <div class={emptyPanelClass}>
-              <span class={emptyPanelIconClass} aria-hidden="true">edit_note</span>
-              <strong>No macros</strong>
-              <Button variant="ghost" size="sm" onclick={addCurrent}>Create macro</Button>
-            </div>
+            <Empty.Root>
+              <Empty.Header>
+                <Empty.Title>No macros</Empty.Title>
+              </Empty.Header>
+              <Empty.Content>
+                <Button variant="ghost" size="sm" onclick={addCurrent}>Create macro</Button>
+              </Empty.Content>
+            </Empty.Root>
           {:else}
             <div class={libraryListClass}>
               {#each workbench.profile.macros as macro (macro.id)}
@@ -351,7 +349,7 @@
                     variant="ghost"
                     size="sm"
                     disabled={!isCompleteMacro(macro)}
-                    title={isCompleteMacro(macro) ? "Place macro" : "Add a sequence before placing"}
+              title={isCompleteMacro(macro) ? "Place this macro on a key" : "Add a sequence before placing"}
                     onclick={() => placeMacro(macro)}
                   >
                     <Keyboard size={14} aria-hidden="true" />
@@ -363,11 +361,14 @@
           {/if}
         {:else if tab === "combos"}
           {#if workbench.profile.combos.length === 0}
-            <div class={emptyPanelClass}>
-              <span class={emptyPanelIconClass} aria-hidden="true">join_inner</span>
-              <strong>No combos</strong>
-              <Button variant="ghost" size="sm" onclick={addCurrent}>Create combo</Button>
-            </div>
+            <Empty.Root>
+              <Empty.Header>
+                <Empty.Title>No combos</Empty.Title>
+              </Empty.Header>
+              <Empty.Content>
+                <Button variant="ghost" size="sm" onclick={addCurrent}>Create combo</Button>
+              </Empty.Content>
+            </Empty.Root>
           {:else}
             <div class={libraryListClass}>
               {#each workbench.profile.combos as combo (combo.id)}
@@ -403,11 +404,14 @@
             </div>
           {/if}
         {:else if workbench.profile.tapDances.length === 0}
-          <div class={emptyPanelClass}>
-            <span class={emptyPanelIconClass} aria-hidden="true">touch_app</span>
-            <strong>No tap dances</strong>
-            <Button variant="ghost" size="sm" onclick={addCurrent}>Create tap dance</Button>
-          </div>
+          <Empty.Root>
+            <Empty.Header>
+              <Empty.Title>No tap dances</Empty.Title>
+            </Empty.Header>
+            <Empty.Content>
+              <Button variant="ghost" size="sm" onclick={addCurrent}>Create tap dance</Button>
+            </Empty.Content>
+          </Empty.Root>
         {:else}
           <div class={libraryListClass}>
             {#each workbench.profile.tapDances as dance (dance.id)}
@@ -428,7 +432,7 @@
                   size="sm"
                   disabled={!isCompleteTapDance(dance)}
                   title={isCompleteTapDance(dance)
-                    ? "Place tap dance"
+                    ? "Place this tap dance on a key"
                     : "Choose a key and actions before placing"}
                   onclick={() => placeTapDance(dance)}
                 >
@@ -608,17 +612,17 @@
 
           <label class={fieldClass}>
             <span class={fieldLabelClass}>Source key</span>
-            <select
-              class={librarySelectClass}
+            <NativeSelect.Root
+              class="w-full text-[13px]"
               value={selectedTapDance.keyId}
               onchange={(event) =>
                 workbench.updateTapDance(selectedTapDance.id, { keyId: selectValue(event) })}
             >
-              <option value="">Choose a key</option>
+              <NativeSelect.Option value="">Choose a key</NativeSelect.Option>
               {#each workbench.profile.keys as key (key.id)}
-                <option value={key.id}>{key.label}</option>
+                <NativeSelect.Option value={key.id}>{key.label}</NativeSelect.Option>
               {/each}
-            </select>
+            </NativeSelect.Root>
           </label>
 
           <label class={fieldClass}>
@@ -670,10 +674,12 @@
             Place on a key
           </Button>
         {:else}
-          <div class={compactEmptyPanelClass}>
-            <span class={emptyPanelIconClass} aria-hidden="true">inventory_2</span>
-            <strong>No selection</strong>
-          </div>
+          <Empty.Root class="compact min-h-[120px] border-0">
+            <Empty.Header>
+              <Empty.Title>No selection</Empty.Title>
+              <Empty.Description>Pick a macro, combo, or tap dance.</Empty.Description>
+            </Empty.Header>
+          </Empty.Root>
         {/if}
 
         {#if currentCount > 0}

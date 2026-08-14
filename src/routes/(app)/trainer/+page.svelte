@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Effect } from "effect";
-  import { Gauge, Sparkles } from "@lucide/svelte";
+  import { Gauge } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { forkApp, runAppSync } from "$lib/app/runtime";
@@ -30,8 +30,10 @@
   type CoachSuggestResultT = typeof CoachSuggestResult.Type;
   import { KeyboardBoard } from "$lib/components/board";
   import EditorLayerStack from "$lib/components/editor/EditorLayerStack.svelte";
-  import { Button, Chip } from "$lib/components/ui";
+  import { Button, Checkbox, Chip, NativeSelect, SegmentedNav, Spinner, type SegmentItem } from "$lib/components/ui";
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
   import type { EditingParadigm } from "$lib/modal-engine";
   import {
     abortSession,
@@ -90,6 +92,8 @@
   let coachResult = $state<CoachSuggestResultT | null>(null);
   let previewAfter = $state(false);
   let coachError = $state<string | null>(null);
+  let coachBusy = $state(false);
+  let preparing = $state(false);
   let navHandle = $state<NavDrillHandle | null>(null);
   let pulseHint = $state<string | null>(null);
   let pulseKeyIds = $state<string[]>([]);
@@ -121,6 +125,11 @@
       null,
   );
   const recentSessions = $derived(sessions.slice(0, 8));
+  const modeItems: SegmentItem<PracticeMode>[] = [
+    { value: "rust-text", label: "Rust" },
+    { value: "symbols", label: "Symbols" },
+    { value: "nav", label: "Nav" },
+  ];
 
   /** Live workbench profile, or preview-after bindings when coach preview is on. */
   const boardProfile = $derived.by(() => {
@@ -264,6 +273,7 @@
     running = false;
     startedAt = null;
     progressLabel = null;
+    preparing = true;
     forkApp(
       "practice.prepare",
       Effect.gen(function* () {
@@ -298,7 +308,7 @@
           return;
         }
         yield* Effect.sync(() => updatePulse());
-      }),
+      }).pipe(Effect.ensuring(Effect.sync(() => (preparing = false)))),
       (_label, message) => {
         coachError = message;
       },
@@ -620,7 +630,9 @@
   });
 
   function openCoach(requirePersonal: boolean) {
+    if (coachBusy) return;
     coachError = null;
+    coachBusy = true;
     forkApp(
       "coach.suggest",
       Effect.gen(function* () {
@@ -645,7 +657,7 @@
           layerRoles = roles;
           coachResult = result;
         });
-      }),
+      }).pipe(Effect.ensuring(Effect.sync(() => (coachBusy = false)))),
       (_label, message) => {
         coachError = message;
       },
@@ -685,6 +697,14 @@
     return coachResult?._tag === "Suggestion" ? coachResult.suggestion : null;
   }
 
+  function isGoalKind(value: string): value is "until-complete" | "timed" {
+    return value === "until-complete" || value === "timed";
+  }
+
+  function isBuiltinParadigm(value: string): value is "helix" | "vim" | "vscode" {
+    return value === "helix" || value === "vim" || value === "vscode";
+  }
+
   function acceptSuggestion() {
     const suggestion = coachSuggestion();
     if (!suggestion) return;
@@ -718,78 +738,72 @@
 </script>
 
 <div class="trainer-route min-h-[calc(100vh-58px)] bg-paper p-kb-22 max-[640px]:p-kb-12">
-  <div class="mb-kb-16 flex flex-wrap items-end justify-between gap-kb-12">
-    <h1 class="font-display text-[28px] tracking-tight text-ink">Trainer</h1>
-    <div class="flex flex-wrap items-center gap-kb-8">
-      {#if sampleCount > 0}
-        <Chip tone={enoughData ? "success" : "neutral"}>{sampleCount}</Chip>
-      {/if}
-      <Button variant="ghost" size="sm" onclick={() => openCoach(enoughData)}>
-        <Sparkles size={14} />
-        Coach
-      </Button>
-    </div>
-  </div>
-
   <div class="grid gap-kb-16 lg:grid-cols-[minmax(0,1fr)_280px]">
     <Card.Root class="overflow-hidden">
       <Card.Header class="flex flex-wrap items-center gap-kb-8 border-b border-line-2 pb-kb-12">
-        <div class="flex flex-wrap gap-kb-6">
-          {#each [
-            { id: "rust-text", label: "Rust" },
-            { id: "symbols", label: "Symbols" },
-            { id: "nav", label: "Nav" },
-          ] as item (item.id)}
-            <Button
-              size="sm"
-              variant={mode === item.id ? "solid" : "ghost"}
-              onclick={() => selectMode(item.id as PracticeMode)}
-            >
-              {item.label}
-            </Button>
-          {/each}
-        </div>
-        <label class="ml-auto flex items-center gap-kb-6 font-mono text-[11px] text-ink-3">
-          <input
-            type="checkbox"
+        <SegmentedNav
+          items={modeItems}
+          value={mode}
+          onselect={(next) => selectMode(next)}
+          ariaLabel="Practice mode"
+        />
+        <label class="ml-auto flex items-center gap-kb-6 font-mono text-[11px] text-ink-3 max-[640px]:ml-0">
+          <Checkbox
             checked={adaptive}
             disabled={mode === "nav" || running}
-            onchange={(e) => {
-              adaptive = e.currentTarget.checked;
+            aria-label="Adaptive drills"
+            onCheckedChange={(next) => {
+              adaptive = next === true;
               if (!running) prepareIdle();
             }}
           />
           Adaptive
         </label>
-        <select
-          class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px]"
+        <NativeSelect.Root
+          class="w-auto min-w-28 font-mono text-[11px] max-[640px]:w-full"
+          size="sm"
           value={goalKind}
           disabled={running}
-          onchange={(e) => {
-            goalKind = e.currentTarget.value as "until-complete" | "timed";
+          aria-label="Drill length"
+          onchange={(event) => {
+            const next = event.currentTarget.value;
+            if (!isGoalKind(next)) return;
+            goalKind = next;
             if (!running) prepareIdle();
           }}
         >
-          <option value="until-complete">Until done</option>
-          <option value="timed">60s</option>
-        </select>
+          <NativeSelect.Option value="until-complete">Until done</NativeSelect.Option>
+          <NativeSelect.Option value="timed">60s</NativeSelect.Option>
+        </NativeSelect.Root>
         {#if mode === "nav"}
-          <select
-            class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px]"
-            bind:value={paradigm}
+          <NativeSelect.Root
+            class="w-auto min-w-28 font-mono text-[11px] max-[640px]:w-full"
+            size="sm"
+            value={paradigm}
             disabled={running}
+            aria-label="Nav paradigm"
+            onchange={(event) => {
+              const next = event.currentTarget.value;
+              if (!isBuiltinParadigm(next)) return;
+              paradigm = next;
+            }}
           >
-            <option value="helix">Helix</option>
-            <option value="vim">Vim</option>
-            <option value="vscode">VS Code</option>
-          </select>
+            <NativeSelect.Option value="helix">Helix</NativeSelect.Option>
+            <NativeSelect.Option value="vim">Vim</NativeSelect.Option>
+            <NativeSelect.Option value="vscode">VS Code</NativeSelect.Option>
+          </NativeSelect.Root>
         {/if}
         <Button
           size="sm"
+          disabled={preparing && !running}
           onclick={() => (running ? stopTimerAndPersist("aborted") : prepareIdle())}
         >
-          <Gauge size={14} />
-          {running ? "Abort" : "New"}
+          {#if preparing && !running}
+            <Spinner />
+          {:else}
+            <Gauge size={14} />
+          {/if}
+          {running ? "Abort" : preparing ? "Loading" : "New"}
         </Button>
         {#if running}
           <Chip tone={script.goal._tag === "Timed" ? "warning" : "neutral"}>
@@ -807,22 +821,27 @@
           <EditorLayerStack editor={workbench} allowAdd={false} />
           <label class="flex flex-wrap items-center gap-kb-8 font-mono text-[11px] text-ink-3">
             Layer role
-            <select
-              class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px] text-ink"
+            <NativeSelect.Root
+              class="w-auto font-mono text-[11px]"
+              size="sm"
               value={activeLayerRole?.role ?? "unknown"}
+              aria-label="Layer role"
               onchange={(e) => lockActiveLayerRole(e.currentTarget.value as LayerRoleT)}
-              aria-label="Lock layer role"
             >
               {#each LAYER_ROLE_OPTIONS as role (role)}
-                <option value={role}>{role}{activeLayerRole?.locked && activeLayerRole.role === role ? " (locked)" : ""}</option>
+                <NativeSelect.Option value={role}
+                  >{role}{activeLayerRole?.locked && activeLayerRole.role === role
+                    ? " (locked)"
+                    : ""}</NativeSelect.Option
+                >
               {/each}
-            </select>
+            </NativeSelect.Root>
             {#if activeLayerRole?.locked}
               <span>locked</span>
             {/if}
           </label>
           <div
-            class="relative flex min-h-[360px] min-w-0 overflow-hidden rounded-keycap border border-line-2 bg-stage [&_.keyboard-board-viewport]:min-h-[300px]"
+            class="relative flex min-h-[360px] min-w-0 overflow-hidden rounded-md border border-line-2 bg-stage [&_.keyboard-board-viewport]:min-h-[300px]"
           >
             <KeyboardBoard
               profile={boardProfile}
@@ -847,23 +866,31 @@
 
         <section class="grid gap-kb-8">
           <div
-            class="mt-buffer overflow-x-auto rounded-keycap border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
+            class="mt-buffer overflow-x-auto rounded-md border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
             aria-label="Practice buffer"
+            aria-busy={preparing}
           >
-            {#each cells as cell (cell.id)}
-              {#if cell.kind === "newline"}
-                <br />
-              {:else}
-                {@const phase = cellPhase(cell)}
-                <span
-                  class="mt-cell"
-                  class:mt-typed={phase === "typed"}
-                  class:mt-current={phase === "current"}
-                  class:mt-ghost={phase === "ghost"}
-                  class:mt-indent={cell.kind === "indent"}
-                >{cell.display}</span>
-              {/if}
-            {/each}
+            {#if preparing && cells.length === 0}
+              <span class="inline-flex items-center gap-kb-8 text-[12px] text-ink-3">
+                <Spinner />
+                Loading drill
+              </span>
+            {:else}
+              {#each cells as cell (cell.id)}
+                {#if cell.kind === "newline"}
+                  <br />
+                {:else}
+                  {@const phase = cellPhase(cell)}
+                  <span
+                    class="mt-cell"
+                    class:mt-typed={phase === "typed"}
+                    class:mt-current={phase === "current"}
+                    class:mt-ghost={phase === "ghost"}
+                    class:mt-indent={cell.kind === "indent"}
+                  >{cell.display}</span>
+                {/if}
+              {/each}
+            {/if}
           </div>
         </section>
 
@@ -871,7 +898,7 @@
           <section class="flex flex-wrap gap-kb-6">
             {#each upcoming as action, i (action.id)}
               <div
-                class="min-w-[64px] rounded-keycap border px-kb-10 py-kb-8 font-mono text-[12px] {i === 0
+                class="min-w-[64px] rounded-md border px-kb-10 py-kb-8 font-mono text-[12px] {i === 0
                   ? 'border-coral bg-[color-mix(in_oklch,var(--coral)_12%,transparent)]'
                   : 'border-line-2 bg-surface'}"
               >
@@ -896,7 +923,7 @@
 
         {#if lastSummary}
           <p class="font-mono text-[12px] text-ink-2">
-            {lastSummary.wpm ?? "—"} wpm · {lastSummary.accuracy}%
+            {lastSummary.wpm ?? "--"} wpm · {lastSummary.accuracy}%
           </p>
         {/if}
       </Card.Content>
@@ -905,16 +932,36 @@
     <Card.Root>
       <Card.Header>
         <Card.Title>Coach</Card.Title>
+        {#if sampleCount > 0}
+          <Chip tone={enoughData ? "success" : "neutral"}>{sampleCount}</Chip>
+        {/if}
       </Card.Header>
       <Card.Content class="grid gap-kb-12">
         {#if !enoughData}
-          <Button size="sm" variant="ghost" onclick={() => openCoach(false)}>Suggest</Button>
+          <Button size="sm" variant="ghost" disabled={coachBusy} onclick={() => openCoach(false)}>
+            {#if coachBusy}<Spinner />{/if}
+            {coachBusy ? "Loading" : "Suggest"}
+          </Button>
         {:else}
-          <Button size="sm" onclick={() => openCoach(true)}>Refresh</Button>
+          <Button size="sm" disabled={coachBusy} onclick={() => openCoach(true)}>
+            {#if coachBusy}<Spinner />{/if}
+            {coachBusy ? "Loading" : "Refresh"}
+          </Button>
         {/if}
 
-        {#if coachResult?._tag === "LowData" || coachResult?._tag === "Empty"}
-          <p class="font-mono text-[12px] text-ink-3">{coachResult.message}</p>
+        {#if coachBusy && !coachResult}
+          <Empty.Root class="min-h-[72px] border-0 p-kb-8">
+            <Empty.Header>
+              <Empty.Media variant="icon"><Spinner /></Empty.Media>
+              <Empty.Title class="text-kb-12 font-medium text-ink-3">Asking coach</Empty.Title>
+            </Empty.Header>
+          </Empty.Root>
+        {:else if coachResult?._tag === "LowData" || coachResult?._tag === "Empty"}
+          <Empty.Root class="min-h-[72px] border-0 p-kb-8">
+            <Empty.Header>
+              <Empty.Title class="text-kb-12 font-medium">{coachResult.message}</Empty.Title>
+            </Empty.Header>
+          </Empty.Root>
         {:else if coachSuggestion()}
           {@const suggestion = coachSuggestion()!}
           <div class="grid gap-kb-8">
@@ -934,7 +981,7 @@
             <ul class="grid gap-kb-6">
               {#each suggestion.diffs as diff (diff.keyId + diff.layerId)}
                 <li
-                  class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px]"
+                  class="rounded-md border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px]"
                   class:ring-2={coachMarked.includes(diff.keyId)}
                 >
                   <div>
@@ -946,7 +993,7 @@
               {/each}
             </ul>
             <label class="flex items-center gap-kb-6 font-mono text-[11px] text-ink-3">
-              <input type="checkbox" bind:checked={previewAfter} />
+              <Checkbox bind:checked={previewAfter} aria-label="Preview suggestion" />
               Preview
             </label>
             <div class="flex flex-wrap gap-kb-6">
@@ -958,16 +1005,18 @@
         {/if}
 
         {#if coachError}
-          <p class="font-mono text-[12px] text-[var(--danger-ink)]">{coachError}</p>
+          <Alert.Root variant="destructive">
+            <Alert.Title>{coachError}</Alert.Title>
+          </Alert.Root>
         {/if}
 
         {#if recentSessions.length > 0}
           <div class="grid gap-kb-8">
-            <h2 class="font-mono text-[11px] tracking-[0.08em] text-ink-3 uppercase">Sessions</h2>
+            <h2 class="text-kb-14 font-semibold leading-tight">Sessions</h2>
             <ul class="grid gap-kb-6">
               {#each recentSessions as item (item.id)}
-                <li class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
-                  {item.wpm ?? "—"} wpm · {item.accuracy}% · {item.mode}
+                <li class="rounded-md border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
+                  {item.wpm ?? "--"} wpm · {item.accuracy}% · {item.mode}
                 </li>
               {/each}
             </ul>
