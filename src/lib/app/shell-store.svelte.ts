@@ -118,9 +118,9 @@ export const appNavItems = [
     href: "/trainer",
     icon: "speed",
     label: "Trainer",
-    title: "Layout trainer",
+    title: "Trainer",
   },
-  { id: "browse", href: "/browse", icon: "explore", label: "Browse", title: "Browse community" },
+  { id: "browse", href: "/browse", icon: "explore", label: "Browse", title: "Browse" },
   {
     id: "library",
     href: "/library",
