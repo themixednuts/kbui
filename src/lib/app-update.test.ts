@@ -47,7 +47,7 @@ describe("app update detection", () => {
     const error = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.flip(
-          deleteAppCacheEffect("klakson-cache-test", () => {
+          deleteAppCacheEffect("kbui-cache-test", () => {
             attempts += 1;
             return Promise.resolve(false);
           }),

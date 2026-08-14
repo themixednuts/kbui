@@ -55,14 +55,13 @@
   const pageClass =
     "connect-view flex min-h-full items-center justify-center p-kb-40 max-[640px]:p-kb-16";
   const colClass = "connect-onboarding w-[560px] max-w-full";
-  const h1Class = "m-0 mb-kb-10 text-[34px] leading-[1.05] tracking-[-0.01em] text-ink";
+  const h1Class = "m-0 mb-kb-10 text-[24px] leading-[1.05] text-ink";
   const proseClass = "m-0 mb-kb-24 max-w-[460px] text-[15px] leading-[1.55] text-ink-2";
   const cardClass =
     "connect-card overflow-hidden rounded-lg border border-line bg-surface shadow-card";
   const cardHeadClass =
     "flex items-center gap-kb-10 border-b border-line px-kb-16 py-kb-13";
-  const cardHeadTitleClass =
-    "m-0 font-mono text-[11px] font-normal uppercase tracking-[0.1em] text-ink-3";
+  const cardHeadTitleClass = "m-0 text-kb-14 font-semibold leading-tight text-ink";
   const rowsClass = "grid gap-kb-6 p-kb-8";
   const rowClass =
     "connect-option grid min-w-0 grid-cols-[46px_minmax(0,1fr)_auto] items-center gap-kb-14 rounded-[10px] p-kb-12 text-left transition-[background,opacity] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)]";
@@ -265,7 +264,7 @@
   <div class={colClass}>
     <h1 class={h1Class}>Connect a keyboard</h1>
     <p class={proseClass}>
-      Plug in over USB or pair over Bluetooth. Klakson reads the keymap from the board's VIA or ZMK
+      Plug in over USB or pair over Bluetooth. KBUI reads the keymap from the board's VIA or ZMK
       metadata. No extra files. Import a VIA JSON if you already have one, or start with a blank
       local profile.
     </p>

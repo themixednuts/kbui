@@ -1600,7 +1600,7 @@
                   title="Pick a VIA keyboard to fill the QMK fields"
                 />
                 <small class={firmwareTargetHelpClass}>
-                  Pick a VIA keyboard. Klakson fills the QMK path, layout, repo, and revision.
+                  Pick a VIA keyboard. KBUI fills the QMK path, layout, repo, and revision.
                 </small>
               </div>
 
@@ -1860,7 +1860,7 @@
                 placeholder={shell.monkeytype.connected ? "Leave blank to keep the stored key" : "Paste ApeKey"}
               />
               <p id="monkeytype-apekey-help" class={monkeytypeHelpClass}>
-                Create an ApeKey in Monkeytype. Klakson stores it encrypted.
+                Create an ApeKey in Monkeytype. KBUI stores it encrypted.
               </p>
             </label>
 

@@ -30,9 +30,9 @@
       r.classList.remove("no-js");
       r.classList.add("js");
       // Resolve the user's light/dark/system preference before first paint.
-      // Warm and graphite are the concrete Klakson skins behind those choices.
+      // Warm and graphite are the concrete KBUI skins behind those choices.
       try {
-        var t = localStorage.getItem("klakson.theme.v1");
+        var t = localStorage.getItem("kbui.theme.v1") || localStorage.getItem("klakson.theme.v1");
         if (t === "warm") t = "light";
         if (t === "graphite") t = "dark";
         if (t !== "light" && t !== "dark" && t !== "system") t = "system";

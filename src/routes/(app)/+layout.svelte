@@ -527,7 +527,7 @@
 </script>
 
 <svelte:head>
-  <title>{routeTitle} · Klakson</title>
+  <title>{routeTitle} · KBUI</title>
 </svelte:head>
 
 <div

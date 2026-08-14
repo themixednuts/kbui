@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <title>Klakson</title>
+  <title>KBUI</title>
   <rect width="64" height="64" rx="15" fill="#211e19" />
   <path d="M19 14v36M19 32l27-17M19 32l27 17" fill="none" stroke="#fbf8f1" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
   <circle cx="49" cy="14" r="5" fill="#ed6b4a" />

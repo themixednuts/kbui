@@ -31,9 +31,9 @@ export function showAppToast(message: string, tone: AppNoticeTone = "info") {
 }
 
 export function showAppUpdateToast(description: string, onReload: () => void) {
-  return toast.warning("New Klakson version available", {
+  return toast.warning("New KBUI version available", {
     ...toastOptions,
-    id: "klakson-app-update",
+    id: "kbui-app-update",
     description,
     duration: Number.POSITIVE_INFINITY,
     dismissible: false,

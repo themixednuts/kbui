@@ -27,7 +27,7 @@ describe("firmware GitHub planning", () => {
     const repository = deriveFirmwareGitHubRepository({
       firmware: "qmk",
       github: { owner: "octokey", private: false },
-      name: "Klakson WB65",
+      name: "KBUI WB65",
       qmk: {
         keyboard: "klakson/wb65",
         keymap: "daily_driver",
@@ -112,7 +112,7 @@ describe("firmware GitHub planning", () => {
   it("converts generated firmware source into deterministic GitHub content upserts", () => {
     const repository = deriveFirmwareGitHubRepository({
       firmware: "qmk",
-      name: "Klakson WB65",
+      name: "KBUI WB65",
       qmk: {
         keyboard: "klakson/wb65",
         keymap: "daily_driver",

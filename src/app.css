@@ -360,7 +360,7 @@
 }
 
 /*
- * Graphite — the dark, tool-like visual direction from the Klakson v2 redesign.
+ * Graphite is the dark, tool-like visual direction from the KBUI v2 redesign.
  * Applied by stamping `data-theme="graphite"` (and `.dark`) on <html>. Only the
  * colour / material tokens are overridden; spacing, radii and type carry across
  * from :root. Accent (`--coral`) may be overridden inline by the Accent service

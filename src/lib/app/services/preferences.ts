@@ -11,7 +11,7 @@ import { platformError, PlatformError } from "$lib/effect/errors";
  * preserved in the typed error channel. UI adapters may report it, but no
  * persistence failure is silently converted into success.
  *
- * All keys live under the `klakson.` namespace by convention; the helpers
+ * All keys live under the `kbui.` namespace by convention; the helpers
  * below DO NOT prefix automatically — callers pass the full key. This is
  * intentional: it keeps grepping for usages easy and avoids accidental
  * key collisions when refactoring.
@@ -68,6 +68,17 @@ export const layer = Layer.succeed(
 /** Read a string value. `null` means missing; unavailable storage is a failure. */
 export const get = (key: string): Effect.Effect<string | null, PreferencesError, Service> =>
   Effect.flatMap(Service, (preferences) => preferences.get(key));
+
+/** Read `key`, then a legacy key so renamed namespaces keep existing prefs. */
+export const getWithLegacy = (
+  key: string,
+  legacyKey: string,
+): Effect.Effect<string | null, PreferencesError, Service> =>
+  Effect.gen(function* () {
+    const value = yield* get(key);
+    if (value !== null) return value;
+    return yield* get(legacyKey);
+  });
 
 /** Write a string value, preserving quota and disabled-storage failures. */
 export const set = (key: string, value: string): Effect.Effect<void, PreferencesError, Service> =>

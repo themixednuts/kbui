@@ -11,7 +11,7 @@
     mark?: Snippet;
   };
 
-  let { compact = false, href, onclick, label = "kbui home" }: Props = $props();
+  let { compact = false, href, onclick, label = "KBUI home" }: Props = $props();
 
   const className = $derived(
     compact
@@ -55,7 +55,7 @@
       <circle cx="21.4" cy="6.6" r="1.3" fill="var(--color-coral)" />
     </svg>
   </span>
-  {#if !compact}<span class="whitespace-nowrap max-[720px]:hidden">Klakson</span>{/if}
+  {#if !compact}<span class="whitespace-nowrap max-[720px]:hidden">KBUI</span>{/if}
 {/snippet}
 
 <Button

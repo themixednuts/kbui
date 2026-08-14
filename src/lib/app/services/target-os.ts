@@ -18,7 +18,8 @@ import * as Preferences from "./preferences.ts";
 
 export type TargetOS = "mac" | "win" | "linux";
 
-const STORAGE_KEY = "klakson.target-os.v1";
+const STORAGE_KEY = "kbui.target-os.v1";
+const LEGACY_STORAGE_KEY = "klakson.target-os.v1";
 const VALID: ReadonlySet<TargetOS> = new Set(["mac", "win", "linux"] as const);
 
 const isTargetOS = (value: unknown): value is TargetOS =>
@@ -41,7 +42,7 @@ export const detect: Effect.Effect<TargetOS> = Effect.sync(() => {
  *  step lookup is wrapped in a single Effect so callers don't have to
  *  thread the fallback themselves. */
 export const load = Effect.gen(function* () {
-  const stored = yield* Preferences.get(STORAGE_KEY);
+  const stored = yield* Preferences.getWithLegacy(STORAGE_KEY, LEGACY_STORAGE_KEY);
   if (stored !== null && isTargetOS(stored)) return stored;
   return yield* detect;
 });

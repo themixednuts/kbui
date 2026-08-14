@@ -10,7 +10,8 @@ export interface AccentOption {
   value: string;
 }
 
-export const STORAGE_KEY = "klakson.accent.v1";
+export const STORAGE_KEY = "kbui.accent.v1";
+export const LEGACY_STORAGE_KEY = "klakson.accent.v1";
 export const DEFAULT_ACCENT_ID: AccentId = "coral";
 
 export const accentOptions: readonly AccentOption[] = [
@@ -31,7 +32,7 @@ export function accentById(id: AccentId): AccentOption {
 }
 
 export const load = Effect.gen(function* () {
-  const stored = yield* Preferences.get(STORAGE_KEY);
+  const stored = yield* Preferences.getWithLegacy(STORAGE_KEY, LEGACY_STORAGE_KEY);
   return isAccentId(stored) ? stored : DEFAULT_ACCENT_ID;
 });
 

@@ -21,7 +21,8 @@ export interface EditorLayoutOption {
   hint: string;
 }
 
-export const STORAGE_KEY = "klakson.editor-layout.v1";
+export const STORAGE_KEY = "kbui.editor-layout.v1";
+export const LEGACY_STORAGE_KEY = "klakson.editor-layout.v1";
 export const DEFAULT_EDITOR_LAYOUT: EditorLayoutId = "auto";
 
 export const editorLayoutOptions: readonly EditorLayoutOption[] = [
@@ -65,7 +66,7 @@ export function resolveEditorLayout(id: EditorLayoutId, split: boolean): "inspec
 }
 
 export const load = Effect.gen(function* () {
-  const stored = yield* Preferences.get(STORAGE_KEY);
+  const stored = yield* Preferences.getWithLegacy(STORAGE_KEY, LEGACY_STORAGE_KEY);
   return isEditorLayoutId(stored) ? stored : DEFAULT_EDITOR_LAYOUT;
 });
 
