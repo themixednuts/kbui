@@ -173,5 +173,10 @@ test("collapses the editor toolbar to one row in a narrow pane", async ({ page }
   ).toBe("nowrap");
   await expect(toolbar.locator(".add-layer")).toBeVisible();
   await expect(toolbar.locator(".add-layer")).not.toContainText("Layer");
+  await expect(toolbar.getByRole("navigation", { name: "Firmware edit target" })).toBeHidden();
+  await expect(toolbar.getByRole("button", { name: "Base", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Fn", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Nav", exact: true })).toBeVisible();
+  await expect(toolbar.getByText("Disconnected", { exact: true })).toBeVisible();
 });
 

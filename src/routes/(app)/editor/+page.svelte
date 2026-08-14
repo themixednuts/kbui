@@ -235,7 +235,7 @@
           value={firmwareEditIntent}
           onselect={setFirmwareEditIntent}
           ariaLabel="Firmware edit target"
-          class="firmware-edit-intent @max-[820px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8"
+          class="firmware-edit-intent @max-[820px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8 @max-[520px]/editor-main:hidden"
         />
 
         <!-- Hidden only on phone-sized viewports, where a side inspector is
@@ -257,9 +257,9 @@
         <Chip
           dot={liveSync.dot}
           title={liveSync.title}
-          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px] @max-[640px]/editor-main:max-w-[88px]"
+          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px] @max-[640px]/editor-main:max-w-none @max-[400px]/editor-main:px-kb-8"
         >
-          {liveSync.label}
+          <span class="@max-[400px]/editor-main:hidden">{liveSync.label}</span>
         </Chip>
 
         {#if liveSync.failedLanes.length > 0}
