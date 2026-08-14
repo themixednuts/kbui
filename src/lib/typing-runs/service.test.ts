@@ -216,6 +216,18 @@ class FakeTypingRunsAgent {
     this.runs.set(key, result);
     return result;
   }
+
+  async consumeRateLimit(): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  async upsertMonkeytypeResults(): Promise<number> {
+    return 0;
+  }
+
+  async retryPendingCorrelation(): Promise<number> {
+    return 0;
+  }
 }
 
 function envFor(agent: FakeTypingRunsAgent): Cloudflare.Env {

@@ -66,6 +66,7 @@ export interface MonkeytypePluginOptions {
   secretKey?: string;
   apiClient?: MonkeytypeApiClient;
   nowMs?: () => number;
+  onResultsSynced?: (input: { userId: string; results: unknown }) => Promise<void>;
 }
 
 const connectBodySchema = z.object({
@@ -192,6 +193,7 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
                 lastSyncedAt: fetched.lastSyncedAt,
                 rateLimitResetAt: fetched.rateLimitResetAt,
               });
+              yield* syncResultsEffect(options.onResultsSynced, session.user.id, fetched.results);
 
               return ctx.json(yield* connectionToDtoEffect(updated, nowMs()));
             }),
@@ -290,6 +292,7 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
                 lastSyncedAt: fetched.lastSyncedAt,
                 rateLimitResetAt: fetched.rateLimitResetAt,
               });
+              yield* syncResultsEffect(options.onResultsSynced, session.user.id, fetched.results);
               return ctx.json(yield* connectionToDtoEffect(updated, current));
             }),
           ),
@@ -418,6 +421,18 @@ function validateUsernameEffect(apiClient: MonkeytypeApiClient, username: string
   return apiClient.publicProfileEffect(username).pipe(Effect.mapError(apiErrorFrom), Effect.asVoid);
 }
 
+function syncResultsEffect(
+  onResultsSynced: MonkeytypePluginOptions["onResultsSynced"],
+  userId: string,
+  results: unknown,
+) {
+  if (!onResultsSynced) return Effect.void;
+  return Effect.tryPromise({
+    try: () => onResultsSynced({ userId, results }),
+    catch: (cause) => platformError("monkeytype.sync-results", cause),
+  }).pipe(Effect.catch(() => Effect.void));
+}
+
 function fetchSummaryEffect({
   apiClient,
   apeKey,
@@ -462,6 +477,7 @@ function fetchSummaryEffect({
     );
     return {
       summary,
+      results: results.data,
       rateLimitResetAt: latestRateLimitReset([
         stats.rateLimit,
         personalBests.rateLimit,

@@ -201,6 +201,30 @@ describe("/api/extension endpoint workflows", () => {
     });
     expect(agent.ingestedRuns[0]?.capture.idempotencyKey).toMatch(/^dom:/);
   });
+
+  it("returns 429 with Retry-After when the shared limiter rejects pair", async () => {
+    const agent = new FakeTypingRunsAgent();
+    agent.rateLimitAllowed = false;
+
+    const response = await pairPost(
+      eventFor({
+        agent,
+        body: {
+          code: "ABCD-EFGH-IJKL",
+          installId: "install-1",
+          extensionVersion: "0.1.0",
+        },
+        path: "/api/extension/pair",
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("30");
+    await expect(response.json()).resolves.toEqual({
+      error: "Too many extension requests. Retry later.",
+    });
+    expect(agent.pairCalls).toEqual([]);
+  });
 });
 
 function eventFor(input: {
@@ -237,6 +261,7 @@ function eventFor(input: {
 
 class FakeTypingRunsAgent {
   pairingCode: string | null = null;
+  rateLimitAllowed = true;
   readonly pairCalls: Array<{ code: string; input: PairDeviceRequest }> = [];
   readonly deviceTokens = new Map<string, string>();
   readonly choices = new Map<string, KeyboardChoicesResponse>();
@@ -277,6 +302,12 @@ class FakeTypingRunsAgent {
   ): Promise<IngestRunResponse> {
     this.ingestedRuns.push({ userId, capture });
     return { status: "stored", correlationState: "pending" };
+  }
+
+  async consumeRateLimit(): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+    return this.rateLimitAllowed
+      ? { allowed: true, retryAfterSeconds: 0 }
+      : { allowed: false, retryAfterSeconds: 30 };
   }
 }
 

@@ -1,8 +1,9 @@
 import { Agent, type AgentContext } from "agents";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { Effect, Schema } from "effect";
 
+import { correlateCapture } from "$lib/typing-runs/correlation";
 import {
   decodeIdempotencyKeyEffect,
   decodeKeyboardChoiceEffect,
@@ -23,11 +24,19 @@ import {
   type TypingRunStatsGroupBy,
 } from "$lib/typing-runs/contracts";
 import {
+  normalizeMonkeytypeResults,
+  type NormalizedMonkeytypeResult,
+} from "$lib/typing-runs/monkeytype-results";
+import { consumeRateLimitBucket, type RateLimitSpec } from "$lib/typing-runs/rate-limit";
+import {
   extensionDevice,
   extensionPairingToken,
+  extensionRateBucket,
+  monkeytypeResult,
   typingRunChoiceSync,
   typingRunTag,
   type ExtensionDevice,
+  type MonkeytypeResultRow,
   type NewExtensionDevice,
   type NewTypingRunTag,
   type TypingRunTag,
@@ -330,16 +339,18 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
         }
 
         const now = new Date();
-        const [extensionDeviceId, runHash] = yield* Effect.all([
+        const [extensionDeviceId, runHash, storedResults] = yield* Effect.all([
           this.findDeviceIdForInstallEffect(user, capture.extension.installId),
           sha256HexEffect(`${user}:${idempotencyKey}`),
+          this.listNormalizedResultsEffect(user),
         ]);
+        const decision = correlateCapture(capture, storedResults);
         const row: NewTypingRunTag = {
           id: `run_${runHash.slice(0, 32)}`,
           userId: user,
           source: capture.source,
           idempotencyKey,
-          monkeytypeResultId: capture.monkeytypeResultId ?? null,
+          monkeytypeResultId: decision.monkeytypeResultId ?? capture.monkeytypeResultId ?? null,
           monkeytypeTimestampMs: monkeytypeTimestampMs(capture.monkeytypeTimestamp),
           capturedAt,
           receivedAt: now,
@@ -367,15 +378,15 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
           layoutName: capture.layout.displayName,
           layoutHash: capture.layout.layoutHash ?? null,
           extensionDeviceId,
-          correlationState: "pending",
-          correlationConfidence: null,
+          correlationState: decision.state,
+          correlationConfidence: decision.confidence,
           rawCaptureJson: capture,
           createdAt: now,
           updatedAt: now,
         };
 
         yield* this.databaseEffect("insert-run", () => this.#db.insert(typingRunTag).values(row));
-        return { status: "stored", correlationState: "pending" } as const;
+        return { status: "stored", correlationState: decision.state } as const;
       }),
     );
   }
@@ -429,6 +440,119 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
     );
   }
 
+  consumeRateLimit(
+    key: string,
+    spec: RateLimitSpec,
+    nowMs = Date.now(),
+  ): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+    return runWorkerEffect(
+      "typing-runs.consume-rate-limit",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const bucketKey = yield* normalizeEffect("rate-limit-key", () =>
+          nonEmpty(key, "Rate limit key"),
+        );
+        const [existing] = yield* this.databaseEffect("load-rate-bucket", () =>
+          this.#db
+            .select()
+            .from(extensionRateBucket)
+            .where(eq(extensionRateBucket.bucketKey, bucketKey))
+            .limit(1),
+        );
+        const decision = consumeRateLimitBucket(
+          existing ? { windowStartedAt: existing.windowStartedAt, count: existing.count } : null,
+          nowMs,
+          spec,
+        );
+        yield* this.databaseEffect("save-rate-bucket", () =>
+          this.#db
+            .insert(extensionRateBucket)
+            .values({
+              bucketKey,
+              windowStartedAt: decision.bucket.windowStartedAt,
+              count: decision.bucket.count,
+            })
+            .onConflictDoUpdate({
+              target: extensionRateBucket.bucketKey,
+              set: {
+                windowStartedAt: decision.bucket.windowStartedAt,
+                count: decision.bucket.count,
+              },
+            }),
+        );
+        return {
+          allowed: decision.allowed,
+          retryAfterSeconds: decision.retryAfterSeconds,
+        };
+      }),
+    );
+  }
+
+  upsertMonkeytypeResults(
+    userId: string,
+    payload: unknown,
+    syncedAtMs = Date.now(),
+  ): Promise<number> {
+    return runWorkerEffect(
+      "typing-runs.upsert-monkeytype-results",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const user = yield* normalizeEffect("user-id", () => normalizeUserId(userId));
+        const rows = yield* normalizeEffect("monkeytype-results", () =>
+          normalizeMonkeytypeResults(payload, syncedAtMs),
+        );
+        for (const row of rows) {
+          yield* this.databaseEffect("upsert-monkeytype-result", () =>
+            this.#db
+              .insert(monkeytypeResult)
+              .values({
+                id: row.id,
+                userId: user,
+                timestampMs: row.timestampMs,
+                wpm: row.wpm,
+                rawWpm: row.rawWpm,
+                acc: row.acc,
+                consistency: row.consistency,
+                testDuration: row.testDuration,
+                mode: row.mode,
+                mode2: row.mode2,
+                payloadJson: row.payload,
+                syncedAt: new Date(row.syncedAtMs),
+              })
+              .onConflictDoUpdate({
+                target: [monkeytypeResult.userId, monkeytypeResult.id],
+                set: {
+                  timestampMs: row.timestampMs,
+                  wpm: row.wpm,
+                  rawWpm: row.rawWpm,
+                  acc: row.acc,
+                  consistency: row.consistency,
+                  testDuration: row.testDuration,
+                  mode: row.mode,
+                  mode2: row.mode2,
+                  payloadJson: row.payload,
+                  syncedAt: new Date(row.syncedAtMs),
+                },
+              }),
+          );
+        }
+        yield* this.retryPendingCorrelationEffect(user);
+        return rows.length;
+      }),
+    );
+  }
+
+  retryPendingCorrelation(userId: string): Promise<number> {
+    return runWorkerEffect(
+      "typing-runs.retry-pending-correlation",
+      Effect.gen({ self: this }, function* () {
+        yield* this.ensureReadyEffect();
+        const user = yield* normalizeEffect("user-id", () => normalizeUserId(userId));
+        return yield* this.retryPendingCorrelationEffect(user);
+      }),
+    );
+  }
+
   private ensureReadyEffect() {
     return Effect.sync(() => this.ensureTables()).pipe(
       Effect.withSpan("TypingRunsAgent.ensureReady"),
@@ -452,6 +576,63 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
       ),
       ([device]) => device?.id ?? null,
     );
+  }
+
+  private listNormalizedResultsEffect(userId: string) {
+    return Effect.map(
+      this.databaseEffect("list-monkeytype-results", () =>
+        this.#db.select().from(monkeytypeResult).where(eq(monkeytypeResult.userId, userId)),
+      ),
+      (rows) => rows.map(resultRowToNormalized),
+    );
+  }
+
+  private retryPendingCorrelationEffect(userId: string) {
+    return Effect.gen({ self: this }, function* () {
+      const [tags, results] = yield* Effect.all([
+        this.databaseEffect("list-pending-tags", () =>
+          this.#db
+            .select()
+            .from(typingRunTag)
+            .where(
+              and(
+                eq(typingRunTag.userId, userId),
+                inArray(typingRunTag.correlationState, ["pending", "unmatched"]),
+              ),
+            ),
+        ),
+        this.listNormalizedResultsEffect(userId),
+      ]);
+      let updated = 0;
+      for (const tag of tags) {
+        const capture: MonkeytypeRunCapture = {
+          ...tag.rawCaptureJson,
+          monkeytypeResultId:
+            tag.rawCaptureJson.monkeytypeResultId ?? tag.monkeytypeResultId ?? undefined,
+        };
+        const decision = correlateCapture(capture, results, { hasFreshSync: results.length > 0 });
+        if (
+          decision.state === tag.correlationState &&
+          decision.confidence === tag.correlationConfidence &&
+          (decision.monkeytypeResultId ?? null) === tag.monkeytypeResultId
+        ) {
+          continue;
+        }
+        yield* this.databaseEffect("update-correlation", () =>
+          this.#db
+            .update(typingRunTag)
+            .set({
+              correlationState: decision.state,
+              correlationConfidence: decision.confidence,
+              monkeytypeResultId: decision.monkeytypeResultId ?? tag.monkeytypeResultId,
+              updatedAt: new Date(),
+            })
+            .where(eq(typingRunTag.id, tag.id)),
+        );
+        updated += 1;
+      }
+      return updated;
+    });
   }
 
   private databaseEffect<A>(operation: string, task: () => PromiseLike<A>) {
@@ -569,6 +750,36 @@ export class TypingRunsAgent extends Agent<Cloudflare.Env, TypingRunsState> {
         keyboards_json TEXT NOT NULL,
         layouts_json TEXT NOT NULL,
         updated_at INTEGER NOT NULL
+      )
+    `;
+
+    void this.sql`
+      CREATE TABLE IF NOT EXISTS monkeytype_result (
+        id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        timestamp_ms INTEGER NOT NULL,
+        wpm REAL NOT NULL,
+        raw_wpm REAL,
+        acc REAL NOT NULL,
+        consistency REAL,
+        test_duration REAL,
+        mode TEXT,
+        mode2 TEXT,
+        payload_json TEXT NOT NULL,
+        synced_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, id)
+      )
+    `;
+    void this.sql`
+      CREATE INDEX IF NOT EXISTS monkeytype_result_user_timestamp_idx
+      ON monkeytype_result (user_id, timestamp_ms)
+    `;
+
+    void this.sql`
+      CREATE TABLE IF NOT EXISTS extension_rate_bucket (
+        bucket_key TEXT PRIMARY KEY,
+        window_started_at INTEGER NOT NULL,
+        count INTEGER NOT NULL
       )
     `;
   }
@@ -809,4 +1020,20 @@ function isoFromDbDate(value: Date | number | string): string {
 function monkeytypeTimestampMs(value: number | undefined): number | null {
   if (value === undefined) return null;
   return value < 10_000_000_000 ? Math.round(value * 1000) : Math.round(value);
+}
+
+function resultRowToNormalized(row: MonkeytypeResultRow): NormalizedMonkeytypeResult {
+  return {
+    id: row.id,
+    timestampMs: row.timestampMs,
+    wpm: row.wpm,
+    rawWpm: row.rawWpm,
+    acc: row.acc,
+    consistency: row.consistency,
+    testDuration: row.testDuration,
+    mode: row.mode,
+    mode2: row.mode2,
+    syncedAtMs: dateFromDb(row.syncedAt).getTime(),
+    payload: row.payloadJson,
+  };
 }

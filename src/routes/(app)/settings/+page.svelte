@@ -72,6 +72,8 @@
     CreatePairingTokenResponse,
     ExtensionDeviceDto,
     KeyboardChoicesResponse,
+    TaggedRun,
+    TypingRunStatsGroup,
   } from "$lib/typing-runs/contracts";
   import {
     isSplitKeyboard,
@@ -84,7 +86,10 @@
   } from "$lib/keyboard/split-transport";
   import {
     createExtensionPairingToken,
+    getTypingRunStats,
     listExtensionDevices,
+    listTaggedRuns,
+    retryRunCorrelation,
     revokeExtensionDevice,
     syncExtensionKeyboardChoices,
   } from "./typing-runs.remote";
@@ -106,6 +111,9 @@
   let monkeytypeError = $state<string | null>(null);
   let monkeytypeSeeded = $state(false);
   let extensionDevices = $state<ExtensionDeviceDto[]>([]);
+  let taggedRuns = $state<TaggedRun[]>([]);
+  let typingRunStats = $state<TypingRunStatsGroup[]>([]);
+  let correlationRetrying = $state(false);
   let extensionPairing = $state<CreatePairingTokenResponse | null>(null);
   let extensionBusy = $state(false);
   let extensionRevokingId = $state<string | null>(null);
@@ -352,6 +360,12 @@
   const extensionDeviceMetaClass =
     "block overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] text-ink-3";
   const extensionDeviceStateClass = "device-state text-[10.5px] text-ink-3";
+  const taggedRunListClass = "tagged-run-list grid min-w-0 gap-kb-7";
+  const taggedRunRowClass =
+    "tagged-run-row grid min-w-0 gap-kb-3 rounded-keycap border border-line px-kb-9 py-kb-8 [background:color-mix(in_oklch,var(--paper-2)_76%,transparent)]";
+  const taggedRunMetaClass =
+    "block overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] text-ink-3";
+  const typingRunStatsListClass = "typing-run-stats grid min-w-0 gap-kb-6";
   const monkeytypeFormClass =
     "monkeytype-form grid min-w-0 grid-cols-2 gap-kb-10 max-[640px]:grid-cols-1";
   const monkeytypeFieldClass = "monkeytype-field grid min-w-0 gap-kb-6";
@@ -972,8 +986,21 @@
     if (!monkeytypeSignedIn) return Effect.void;
     if (showBusy) extensionBusy = true;
     extensionError = null;
-    return hostEffect("extension.list-devices", () => listExtensionDevices()).pipe(
-      Effect.tap((devices) => Effect.sync(() => (extensionDevices = devices))),
+    return Effect.gen(function* () {
+      const [devices, runs, stats] = yield* Effect.all(
+        [
+          hostEffect("extension.list-devices", () => listExtensionDevices()),
+          hostEffect("extension.list-tagged-runs", () => listTaggedRuns({ limit: 12 })),
+          hostEffect("extension.typing-run-stats", () => getTypingRunStats("keyboard-layout")),
+        ],
+        { concurrency: 3 },
+      );
+      yield* Effect.sync(() => {
+        extensionDevices = devices;
+        taggedRuns = runs;
+        typingRunStats = stats;
+      });
+    }).pipe(
       Effect.catch((error) =>
         Effect.sync(
           () =>
@@ -993,6 +1020,37 @@
 
   function refreshExtensionDevices(showBusy = true) {
     forkApp("extension.refresh-devices", refreshExtensionDevicesEffect(showBusy));
+  }
+
+  function retryTaggedRunCorrelation() {
+    if (!monkeytypeSignedIn || correlationRetrying) return;
+    correlationRetrying = true;
+    extensionError = null;
+    extensionNotice = null;
+    forkApp(
+      "extension.retry-correlation",
+      Effect.gen(function* () {
+        const updated = yield* hostEffect("extension.retry-correlation", () =>
+          retryRunCorrelation(),
+        );
+        yield* refreshExtensionDevicesEffect(false);
+        extensionNotice =
+          updated === 0
+            ? "No pending tags needed another match."
+            : `Updated ${updated} tagged run${updated === 1 ? "" : "s"}.`;
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(
+            () =>
+              (extensionError = clientErrorMessage(
+                error,
+                "Tagged run correlation could not be retried.",
+              )),
+          ),
+        ),
+        Effect.ensuring(Effect.sync(() => (correlationRetrying = false))),
+      ),
+    );
   }
 
   function revokeExtension(id: string) {
@@ -1940,6 +1998,47 @@
                 </div>
               {/each}
             </div>
+          {/if}
+
+          {#if typingRunStats.length > 0}
+            <div class={typingRunStatsListClass} aria-label="Tagged run stats">
+              {#each typingRunStats as group (group.key)}
+                <div class={taggedRunRowClass}>
+                  <strong class={extensionDeviceTitleClass}>{group.label}</strong>
+                  <small class={taggedRunMetaClass}>
+                    {group.runs} run{group.runs === 1 ? "" : "s"} · {Math.round(group.averageWpm)} wpm · {group.averageAcc.toFixed(1)}%
+                    {group.latestCapturedAt ? ` · ${shortDate(group.latestCapturedAt)}` : ""}
+                  </small>
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          {#if taggedRuns.length > 0}
+            <div class={taggedRunListClass} aria-label="Recent tagged runs">
+              {#each taggedRuns as run (run.id)}
+                <div class={taggedRunRowClass} data-correlation={run.correlationState}>
+                  <strong class={extensionDeviceTitleClass}>
+                    {Math.round(run.wpm)} wpm · {run.acc.toFixed(1)}% · {run.keyboard.displayName} / {run.layout.displayName}
+                  </strong>
+                  <small class={taggedRunMetaClass}>
+                    {run.mode ?? "mode?"} {run.mode2 ?? ""} · {run.correlationState}
+                    {run.monkeytypeResultId ? ` · ${run.monkeytypeResultId}` : ""}
+                    · {shortDate(run.capturedAt)}
+                  </small>
+                </div>
+              {/each}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={retryTaggedRunCorrelation}
+              disabled={!monkeytypeSignedIn || correlationRetrying}
+              class={commandButtonClass}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              {correlationRetrying ? "Matching" : "Retry matching"}
+            </Button>
           {/if}
 
           {#if extensionError}

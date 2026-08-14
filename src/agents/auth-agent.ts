@@ -10,6 +10,7 @@ import {
   reconcileGitHubFirmwareBranch,
 } from "$lib/server/auth/github-firmware-app-plugin";
 import { monkeytypePlugin } from "$lib/server/auth/monkeytype-plugin";
+import { TYPING_RUNS_AGENT_NAME } from "$lib/typing-runs/contracts";
 import type { GitHubFirmwareBuildEvent } from "$lib/github-app/types";
 import {
   firmwareBuildEventFromDispatch,
@@ -798,6 +799,11 @@ export class AuthAgent extends Agent<AuthAgentEnv, AuthAgentState> {
           }),
           monkeytypePlugin({
             secretKey: this.#agentEnv.MONKEYTYPE_SECRET_KEY,
+            onResultsSynced: async ({ userId, results }) => {
+              await this.#agentEnv.TypingRunsAgent.getByName(
+                TYPING_RUNS_AGENT_NAME,
+              ).upsertMonkeytypeResults(userId, results);
+            },
           }),
         ],
         trustedOrigins: trustedOriginsFor(this.#agentEnv.BETTER_AUTH_URL),

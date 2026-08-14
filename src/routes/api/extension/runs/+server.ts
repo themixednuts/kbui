@@ -17,7 +17,6 @@ export const POST: RequestHandler = (event) =>
     "api.extension.runs",
     Effect.match(
       Effect.gen(function* () {
-        // TODO(rate-limit): throttle by user/device and parser version once a shared limiter exists.
         const result = yield* ingestExtensionRunEffect(event);
         return extensionJson(event.request, result);
       }),

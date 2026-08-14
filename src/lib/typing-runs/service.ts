@@ -133,6 +133,49 @@ export const ingestTypingRunFromEnvironmentEffect = Effect.fn("TypingRunsService
   },
 );
 
+export const upsertMonkeytypeResultsFromEnvironmentEffect = Effect.fn(
+  "TypingRunsService.upsertMonkeytypeResults",
+)(function* (
+  env: Cloudflare.Env | undefined,
+  userId: string,
+  payload: unknown,
+  syncedAtMs?: number,
+) {
+  return yield* agentCallEffect("upsert-monkeytype-results", () =>
+    typingRunsAgent(env).upsertMonkeytypeResults(userId, payload, syncedAtMs),
+  );
+});
+
+export const retryPendingCorrelationFromEnvironmentEffect = Effect.fn(
+  "TypingRunsService.retryPendingCorrelation",
+)(function* (env: Cloudflare.Env | undefined, userId: string) {
+  return yield* agentCallEffect("retry-pending-correlation", () =>
+    typingRunsAgent(env).retryPendingCorrelation(userId),
+  );
+});
+
+export function retryPendingCorrelationFromEnvironment(
+  env: Cloudflare.Env | undefined,
+  userId: string,
+): Promise<number> {
+  return runTypingEffect(
+    "retry-pending-correlation",
+    retryPendingCorrelationFromEnvironmentEffect(env, userId),
+  );
+}
+
+export const consumeExtensionRateLimitFromEnvironmentEffect = Effect.fn(
+  "TypingRunsService.consumeRateLimit",
+)(function* (
+  env: Cloudflare.Env | undefined,
+  key: string,
+  spec: { limit: number; windowMs: number },
+) {
+  return yield* agentCallEffect("consume-rate-limit", () =>
+    typingRunsAgent(env).consumeRateLimit(key, spec),
+  );
+});
+
 export const listTaggedRunsFromEnvironmentEffect = Effect.fn("TypingRunsService.listTaggedRuns")(
   function* (env: Cloudflare.Env | undefined, userId: string, rawFilter: unknown) {
     const filter = yield* decodeTaggedRunsFilterEffect(rawFilter);

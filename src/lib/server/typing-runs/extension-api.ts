@@ -6,12 +6,23 @@ import {
   decodePairDeviceRequestEffect as decodePairDeviceRequestBoundaryEffect,
 } from "$lib/typing-runs/contracts";
 import {
+  consumeExtensionRateLimitFromEnvironmentEffect,
   getKeyboardChoicesFromEnvironmentEffect,
   ingestTypingRunFromEnvironmentEffect,
   pairExtensionDeviceFromEnvironmentEffect,
   resolveExtensionDeviceTokenFromEnvironmentEffect,
   TYPING_RUNS_REQUIRES_WORKER,
 } from "$lib/typing-runs/service";
+import {
+  EXTENSION_PAIR_CODE_LIMIT,
+  EXTENSION_PAIR_INSTALL_LIMIT,
+  EXTENSION_RUN_DEVICE_LIMIT,
+  EXTENSION_RUN_PARSER_LIMIT,
+  pairCodeRateLimitKey,
+  pairInstallRateLimitKey,
+  runDeviceRateLimitKey,
+  runParserRateLimitKey,
+} from "$lib/typing-runs/rate-limit";
 
 export interface ExtensionEndpointEvent {
   request: Request;
@@ -31,6 +42,7 @@ export class ExtensionHttpError extends Schema.TaggedErrorClass<ExtensionHttpErr
   {
     status: Schema.Int,
     message: Schema.String,
+    retryAfterSeconds: Schema.optionalKey(Schema.Int),
   },
 ) {}
 
@@ -41,15 +53,29 @@ export function extensionOptions(request: Request): Response {
   });
 }
 
-export function extensionJson(request: Request, body: unknown, status = 200): Response {
+export function extensionJson(
+  request: Request,
+  body: unknown,
+  status = 200,
+  extraHeaders?: HeadersInit,
+): Response {
   const headers = corsHeaders(request);
   headers.set("content-type", "application/json");
+  if (extraHeaders) {
+    new Headers(extraHeaders).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
   return Response.json(body, { status, headers });
 }
 
 export function extensionError(request: Request, error: unknown, fallback: string): Response {
   if (error instanceof ExtensionHttpError) {
-    return extensionJson(request, { error: error.message }, error.status);
+    const extra =
+      error.retryAfterSeconds === undefined
+        ? undefined
+        : { "retry-after": String(error.retryAfterSeconds) };
+    return extensionJson(request, { error: error.message }, error.status, extra);
   }
 
   if (error instanceof Error && error.message === TYPING_RUNS_REQUIRES_WORKER) {
@@ -122,6 +148,13 @@ export const pairExtensionDeviceEffect = Effect.fn("ExtensionApi.pairDevice")(fu
 ) {
   const rawBody = yield* readJsonBodyEffect(event.request);
   const input = yield* decodePairDeviceRequestEffect(rawBody);
+  const codeHash = yield* sha256HexEffect(input.code);
+  yield* requireRateLimitEffect(
+    event,
+    pairInstallRateLimitKey(input.installId),
+    EXTENSION_PAIR_INSTALL_LIMIT,
+  );
+  yield* requireRateLimitEffect(event, pairCodeRateLimitKey(codeHash), EXTENSION_PAIR_CODE_LIMIT);
   const result = yield* pairExtensionDeviceFromEnvironmentEffect(event.platform?.env, input);
   if (!result) {
     return yield* Effect.fail(
@@ -137,6 +170,17 @@ export const ingestExtensionRunEffect = Effect.fn("ExtensionApi.ingestRun")(func
   const principal = yield* requireExtensionPrincipalEffect(event);
   const rawBody = yield* readJsonBodyEffect(event.request);
   const input = yield* decodeIngestRunRequestEffect(rawBody);
+  const deviceKey = input.capture.extension.installId || principal.kind;
+  yield* requireRateLimitEffect(
+    event,
+    runDeviceRateLimitKey(principal.userId, deviceKey),
+    EXTENSION_RUN_DEVICE_LIMIT,
+  );
+  yield* requireRateLimitEffect(
+    event,
+    runParserRateLimitKey(principal.userId, input.capture.extension.parserVersion),
+    EXTENSION_RUN_PARSER_LIMIT,
+  );
   return yield* ingestTypingRunFromEnvironmentEffect(event.platform?.env, principal.userId, input);
 });
 
@@ -194,6 +238,37 @@ function bearerToken(value: string): string | null {
   const match = value.match(/^Bearer\s+(.+)$/i);
   const token = match?.[1]?.trim();
   return token || null;
+}
+
+const requireRateLimitEffect = Effect.fn("ExtensionApi.requireRateLimit")(function* (
+  event: ExtensionEndpointEvent,
+  key: string,
+  spec: { limit: number; windowMs: number },
+) {
+  const decision = yield* consumeExtensionRateLimitFromEnvironmentEffect(
+    event.platform?.env,
+    key,
+    spec,
+  );
+  if (decision.allowed) return;
+  return yield* Effect.fail(
+    new ExtensionHttpError({
+      status: 429,
+      message: "Too many extension requests. Retry later.",
+      retryAfterSeconds: decision.retryAfterSeconds,
+    }),
+  );
+});
+
+function sha256HexEffect(value: string) {
+  return Effect.map(
+    Effect.tryPromise({
+      try: () => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+      catch: () => new ExtensionHttpError({ status: 500, message: "Could not hash pairing code." }),
+    }),
+    (digest) =>
+      [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+  );
 }
 
 function corsHeaders(request: Request): Headers {
