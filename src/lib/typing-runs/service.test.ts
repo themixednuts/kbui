@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 
 import {
   idempotencyKeyForCapture,
@@ -20,12 +20,8 @@ import {
   setKeyboardChoicesFromEnvironmentEffect,
 } from "$lib/typing-runs/service";
 
-function itEffect(name: string, body: () => Effect.Effect<void, unknown>) {
-  it(name, () => Effect.runPromise(body()));
-}
-
 describe("TypingRunsAgent RPC service", () => {
-  itEffect("pairs a token once and rejects reuse", () =>
+  it.effect("pairs a token once and rejects reuse", () =>
     Effect.gen(function* () {
       const agent = new FakeTypingRunsAgent();
       const env = envFor(agent);
@@ -52,7 +48,7 @@ describe("TypingRunsAgent RPC service", () => {
     }),
   );
 
-  itEffect("rejects expired pairing tokens", () =>
+  it.effect("rejects expired pairing tokens", () =>
     Effect.gen(function* () {
       const agent = new FakeTypingRunsAgent();
       const env = envFor(agent);
@@ -71,7 +67,7 @@ describe("TypingRunsAgent RPC service", () => {
     }),
   );
 
-  itEffect("mints, resolves, and revokes device tokens", () =>
+  it.effect("mints, resolves, and revokes device tokens", () =>
     Effect.gen(function* () {
       const agent = new FakeTypingRunsAgent();
       const env = envFor(agent);
@@ -95,7 +91,7 @@ describe("TypingRunsAgent RPC service", () => {
     }),
   );
 
-  itEffect("stores keyboard choices for extension pickers", () =>
+  it.effect("stores keyboard choices for extension pickers", () =>
     Effect.gen(function* () {
       const agent = new FakeTypingRunsAgent();
       const env = envFor(agent);
@@ -110,7 +106,7 @@ describe("TypingRunsAgent RPC service", () => {
     }),
   );
 
-  itEffect("ingests runs idempotently", () =>
+  it.effect("ingests runs idempotently", () =>
     Effect.gen(function* () {
       const agent = new FakeTypingRunsAgent();
       const env = envFor(agent);
