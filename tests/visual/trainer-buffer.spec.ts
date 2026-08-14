@@ -66,7 +66,9 @@ test("keeps the practice caret visible at the end of a long line", async ({ page
   expect(reachedLongLineEnd).toBe(true);
 
   await expect(caret).toHaveAttribute("data-kind", "newline");
-  await expect.poll(async () => buffer.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(8);
+  await expect
+    .poll(async () => buffer.evaluate((el) => el.scrollWidth - el.clientWidth))
+    .toBeGreaterThan(8);
   await expect.poll(async () => buffer.evaluate((el) => el.scrollLeft)).toBeGreaterThan(8);
   await expect
     .poll(async () => {
@@ -74,10 +76,10 @@ test("keeps the practice caret visible at the end of a long line", async ({ page
       const bufferBox = await buffer.boundingBox();
       return Boolean(
         caretBox &&
-          bufferBox &&
-          caretBox.width > 0 &&
-          caretBox.height > 0 &&
-          isInside(caretBox, bufferBox),
+        bufferBox &&
+        caretBox.width > 0 &&
+        caretBox.height > 0 &&
+        isInside(caretBox, bufferBox),
       );
     })
     .toBe(true);

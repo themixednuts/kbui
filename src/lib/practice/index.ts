@@ -1,8 +1,4 @@
-export {
-  adaptScript,
-  confidenceChips,
-  type ConfidenceChip,
-} from "./adaptive";
+export { adaptScript, confidenceChips, type ConfidenceChip } from "./adaptive";
 export {
   focusCharsFromScript,
   rankWeakTargets,
@@ -103,7 +99,11 @@ export {
   withSessionGoal,
   UnknownKeyStrokeError,
 } from "./contracts";
-export { loadPracticeSessionsEffect, savePracticeSessionEffect, PracticePersistError } from "./persist";
+export {
+  loadPracticeSessionsEffect,
+  savePracticeSessionEffect,
+  PracticePersistError,
+} from "./persist";
 export {
   formatPracticeScript,
   formatRustLines,
