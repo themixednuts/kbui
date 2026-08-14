@@ -86,11 +86,9 @@
   const noticeCategoryClass =
     "notice-category mr-kb-5 font-mono text-[10px] font-bold text-ink uppercase";
   const boardStageClass =
-    "board-stage relative flex min-h-[360px] min-w-0 overflow-hidden border-0 bg-stage shadow-none";
-  const boardStageResponsiveClass =
-    "max-[1180px]:min-h-[390px] max-[980px]:min-h-[340px]";
+    "board-stage relative flex h-full min-h-0 min-w-0 overflow-hidden border-0 bg-stage shadow-none";
   const boardStageSplitClass =
-    "min-h-[300px] rounded-none border-transparent bg-stage shadow-none";
+    "rounded-none border-transparent bg-stage shadow-none";
   const fallthroughChipClass =
     "fallthrough-chip absolute top-kb-12 right-kb-12 z-20 h-kb-28 min-h-kb-28 gap-kb-6 rounded-pill border-line-2 bg-[color-mix(in_oklch,var(--card-surface)_86%,transparent)] px-kb-10 py-0 font-mono text-[11px] text-ink-2 shadow-card backdrop-blur-[5px] hover:border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] hover:bg-card hover:text-ink data-[active=true]:border-[color-mix(in_oklch,var(--teal)_48%,var(--line-2))] data-[active=true]:bg-[color-mix(in_oklch,var(--teal)_12%,var(--card-surface))] data-[active=true]:text-teal-ink [&_svg]:size-[13px]";
   let boardZoom = $state(1);
@@ -363,7 +361,7 @@
 
     {#if editor.lens === "keys"}
       <section
-        class={cn(boardStageClass, splitLayout ? boardStageSplitClass : boardStageResponsiveClass)}
+        class={cn(boardStageClass, splitLayout && boardStageSplitClass)}
         aria-label="Keyboard editor"
       >
         <Button
@@ -404,13 +402,7 @@
       {/if}
     {:else}
       <section
-        class={cn(
-          boardStageClass,
-          "lighting-stage min-h-[460px]",
-          splitLayout
-            ? cn(boardStageSplitClass, "min-h-[312px]")
-            : boardStageResponsiveClass,
-        )}
+        class={cn(boardStageClass, "lighting-stage", splitLayout && boardStageSplitClass)}
         aria-label="Keyboard lighting editor"
       >
         <KeyboardBoard

@@ -172,11 +172,35 @@ test("collapses the editor toolbar to one row in a narrow pane", async ({ page }
     await toolbar.locator(".layer-buttons").evaluate((strip) => getComputedStyle(strip).flexWrap),
   ).toBe("nowrap");
   await expect(toolbar.locator(".add-layer")).toBeVisible();
-  await expect(toolbar.locator(".add-layer span")).toBeHidden();
+  await expect(toolbar.locator(".add-layer").getByText("Layer")).toBeHidden();
   await expect(toolbar.getByRole("navigation", { name: "Firmware edit target" })).toBeHidden();
   await expect(toolbar.getByRole("button", { name: "Base", exact: true })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Fn", exact: true })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Nav", exact: true })).toBeVisible();
   await expect(toolbar.getByText("Disconnected", { exact: true })).toBeVisible();
+
+  const pane = page.locator(".keymap-main-pane");
+  const stage = page.locator(".board-stage");
+  const stackCard = page.locator(".active-stack-card");
+  const stackBody = stackCard.locator(".stack-body");
+  const inheritNote = stackCard.locator(".inherit-note");
+  const [paneBox, stageBox, cardBox, bodyBox, noteBox] = await Promise.all([
+    pane.boundingBox(),
+    stage.boundingBox(),
+    stackCard.boundingBox(),
+    stackBody.boundingBox(),
+    inheritNote.boundingBox(),
+  ]);
+  expect(paneBox).not.toBeNull();
+  expect(stageBox).not.toBeNull();
+  expect(cardBox).not.toBeNull();
+  expect(bodyBox).not.toBeNull();
+  expect(noteBox).not.toBeNull();
+  expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(paneBox!.y + paneBox!.height + 1);
+  expect(stageBox!.y + stageBox!.height).toBeLessThanOrEqual(cardBox!.y + 1);
+  expect(noteBox!.y + noteBox!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height + 1);
+  expect(Math.abs(noteBox!.y - bodyBox!.y)).toBeLessThan(8);
+  await expect(inheritNote).toContainText("Hatched keys inherit from below");
 });
+
 
