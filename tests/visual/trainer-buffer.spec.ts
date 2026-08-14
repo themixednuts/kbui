@@ -36,7 +36,7 @@ function isInside(
   );
 }
 
-test("keeps the practice caret visible at the end of a long line", async ({ page }) => {
+test("keeps the practice caret visible at the end of a long line", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 557, height: 800 });
   await page.goto("/trainer", { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
@@ -84,6 +84,8 @@ test("keeps the practice caret visible at the end of a long line", async ({ page
     })
     .toBe(true);
 
+  await buffer.screenshot({ path: testInfo.outputPath("practice-caret-eol.png") });
+
   await page.keyboard.press("Enter");
   await expect(caret).not.toHaveAttribute("data-kind", "newline");
   await expect
@@ -93,4 +95,6 @@ test("keeps the practice caret visible at the end of a long line", async ({ page
       return Boolean(nextBox && afterBuffer && isInside(nextBox, afterBuffer));
     })
     .toBe(true);
+
+  await buffer.screenshot({ path: testInfo.outputPath("practice-caret-next-line.png") });
 });
