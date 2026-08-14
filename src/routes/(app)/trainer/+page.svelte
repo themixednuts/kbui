@@ -718,17 +718,14 @@
 </script>
 
 <div class="trainer-route min-h-[calc(100vh-58px)] bg-paper p-kb-22 max-[640px]:p-kb-12">
-  <div class="mb-kb-16 flex flex-wrap items-end justify-between gap-kb-12">
-    <h1 class="font-display text-[28px] tracking-tight text-ink">Trainer</h1>
-    <div class="flex flex-wrap items-center gap-kb-8">
-      {#if sampleCount > 0}
-        <Chip tone={enoughData ? "success" : "neutral"}>{sampleCount}</Chip>
-      {/if}
-      <Button variant="ghost" size="sm" onclick={() => openCoach(enoughData)}>
-        <Sparkles size={14} />
-        Coach
-      </Button>
-    </div>
+  <div class="mb-kb-16 flex flex-wrap items-center justify-end gap-kb-8">
+    {#if sampleCount > 0}
+      <Chip tone={enoughData ? "success" : "neutral"}>{sampleCount}</Chip>
+    {/if}
+    <Button variant="ghost" size="sm" onclick={() => openCoach(enoughData)}>
+      <Sparkles size={14} />
+      Coach
+    </Button>
   </div>
 
   <div class="grid gap-kb-16 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -811,7 +808,7 @@
               class="h-kb-28 rounded-keycap border border-line-2 bg-surface px-kb-8 font-mono text-[11px] text-ink"
               value={activeLayerRole?.role ?? "unknown"}
               onchange={(e) => lockActiveLayerRole(e.currentTarget.value as LayerRoleT)}
-              aria-label="Lock layer role"
+              aria-label="Layer role"
             >
               {#each LAYER_ROLE_OPTIONS as role (role)}
                 <option value={role}>{role}{activeLayerRole?.locked && activeLayerRole.role === role ? " (locked)" : ""}</option>
@@ -896,7 +893,7 @@
 
         {#if lastSummary}
           <p class="font-mono text-[12px] text-ink-2">
-            {lastSummary.wpm ?? "—"} wpm · {lastSummary.accuracy}%
+            {lastSummary.wpm ?? "--"} wpm · {lastSummary.accuracy}%
           </p>
         {/if}
       </Card.Content>
@@ -967,7 +964,7 @@
             <ul class="grid gap-kb-6">
               {#each recentSessions as item (item.id)}
                 <li class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
-                  {item.wpm ?? "—"} wpm · {item.accuracy}% · {item.mode}
+                  {item.wpm ?? "--"} wpm · {item.accuracy}% · {item.mode}
                 </li>
               {/each}
             </ul>
