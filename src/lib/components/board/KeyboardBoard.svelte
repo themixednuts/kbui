@@ -41,6 +41,7 @@
     lens?: BoardLens;
     selection?: BoardSelection;
     marked?: BoardSelection;
+    heatByKeyId?: Readonly<Record<string, number>>;
     showFallthrough?: boolean;
     zoom?: number;
     pan?: BoardPan;
@@ -62,6 +63,7 @@
     lens = "keys",
     selection,
     marked,
+    heatByKeyId,
     showFallthrough = true,
     zoom = $bindable(1),
     pan = $bindable({ x: 0, y: 0 }),
@@ -100,6 +102,7 @@
       lens,
       selection,
       marked,
+      heatByKeyId,
       showFallthrough,
       split,
       targetOs,
@@ -114,8 +117,10 @@
   const planeWidth = $derived(unit * model.bounds.width);
   const planeHeight = $derived(unit * model.bounds.height);
   const surfaceHeight = $derived(planeHeight + splitLabelSpace);
+  // Clamp each fit ratio to ≥0 — a short container makes `(100cqh - 72px)` negative,
+  // and a negative `scale` mirrors the board upside-down.
   const boardFit = $derived(
-    `calc(min(1, calc((100cqw - 80px) / ${planeWidth}px), calc((100cqh - 72px) / ${surfaceHeight}px)) * ${zoom})`,
+    `calc(min(1, max(0.05, (100cqw - 80px) / ${planeWidth}px), max(0.05, (100cqh - 72px) / ${surfaceHeight}px)) * ${zoom})`,
   );
   const surfaceStyle = $derived(
     [

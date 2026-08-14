@@ -90,8 +90,10 @@
       `--rotation: ${cap.rotation}deg`,
       `--source-color: ${cap.sourceColor}`,
       `--key-lighting: ${cap.lightingColor ?? "#1b1917"}`,
+      `--key-heat: ${cap.heat ?? 0}`,
     ].join("; "),
   );
+  const hasHeat = $derived(typeof cap.heat === "number" && cap.heat > 0 && !isLighting);
   const title = $derived(
     isLighting
       ? `${cap.legend} - LED ${cap.lightingColor ?? "off"}`
@@ -108,6 +110,7 @@
       isLighting ? `${cap.legend}, LED ${cap.lightingColor ?? "off"}` : `${cap.legend}: ${cap.display}`,
       cap.selected ? "selected" : "",
       cap.marked ? "marked" : "",
+      hasHeat ? `heat ${Math.round((cap.heat ?? 0) * 100)}%` : "",
       cap.comboMarker ? `combo output ${cap.comboMarker.text}` : "",
       cap.layerMarker ? `layer activation ${cap.layerMarker.text}` : "",
     ]
@@ -165,6 +168,9 @@
       usePressShadow && "group-active/keycap:shadow-cap-press",
       cap.selected && "border-coral shadow-[inset_0_-3px_0_var(--source-color,transparent),var(--shadow-keycap-selected)]",
       cap.marked && "border-teal shadow-keycap-picked",
+      hasHeat &&
+        !cap.selected &&
+        "border-[color-mix(in_oklch,var(--coral)_calc(var(--key-heat)*70%),transparent)] [background:color-mix(in_oklch,var(--coral)_calc(var(--key-heat)*28%),var(--keycap-base))]",
       (isFallThrough || isEmpty) && "[background:var(--keycap-transparent)] text-ink-3",
       isModifier && "[background:var(--keycap-modifier)] text-[var(--mod-ink)]",
       isAccent && "border-[oklch(0.55_0.18_30)] [background:var(--keycap-accent)] text-on-accent",

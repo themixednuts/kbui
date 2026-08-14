@@ -104,6 +104,7 @@
     browse: Compass,
     connect: Cable,
     editor: Keyboard,
+    trainer: Gauge,
     library: BookOpen,
     settings: Settings2,
     versions: History,

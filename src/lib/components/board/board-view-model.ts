@@ -67,6 +67,8 @@ export interface BoardKeyViewModel {
   labelSize: BoardLabelSize;
   selected: boolean;
   marked: boolean;
+  /** Practice/coach heat 0..1 (undefined = none). */
+  heat: number | undefined;
   fallThrough: boolean;
   empty: boolean;
   modifier: boolean;
@@ -111,6 +113,8 @@ export interface CreateBoardViewModelInput {
   lens?: BoardLens;
   selection?: BoardSelection;
   marked?: BoardSelection;
+  /** keyId → heat intensity 0..1 for trainer/coach heatmap. */
+  heatByKeyId?: Readonly<Record<string, number>>;
   showFallthrough?: boolean;
   split?: BoardSplitPreference;
   includeComboConnectors?: boolean;
@@ -205,6 +209,7 @@ export function createBoardViewModel(input: CreateBoardViewModelInput): BoardVie
   const showFallthrough = input.showFallthrough ?? true;
   const selection = setFrom(input.selection);
   const marked = setFrom(input.marked);
+  const heatByKeyId = input.heatByKeyId ?? {};
   const placed = placeKeys(input.profile.keys);
   const activeLayerId = activeLayer?.id ?? "";
   const visibleCombos = input.profile.combos.filter((combo) =>
@@ -260,6 +265,10 @@ export function createBoardViewModel(input: CreateBoardViewModelInput): BoardVie
       labelSize: labelSize(label.label),
       selected: selection.has(placedKey.key.id),
       marked: marked.has(placedKey.key.id),
+      heat: (() => {
+        const value = heatByKeyId[placedKey.key.id];
+        return typeof value === "number" && value > 0 ? Math.min(1, value) : undefined;
+      })(),
       fallThrough: transparent,
       empty: label.empty,
       modifier: isModifierKey(placedKey.key),

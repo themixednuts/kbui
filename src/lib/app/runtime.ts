@@ -4,12 +4,14 @@ import { FetchHttpClient } from "effect/unstable/http";
 import * as Preferences from "$lib/app/services/preferences";
 import * as Theme from "$lib/app/services/theme";
 import { localStoreLayer } from "$lib/keyboard/local-store";
+import { layer as practiceLayer } from "$lib/practice/service";
 
 const applicationLayer = Layer.mergeAll(
   FetchHttpClient.layer,
   Preferences.layer,
   Theme.layer.pipe(Layer.provide(Preferences.layer)),
   localStoreLayer,
+  practiceLayer,
 );
 
 export const appRuntime = ManagedRuntime.make(applicationLayer);

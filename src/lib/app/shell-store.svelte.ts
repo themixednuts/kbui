@@ -9,7 +9,14 @@ import {
 } from "$lib/monkeytype/types";
 import type { ConnectionState } from "$lib/keyboard/transport";
 
-export type AppRouteId = "connect" | "editor" | "browse" | "library" | "versions" | "settings";
+export type AppRouteId =
+  | "connect"
+  | "editor"
+  | "trainer"
+  | "browse"
+  | "library"
+  | "versions"
+  | "settings";
 
 export interface ShellNavItem {
   id: AppRouteId;
@@ -106,6 +113,13 @@ const SHELL_CONTEXT = Symbol("kbgui.shell");
 export const appNavItems = [
   { id: "connect", href: "/connect", icon: "cable", label: "Connect", title: "Connect" },
   { id: "editor", href: "/editor", icon: "keyboard", label: "Editor", title: "Editor" },
+  {
+    id: "trainer",
+    href: "/trainer",
+    icon: "speed",
+    label: "Trainer",
+    title: "Layout trainer",
+  },
   { id: "browse", href: "/browse", icon: "explore", label: "Browse", title: "Browse community" },
   {
     id: "library",
