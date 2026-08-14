@@ -175,7 +175,7 @@
         Effect.sync(() => {
           if (lastListKey !== requestKey) return;
           listError =
-            error instanceof Error ? error.message : "Community catalog could not be loaded.";
+            error instanceof Error ? error.message : "Could not load community keymaps.";
         }),
       ),
       Effect.ensuring(
@@ -205,7 +205,7 @@
           Effect.sync(() => {
             if (selectedId !== id) return;
             if (!detail) {
-              detailError = "This community keymap is no longer available.";
+              detailError = "This keymap is gone.";
               return;
             }
             selectedDetail = detail;
@@ -215,7 +215,7 @@
           Effect.sync(() => {
             if (selectedId !== id) return;
             detailError =
-              error instanceof Error ? error.message : "Community preview could not be loaded.";
+              error instanceof Error ? error.message : "Could not load this keymap.";
           }),
         ),
         Effect.ensuring(
@@ -355,7 +355,7 @@
             detail: reportDetail.trim() || undefined,
           }),
         );
-        actionNotice = "Report sent for moderation review.";
+        actionNotice = "Report sent.";
         yield* refreshSelectedDetailEffect(targetId);
         yield* refreshListEffect(listInput, listKey);
         closeReport();
@@ -369,7 +369,7 @@
   }
 
   function promptSignIn() {
-    actionError = "Sign in with GitHub to like, adopt, or report community keymaps.";
+    actionError = "Sign in with GitHub to like or adopt a keymap.";
     shell.profileOpen = true;
   }
 
@@ -379,7 +379,7 @@
       Effect.tap((detail) =>
         Effect.sync(() => {
           if (!detail) {
-            detailError = "This community keymap is no longer available.";
+            detailError = "This keymap is gone.";
             selectedDetail = null;
             return;
           }

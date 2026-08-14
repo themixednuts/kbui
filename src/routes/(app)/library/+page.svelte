@@ -351,7 +351,7 @@
                     variant="ghost"
                     size="sm"
                     disabled={!isCompleteMacro(macro)}
-                    title={isCompleteMacro(macro) ? "Place macro" : "Add a sequence before placing"}
+              title={isCompleteMacro(macro) ? "Place this macro on a key" : "Add a sequence before placing"}
                     onclick={() => placeMacro(macro)}
                   >
                     <Keyboard size={14} aria-hidden="true" />
@@ -428,7 +428,7 @@
                   size="sm"
                   disabled={!isCompleteTapDance(dance)}
                   title={isCompleteTapDance(dance)
-                    ? "Place tap dance"
+                    ? "Place this tap dance on a key"
                     : "Choose a key and actions before placing"}
                   onclick={() => placeTapDance(dance)}
                 >
@@ -673,6 +673,7 @@
           <div class={compactEmptyPanelClass}>
             <span class={emptyPanelIconClass} aria-hidden="true">inventory_2</span>
             <strong>No selection</strong>
+            <span>Pick a macro, combo, or tap dance.</span>
           </div>
         {/if}
 

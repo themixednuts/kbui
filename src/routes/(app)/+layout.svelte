@@ -651,7 +651,7 @@
                 {#if shell.monkeytype.error}
                   <p class={cn(monkeytypeMessageClass, monkeytypeErrorClass)} role="status">{shell.monkeytype.error}</p>
                 {:else if shell.monkeytype.stale}
-                  <p class={cn(monkeytypeMessageClass, monkeytypeNoteClass)} role="status">Stale sync</p>
+                  <p class={cn(monkeytypeMessageClass, monkeytypeNoteClass)} role="status">Stats are stale. Refresh.</p>
                 {/if}
                 <div class={monkeytypeActionsClass}>
                   <Button

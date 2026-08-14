@@ -24,7 +24,7 @@ function retryAppUpdate<A>(effect: Effect.Effect<A, PlatformError>) {
 }
 
 export const STALE_BUILD_DESCRIPTION =
-  "This page is using outdated app files. Reload to switch to the current build.";
+  "This tab is on an old build. Reload.";
 
 type UpdateNotificationOptions = {
   checkForUpdate: () => Promise<unknown>;

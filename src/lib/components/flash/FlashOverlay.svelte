@@ -1207,8 +1207,8 @@
           <div class={diagnosticTitleClass}>
             <span class={cn(diagnosticIconClass, diagnosticIconErrorClass)} aria-hidden="true">report</span>
             <div>
-              <strong class={diagnosticTitleStrongClass}>Not build-ready - missing: {diagnosticSummary(errorDiagnostics)}</strong>
-              <small class={diagnosticTitleSmallClass}>Fill these required inputs before compiling, browser-building, or flashing firmware generated from this source.</small>
+              <strong class={diagnosticTitleStrongClass}>Not build-ready. Missing: {diagnosticSummary(errorDiagnostics)}</strong>
+              <small class={diagnosticTitleSmallClass}>Fill these before you compile, browser-build, or flash.</small>
             </div>
           </div>
           <ul class={diagnosticListClass}>
@@ -1227,8 +1227,8 @@
           <div class={diagnosticTitleClass}>
             <span class={cn(diagnosticIconClass, diagnosticIconWarningClass)} aria-hidden="true">warning</span>
             <div>
-              <strong class={diagnosticTitleStrongClass}>Incomplete coverage - review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
-              <small class={diagnosticTitleSmallClass}>These source sections compile to placeholders, TODOs, or board-specific review points.</small>
+              <strong class={diagnosticTitleStrongClass}>Incomplete coverage. Review before flashing: {warningDiagnostics.length} warning{warningDiagnostics.length === 1 ? "" : "s"}</strong>
+              <small class={diagnosticTitleSmallClass}>These sections still compile as placeholders or TODOs. Check them before you flash.</small>
             </div>
           </div>
           <ul class={diagnosticListClass}>
@@ -1262,7 +1262,7 @@
             <p class={panelCopyClass}>
               {result.buildReady
                 ? "Build externally for now, then bring the UF2 back here."
-                : "Resolve the source diagnostics before compiling or flashing firmware from this export. The zip remains available so you can fill the required metadata."}
+                : "Fix the source errors before you compile or flash. The zip is still there if you need to fill in metadata."}
             </p>
           {/if}
 

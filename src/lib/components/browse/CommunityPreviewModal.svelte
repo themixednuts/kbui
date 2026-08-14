@@ -306,7 +306,7 @@
             <Button
               variant="ghost"
               disabled={likeBusy}
-              title={signedIn ? "Toggle like" : "Sign in to like this keymap"}
+              title={signedIn ? (detail.likedByViewer ? "Unlike this keymap" : "Like this keymap") : "Sign in to like this keymap"}
               aria-pressed={detail.likedByViewer}
               class={cn("like-action", actionButtonClass, detail.likedByViewer && likedActionClass)}
               onclick={() => (signedIn ? onlike?.(detail) : onsignin?.())}
