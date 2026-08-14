@@ -154,7 +154,10 @@ test("keeps browse filters to two compact rows in a narrow pane", async ({ page 
   expect(bandColumns).toBe(2);
 
   await expect(filterPanel.getByRole("switch", { name: /Compatible with / })).toBeVisible();
-  await expect(filterPanel.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  await expect(
+    filterPanel.getByRole("navigation", { name: "Community keymap sort" }),
+  ).toBeVisible();
+  await expect(filterPanel.getByRole("button", { name: "Sort by newest" })).toBeVisible();
 
   await filterPanel.screenshot({ path: testInfo.outputPath("browse-filters-557.png") });
 });

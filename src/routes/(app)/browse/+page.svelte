@@ -63,8 +63,8 @@
   const tagStripClass =
     "tag-strip flex min-w-0 flex-nowrap items-center gap-kb-6 overflow-x-auto overscroll-x-contain [scrollbar-width:thin]";
   const scopeGridClass =
-    "scope-grid flex min-w-0 flex-wrap items-center gap-x-kb-10 gap-y-kb-6";
-  const scopeFiltersClass = "scope-filters flex min-w-0 flex-wrap items-center gap-kb-10";
+    "scope-grid flex min-w-0 flex-nowrap items-center gap-x-kb-8 overflow-x-auto overscroll-x-contain [scrollbar-width:thin]";
+  const scopeFiltersClass = "scope-filters flex shrink-0 items-center gap-kb-8";
   const filterButtonClass =
     "h-[28px] min-h-[28px] shrink-0 rounded-pill border-line bg-paper-2 px-kb-10 py-0 font-mono text-[11px] text-ink-2 hover:border-line-2 hover:bg-paper-2 hover:text-ink";
   const activeFilterButtonClass =
@@ -513,11 +513,11 @@
               aria-pressed={officialOnly}
               onclick={() => (officialOnly = !officialOnly)}
             >
-              Official only
+              Official
             </Button>
           </div>
 
-          <div class="ml-auto flex min-w-0 items-center gap-kb-8">
+          <div class="ml-auto flex shrink-0 items-center gap-kb-8">
             <div class={sortControlClass}>
               <span class={cn(eyebrowClass, "max-md:sr-only")}>Sort</span>
               <SegmentedNav
