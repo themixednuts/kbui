@@ -19,7 +19,7 @@
   const changesHeaderClass =
     "changes-panel-header w-full min-w-0 items-center gap-kb-10 border-b border-line px-kb-18 py-kb-14";
   const changesTitleClass =
-    "changes-panel-title m-0 min-w-0 flex-1 font-mono text-[13px] font-semibold tracking-[0.06em] text-ink-2 uppercase";
+    "changes-panel-title m-0 min-w-0 flex-1 text-kb-14 font-semibold leading-tight";
   const changesChevronClass =
     "changes-panel-chevron flex-none text-ink-3 transition-transform duration-150 group-data-[state=open]/changes-panel:rotate-180";
   const changesScrollClass =

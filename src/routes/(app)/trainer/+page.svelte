@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Effect } from "effect";
-  import { Gauge, Sparkles } from "@lucide/svelte";
+  import { Gauge } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { forkApp, runAppSync } from "$lib/app/runtime";
@@ -718,16 +718,6 @@
 </script>
 
 <div class="trainer-route min-h-[calc(100vh-58px)] bg-paper p-kb-22 max-[640px]:p-kb-12">
-  <div class="mb-kb-16 flex flex-wrap items-center justify-end gap-kb-8">
-    {#if sampleCount > 0}
-      <Chip tone={enoughData ? "success" : "neutral"}>{sampleCount}</Chip>
-    {/if}
-    <Button variant="ghost" size="sm" onclick={() => openCoach(enoughData)}>
-      <Sparkles size={14} />
-      Coach
-    </Button>
-  </div>
-
   <div class="grid gap-kb-16 lg:grid-cols-[minmax(0,1fr)_280px]">
     <Card.Root class="overflow-hidden">
       <Card.Header class="flex flex-wrap items-center gap-kb-8 border-b border-line-2 pb-kb-12">
@@ -902,6 +892,9 @@
     <Card.Root>
       <Card.Header>
         <Card.Title>Coach</Card.Title>
+        {#if sampleCount > 0}
+          <Chip tone={enoughData ? "success" : "neutral"}>{sampleCount}</Chip>
+        {/if}
       </Card.Header>
       <Card.Content class="grid gap-kb-12">
         {#if !enoughData}
@@ -960,7 +953,7 @@
 
         {#if recentSessions.length > 0}
           <div class="grid gap-kb-8">
-            <h2 class="font-mono text-[11px] tracking-[0.08em] text-ink-3 uppercase">Sessions</h2>
+            <h2 class="text-kb-14 font-semibold leading-tight">Sessions</h2>
             <ul class="grid gap-kb-6">
               {#each recentSessions as item (item.id)}
                 <li class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
