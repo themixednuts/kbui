@@ -449,33 +449,44 @@
         const loaded = yield* loadPracticeSessionsEffect().pipe(
           Effect.catch(() => Effect.succeed<PracticeSessionSummary[]>([])),
         );
-        const never = yield* loadNeverMovesEffect(
-          keyboardRef.profileId ?? keyboardRef.keyboardId,
-          keyboardRef.layoutId,
-        );
-        const recent = yield* loadRecentAcceptsEffect(
-          keyboardRef.profileId ?? keyboardRef.keyboardId,
-          keyboardRef.layoutId,
-        );
-        const personal = yield* personalStatsFromPractice(loaded);
-        const confusion = yield* confusionPairsFromPractice(loaded);
-        const roles = yield* loadLayerRolesEffect(workbench.profile);
-        const layout = yield* layoutFixtureFromProfile(workbench.profile, roles);
-        const result = yield* suggestCoach({
-          layout,
-          ngrams: CODING_NGRAMS_V1,
-          personal,
-          confusion,
-          neverMoveIds: never,
-          recentAccepts: recent,
-          requirePersonal: false,
-          seed: Date.now() % 10_000,
-        });
         yield* Effect.sync(() => {
           lastSummary = summary;
           sessions = [...loaded];
-          layerRoles = roles;
-          coachResult = result;
+        });
+        const coached = yield* Effect.result(
+          Effect.gen(function* () {
+            const never = yield* loadNeverMovesEffect(
+              keyboardRef.profileId ?? keyboardRef.keyboardId,
+              keyboardRef.layoutId,
+            );
+            const recent = yield* loadRecentAcceptsEffect(
+              keyboardRef.profileId ?? keyboardRef.keyboardId,
+              keyboardRef.layoutId,
+            );
+            const personal = yield* personalStatsFromPractice(loaded);
+            const confusion = yield* confusionPairsFromPractice(loaded);
+            const roles = yield* loadLayerRolesEffect(workbench.profile);
+            const layout = yield* layoutFixtureFromProfile(workbench.profile, roles);
+            const result = yield* suggestCoach({
+              layout,
+              ngrams: CODING_NGRAMS_V1,
+              personal,
+              confusion,
+              neverMoveIds: never,
+              recentAccepts: recent,
+              requirePersonal: false,
+              seed: Date.now() % 10_000,
+            });
+            return { roles, result };
+          }),
+        );
+        yield* Effect.sync(() => {
+          if (coached._tag === "Success") {
+            layerRoles = coached.success.roles;
+            coachResult = coached.success.result;
+          } else {
+            coachError = String(coached.failure);
+          }
           prepareIdle();
         });
       }),
