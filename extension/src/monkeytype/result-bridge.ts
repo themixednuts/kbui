@@ -1,30 +1,37 @@
+import { Effect, Schema } from "effect";
+
 import {
   identityFromUrl,
   isMonkeytypeResultsUrl,
   monkeytypeIdentityMessage,
-  readMonkeytypeResultIdentity,
+  readJsonIdentity,
 } from "./result-id";
+
+class MonkeytypeBridgeError extends Schema.TaggedErrorClass<MonkeytypeBridgeError>()(
+  "MonkeytypeBridgeError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+  },
+) {}
 
 export function installMonkeytypeResultBridge(targetWindow: Window = window): () => void {
   const originalFetch = targetWindow.fetch.bind(targetWindow);
   const originalOpen = targetWindow.XMLHttpRequest.prototype.open;
   const originalSend = targetWindow.XMLHttpRequest.prototype.send;
 
-  targetWindow.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  targetWindow.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input);
     const requestBody = typeof init?.body === "string" ? init.body : null;
     if (url && isMonkeytypeResultsUrl(url)) {
       publishIdentity(targetWindow, requestBody, url);
     }
-    const response = await originalFetch(input, init);
-    if (url && isMonkeytypeResultsUrl(url)) {
-      void response
-        .clone()
-        .text()
-        .then((text) => publishIdentity(targetWindow, text, url))
-        .catch(() => undefined);
-    }
-    return response;
+    return originalFetch(input, init).then((response) => {
+      if (url && isMonkeytypeResultsUrl(url)) {
+        void Effect.runPromise(publishIdentityFromResponse(targetWindow, response, url));
+      }
+      return response;
+    });
   };
 
   targetWindow.XMLHttpRequest.prototype.open = function open(
@@ -62,20 +69,31 @@ export function installMonkeytypeResultBridge(targetWindow: Window = window): ()
   };
 }
 
+function publishIdentityFromResponse(targetWindow: Window, response: Response, url: string) {
+  return Effect.tryPromise({
+    try: () => response.clone().text(),
+    catch: (cause) =>
+      new MonkeytypeBridgeError({
+        operation: "monkeytype-bridge.read-response",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+  }).pipe(
+    Effect.tap((text) => Effect.sync(() => publishIdentity(targetWindow, text, url))),
+    Effect.tapError((error) =>
+      Effect.sync(() => {
+        console.warn("kbgui monkeytype bridge could not read a results response", error.message);
+      }),
+    ),
+    Effect.ignore,
+  );
+}
+
 function publishIdentity(targetWindow: Window, rawBody: string | null, url: string) {
   const fromUrl = identityFromUrl(url);
   const fromBody = rawBody ? readJsonIdentity(rawBody) : null;
   const identity = fromBody ?? fromUrl;
   if (!identity) return;
   targetWindow.postMessage(monkeytypeIdentityMessage(identity), "*");
-}
-
-function readJsonIdentity(raw: string) {
-  try {
-    return readMonkeytypeResultIdentity(JSON.parse(raw) as unknown);
-  } catch {
-    return null;
-  }
 }
 
 function requestUrl(input: RequestInfo | URL): string | null {

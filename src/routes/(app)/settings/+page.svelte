@@ -987,29 +987,42 @@
     if (showBusy) extensionBusy = true;
     extensionError = null;
     return Effect.gen(function* () {
-      const [devices, runs, stats] = yield* Effect.all(
+      const [devicesResult, runsResult, statsResult] = yield* Effect.all(
         [
-          hostEffect("extension.list-devices", () => listExtensionDevices()),
-          hostEffect("extension.list-tagged-runs", () => listTaggedRuns({ limit: 12 })),
-          hostEffect("extension.typing-run-stats", () => getTypingRunStats("keyboard-layout")),
+          hostEffect("extension.list-devices", () => listExtensionDevices()).pipe(Effect.result),
+          hostEffect("extension.list-tagged-runs", () => listTaggedRuns({ limit: 12 })).pipe(
+            Effect.result,
+          ),
+          hostEffect("extension.typing-run-stats", () => getTypingRunStats("keyboard-layout")).pipe(
+            Effect.result,
+          ),
         ],
         { concurrency: 3 },
       );
-      yield* Effect.sync(() => {
-        extensionDevices = devices;
-        taggedRuns = runs;
-        typingRunStats = stats;
-      });
+      const failures: string[] = [];
+      if (devicesResult._tag === "Success") {
+        extensionDevices = devicesResult.success;
+      } else {
+        failures.push(
+          clientErrorMessage(devicesResult.failure, "Extension devices could not be loaded."),
+        );
+      }
+      if (runsResult._tag === "Success") {
+        taggedRuns = runsResult.success;
+      } else {
+        failures.push(
+          clientErrorMessage(runsResult.failure, "Tagged runs could not be loaded."),
+        );
+      }
+      if (statsResult._tag === "Success") {
+        typingRunStats = statsResult.success;
+      } else {
+        failures.push(
+          clientErrorMessage(statsResult.failure, "Tagged run stats could not be loaded."),
+        );
+      }
+      if (failures.length > 0) extensionError = failures.join(" ");
     }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(
-          () =>
-            (extensionError = clientErrorMessage(
-              error,
-              "Extension devices could not be loaded.",
-            )),
-        ),
-      ),
       Effect.ensuring(
         Effect.sync(() => {
           if (showBusy) extensionBusy = false;

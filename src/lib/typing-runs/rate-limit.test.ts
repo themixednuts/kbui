@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import { Effect } from "effect";
 
-import { consumeRateLimitBucket } from "./rate-limit";
+import { BoundaryDecodeError } from "$lib/effect/errors";
+import { consumeRateLimitBucket, decodeRateLimitSpecEffect } from "./rate-limit";
 
 describe("consumeRateLimitBucket", () => {
   it("allows traffic under the window limit", () => {
@@ -31,4 +33,22 @@ describe("consumeRateLimitBucket", () => {
     expect(decision.allowed).toBe(true);
     expect(decision.bucket).toEqual({ windowStartedAt: 61_001, count: 1 });
   });
+});
+
+describe("decodeRateLimitSpecEffect", () => {
+  it.effect("accepts a positive integer window", () =>
+    Effect.gen(function* () {
+      expect(yield* decodeRateLimitSpecEffect({ limit: 8, windowMs: 600_000 })).toEqual({
+        limit: 8,
+        windowMs: 600_000,
+      });
+    }),
+  );
+
+  it.effect("rejects a zero limit at the schema boundary", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(decodeRateLimitSpecEffect({ limit: 0, windowMs: 1_000 }));
+      expect(error).toBeInstanceOf(BoundaryDecodeError);
+    }),
+  );
 });

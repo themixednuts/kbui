@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 
+import { correlateCapture } from "$lib/typing-runs/correlation";
 import {
   idempotencyKeyForCapture,
   type CreatePairingTokenMeta,
@@ -10,14 +11,18 @@ import {
   type MonkeytypeRunCapture,
   type PairDeviceResponse,
 } from "$lib/typing-runs/contracts";
+import type { NormalizedMonkeytypeResult } from "$lib/typing-runs/monkeytype-results";
 import {
   createPairingTokenFromEnvironmentEffect,
   getKeyboardChoicesFromEnvironmentEffect,
   ingestTypingRunFromEnvironmentEffect,
+  listExtensionDevicesFromEnvironmentEffect,
   pairExtensionDeviceFromEnvironmentEffect,
   resolveExtensionDeviceTokenFromEnvironmentEffect,
   revokeExtensionDeviceFromEnvironmentEffect,
   setKeyboardChoicesFromEnvironmentEffect,
+  TYPING_RUNS_REQUIRES_WORKER,
+  upsertMonkeytypeResultsFromEnvironmentEffect,
 } from "$lib/typing-runs/service";
 
 describe("TypingRunsAgent RPC service", () => {
@@ -125,6 +130,46 @@ describe("TypingRunsAgent RPC service", () => {
       expect(second).toEqual({ status: "duplicate", correlationState: "pending" });
     }),
   );
+
+  it.effect("matches an ingested run against stored Monkeytype results", () =>
+    Effect.gen(function* () {
+      const agent = new FakeTypingRunsAgent();
+      const env = envFor(agent);
+
+      expect(
+        yield* upsertMonkeytypeResultsFromEnvironmentEffect(
+          env,
+          "user-1",
+          {
+            data: [
+              {
+                _id: "res_1",
+                wpm: 101,
+                acc: 98.2,
+                timestamp: Date.parse("2026-07-04T12:03:00.000Z"),
+              },
+            ],
+          },
+          Date.parse("2026-07-04T12:04:00.000Z"),
+        ),
+      ).toBe(1);
+
+      const stored = yield* ingestTypingRunFromEnvironmentEffect(env, "user-1", {
+        capture: sampleCapture({ monkeytypeResultId: "res_1" }),
+        idempotencyKey: "run-match",
+      });
+      expect(stored).toEqual({ status: "stored", correlationState: "matched" });
+    }),
+  );
+
+  it.effect("fails in the error channel when the typing-runs agent is unbound", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        listExtensionDevicesFromEnvironmentEffect(undefined, "user-1"),
+      );
+      expect(error.message).toBe(TYPING_RUNS_REQUIRES_WORKER);
+    }),
+  );
 });
 
 class FakeTypingRunsAgent {
@@ -137,6 +182,8 @@ class FakeTypingRunsAgent {
   >();
   readonly choices = new Map<string, KeyboardChoicesResponse>();
   readonly runs = new Map<string, IngestRunResponse>();
+  readonly captures = new Map<string, MonkeytypeRunCapture>();
+  readonly results = new Map<string, NormalizedMonkeytypeResult[]>();
 
   async createPairingToken(
     userId: string,
@@ -212,7 +259,9 @@ class FakeTypingRunsAgent {
     const key = `${userId}:${capture.idempotencyKey ?? idempotencyKeyForCapture(capture)}`;
     const existing = this.runs.get(key);
     if (existing) return { status: "duplicate", correlationState: existing.correlationState };
-    const result: IngestRunResponse = { status: "stored", correlationState: "pending" };
+    const decision = correlateCapture(capture, this.results.get(userId) ?? []);
+    const result: IngestRunResponse = { status: "stored", correlationState: decision.state };
+    this.captures.set(key, capture);
     this.runs.set(key, result);
     return result;
   }
@@ -221,12 +270,28 @@ class FakeTypingRunsAgent {
     return { allowed: true, retryAfterSeconds: 0 };
   }
 
-  async upsertMonkeytypeResults(): Promise<number> {
-    return 0;
+  async upsertMonkeytypeResults(
+    userId: string,
+    rows: NormalizedMonkeytypeResult[],
+  ): Promise<number> {
+    this.results.set(userId, rows);
+    return rows.length;
   }
 
-  async retryPendingCorrelation(): Promise<number> {
-    return 0;
+  async retryPendingCorrelation(userId: string): Promise<number> {
+    let updated = 0;
+    for (const [key, run] of this.runs) {
+      if (!key.startsWith(`${userId}:`)) continue;
+      const capture = this.captures.get(key);
+      if (!capture) continue;
+      if (run.correlationState !== "pending" && run.correlationState !== "unmatched") continue;
+      const stored = this.results.get(userId) ?? [];
+      const decision = correlateCapture(capture, stored, { hasFreshSync: stored.length > 0 });
+      if (decision.state === run.correlationState) continue;
+      this.runs.set(key, { ...run, correlationState: decision.state });
+      updated += 1;
+    }
+    return updated;
   }
 }
 
@@ -239,7 +304,7 @@ function envFor(agent: FakeTypingRunsAgent): Cloudflare.Env {
   } as unknown as Cloudflare.Env;
 }
 
-function sampleCapture(): MonkeytypeRunCapture {
+function sampleCapture(overrides: Partial<MonkeytypeRunCapture> = {}): MonkeytypeRunCapture {
   return {
     source: "monkeytype-extension-dom-v1",
     capturedAt: "2026-07-04T12:03:00.000Z",
@@ -269,5 +334,6 @@ function sampleCapture(): MonkeytypeRunCapture {
       version: "0.1.0",
       parserVersion: "dom-v1",
     },
+    ...overrides,
   };
 }

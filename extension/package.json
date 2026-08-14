@@ -12,7 +12,8 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.23.0"
+    "@lucide/svelte": "^1.23.0",
+    "effect": "4.0.0-beta.98"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",

@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { PlatformError } from "$lib/effect/errors";
 import type { ExtensionSafeUser, ExtensionSessionResponse } from "$lib/typing-runs/contracts";
 import {
   decodeIngestRunRequestEffect as decodeIngestRunRequestBoundaryEffect,
@@ -78,7 +79,10 @@ export function extensionError(request: Request, error: unknown, fallback: strin
     return extensionJson(request, { error: error.message }, error.status, extra);
   }
 
-  if (error instanceof Error && error.message === TYPING_RUNS_REQUIRES_WORKER) {
+  if (
+    (error instanceof PlatformError || error instanceof Error) &&
+    error.message === TYPING_RUNS_REQUIRES_WORKER
+  ) {
     return extensionJson(request, { error: error.message }, 503);
   }
 

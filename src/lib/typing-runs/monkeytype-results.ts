@@ -1,95 +1,163 @@
-export interface NormalizedMonkeytypeResult {
-  id: string;
-  timestampMs: number;
-  wpm: number;
-  rawWpm: number | null;
-  acc: number;
-  consistency: number | null;
-  testDuration: number | null;
-  mode: string | null;
-  mode2: string | null;
-  syncedAtMs: number;
-  payload: unknown;
-}
+import { Effect, Option, Schema } from "effect";
 
-type UnknownRecord = Record<string, unknown>;
+import { BoundaryDecodeError } from "$lib/effect/errors";
 
-export function normalizeMonkeytypeResults(
+export const NormalizedMonkeytypeResultSchema = Schema.Struct({
+  id: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+  timestampMs: Schema.Finite,
+  wpm: Schema.Finite,
+  rawWpm: Schema.NullOr(Schema.Finite),
+  acc: Schema.Finite,
+  consistency: Schema.NullOr(Schema.Finite),
+  testDuration: Schema.NullOr(Schema.Finite),
+  mode: Schema.NullOr(Schema.String),
+  mode2: Schema.NullOr(Schema.String),
+  syncedAtMs: Schema.Finite,
+  payload: Schema.Unknown,
+});
+
+export interface NormalizedMonkeytypeResult extends Schema.Schema.Type<
+  typeof NormalizedMonkeytypeResultSchema
+> {}
+
+const finiteMetric = Schema.Union([Schema.Finite, Schema.NumberFromString]);
+const optionalMetric = Schema.optionalKey(finiteMetric);
+const optionalText = Schema.optionalKey(Schema.String);
+
+export const MonkeytypeResultWireSchema = Schema.Struct({
+  _id: optionalText,
+  id: optionalText,
+  wpm: finiteMetric,
+  rawWpm: optionalMetric,
+  raw: optionalMetric,
+  acc: optionalMetric,
+  accuracy: optionalMetric,
+  consistency: optionalMetric,
+  testDuration: optionalMetric,
+  time: optionalMetric,
+  timestamp: optionalMetric,
+  timestampMs: optionalMetric,
+  mode: optionalText,
+  mode2: optionalText,
+});
+
+const MonkeytypeResultListSchema = Schema.Array(Schema.Unknown);
+const MonkeytypeResultsDataArraySchema = Schema.Struct({
+  data: MonkeytypeResultListSchema,
+});
+const MonkeytypeResultsNamedArraySchema = Schema.Struct({
+  results: MonkeytypeResultListSchema,
+});
+const MonkeytypeResultsNestedSchema = Schema.Struct({
+  data: Schema.Struct({
+    results: MonkeytypeResultListSchema,
+  }),
+});
+const MonkeytypeResultsWrappedSchema = Schema.Struct({
+  data: Schema.Unknown,
+});
+const MonkeytypeResultsObjectSchema = Schema.Record(Schema.String, Schema.Unknown);
+
+export const decodeNormalizedMonkeytypeResultsEffect = Effect.fn(
+  "TypingRuns.decodeNormalizedMonkeytypeResults",
+)((raw: unknown) =>
+  Schema.decodeUnknownEffect(Schema.Array(NormalizedMonkeytypeResultSchema))(raw).pipe(
+    Effect.mapError(
+      (cause) =>
+        new BoundaryDecodeError({
+          operation: "typing-runs.decode-normalized-monkeytype-results",
+          message: `Stored Monkeytype results did not match their contract: ${String(cause)}`,
+          cause,
+        }),
+    ),
+  ),
+);
+
+export const decodeMonkeytypeResultsEffect = Effect.fn("TypingRuns.decodeMonkeytypeResults")(
+  function* (payload: unknown, syncedAtMs: number) {
+    const rows = yield* decodeMonkeytypeResultRowsEffect(payload);
+    const decoded = yield* Effect.forEach(rows, (row) =>
+      Schema.decodeUnknownEffect(MonkeytypeResultWireSchema)(row).pipe(
+        Effect.map((wire) => normalizeWireResult(wire, row, syncedAtMs)),
+        Effect.option,
+      ),
+    );
+
+    const seen = new Set<string>();
+    const normalized: NormalizedMonkeytypeResult[] = [];
+    for (const candidate of decoded) {
+      if (Option.isNone(candidate)) continue;
+      const row = candidate.value;
+      if (!row || seen.has(row.id)) continue;
+      seen.add(row.id);
+      normalized.push(row);
+    }
+    return normalized;
+  },
+);
+
+const decodeMonkeytypeResultRowsEffect = Effect.fn("TypingRuns.decodeMonkeytypeResultRows")(
+  (payload: unknown) =>
+    Effect.firstSuccessOf([
+      Schema.decodeUnknownEffect(MonkeytypeResultListSchema)(payload),
+      Schema.decodeUnknownEffect(MonkeytypeResultsDataArraySchema)(payload).pipe(
+        Effect.map((value) => value.data),
+      ),
+      Schema.decodeUnknownEffect(MonkeytypeResultsNamedArraySchema)(payload).pipe(
+        Effect.map((value) => value.results),
+      ),
+      Schema.decodeUnknownEffect(MonkeytypeResultsNestedSchema)(payload).pipe(
+        Effect.map((value) => value.data.results),
+      ),
+      Schema.decodeUnknownEffect(MonkeytypeResultsWrappedSchema)(payload).pipe(
+        Effect.map((value) => (value.data && typeof value.data === "object" ? [value.data] : [])),
+      ),
+      Schema.decodeUnknownEffect(MonkeytypeResultsObjectSchema)(payload).pipe(
+        Effect.map((value) => [value]),
+      ),
+    ]).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BoundaryDecodeError({
+            operation: "typing-runs.decode-monkeytype-results-envelope",
+            message: `Monkeytype results payload did not match its contract: ${String(cause)}`,
+            cause,
+          }),
+      ),
+    ),
+);
+
+function normalizeWireResult(
+  wire: typeof MonkeytypeResultWireSchema.Type,
   payload: unknown,
   syncedAtMs: number,
-): NormalizedMonkeytypeResult[] {
-  const rows = resultRows(payload);
-  const seen = new Set<string>();
-  const normalized: NormalizedMonkeytypeResult[] = [];
+): NormalizedMonkeytypeResult | null {
+  const id = readText(wire._id) ?? readText(wire.id);
+  const timestampMs = normalizeTimestampMs(wire.timestampMs ?? wire.timestamp);
+  const acc = wire.acc ?? wire.accuracy;
+  if (!id || timestampMs === null || acc === undefined) return null;
 
-  for (const row of rows) {
-    const id = readText(row, ["_id", "id"]);
-    const timestampMs = readTimestampMs(row, ["timestamp", "timestampMs"]);
-    const wpm = readFinite(row, ["wpm"]);
-    const acc = readFinite(row, ["acc", "accuracy"]);
-    if (!id || timestampMs === null || wpm === null || acc === null) continue;
-    if (seen.has(id)) continue;
-    seen.add(id);
-
-    normalized.push({
-      id,
-      timestampMs,
-      wpm,
-      rawWpm: readFinite(row, ["rawWpm", "raw"]),
-      acc,
-      consistency: readFinite(row, ["consistency"]),
-      testDuration: readFinite(row, ["testDuration", "time"]),
-      mode: readText(row, ["mode"]),
-      mode2: readText(row, ["mode2"]),
-      syncedAtMs,
-      payload: row,
-    });
-  }
-
-  return normalized;
+  return {
+    id,
+    timestampMs,
+    wpm: wire.wpm,
+    rawWpm: wire.rawWpm ?? wire.raw ?? null,
+    acc,
+    consistency: wire.consistency ?? null,
+    testDuration: wire.testDuration ?? wire.time ?? null,
+    mode: readText(wire.mode),
+    mode2: readText(wire.mode2),
+    syncedAtMs,
+    payload,
+  };
 }
 
-function resultRows(payload: unknown): UnknownRecord[] {
-  const value = unwrapData(payload);
-  if (Array.isArray(value)) return value.map(asRecord).filter((row) => row !== null);
-  const record = asRecord(value);
-  if (!record) return [];
-  const nested = record.results ?? record.data;
-  if (Array.isArray(nested)) return nested.map(asRecord).filter((row) => row !== null);
-  return [record];
+function readText(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
-function unwrapData(value: unknown): unknown {
-  const record = asRecord(value);
-  return record && "data" in record ? record.data : value;
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function readText(record: UnknownRecord, keys: string[]): string | null {
-  for (const key of keys) {
-    const raw = record[key];
-    if (typeof raw === "string" && raw.trim()) return raw.trim();
-  }
-  return null;
-}
-
-function readFinite(record: UnknownRecord, keys: string[]): number | null {
-  for (const key of keys) {
-    const raw = record[key];
-    const value =
-      typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
-    if (Number.isFinite(value)) return value;
-  }
-  return null;
-}
-
-function readTimestampMs(record: UnknownRecord, keys: string[]): number | null {
-  const value = readFinite(record, keys);
-  if (value === null) return null;
+function normalizeTimestampMs(value: number | undefined): number | null {
+  if (value === undefined || !Number.isFinite(value)) return null;
   return value < 10_000_000_000 ? Math.round(value * 1000) : Math.round(value);
 }
