@@ -212,7 +212,7 @@
   const splitTransportCopy = $derived.by(() => {
     if (isZmkDevice(profile)) return "ZMK wireless splits use BLE.";
     if (isSplitKeyboard(profile)) return "Choose the link between halves.";
-    return "Split options unlock for split layouts.";
+    return "Split options apply when the board is split.";
   });
 
   const osItems = [
@@ -681,7 +681,7 @@
         return yield* Effect.fail(
           platformError(
             "firmware-target.zmk-missing",
-            `No ZMK board or shield target matched “${query}”.`,
+            `No ZMK board or shield matched "${query}".`,
           ),
         );
       }
@@ -1011,14 +1011,14 @@
         taggedRuns = runsResult.success;
       } else {
         failures.push(
-          clientErrorMessage(runsResult.failure, "Tagged runs could not be loaded."),
+          clientErrorMessage(runsResult.failure, "Could not load tagged runs."),
         );
       }
       if (statsResult._tag === "Success") {
         typingRunStats = statsResult.success;
       } else {
         failures.push(
-          clientErrorMessage(statsResult.failure, "Tagged run stats could not be loaded."),
+          clientErrorMessage(statsResult.failure, "Could not load tagged run stats."),
         );
       }
       if (failures.length > 0) extensionError = failures.join(" ");
@@ -1057,7 +1057,7 @@
             () =>
               (extensionError = clientErrorMessage(
                 error,
-                "Tagged run correlation could not be retried.",
+                "Could not retry tagged-run matching.",
               )),
           ),
         ),
@@ -1534,7 +1534,7 @@
       <Card.Root class={cn(settingsCardClass, "transport-card col-span-full")}>
         <Card.Header class={settingsCardHeaderClass}>
           <div class={cardTitleStackClass}>
-            <Card.Title>Split Transport</Card.Title>
+            <Card.Title>Split transport</Card.Title>
             <Card.Description>{splitTransportCopy}</Card.Description>
           </div>
           <span class={transportChipClass}>{activeTransport.name}</span>
@@ -1572,8 +1572,8 @@
             <Card.Title>Firmware target</Card.Title>
             <Card.Description>
               {profile.firmware === "qmk"
-                ? "Select the QMK keyboard and layout used by GitHub builds."
-                : "Select the ZMK controller and shield targets used by GitHub builds."}
+                ? "GitHub builds use this QMK keyboard and layout."
+                : "GitHub builds use this ZMK board and these shields."}
             </Card.Description>
           </div>
           <span class={integrationScopeClass} data-connected={generatedFirmware.buildReady}>
@@ -1597,11 +1597,10 @@
                       ? "Loading catalog…"
                       : `${qmkCatalogOptions.length} matches`
                   }
-                  title="Select a VIA definition and resolve its exact QMK build target"
+                  title="Pick a VIA keyboard to fill the QMK fields"
                 />
                 <small class={firmwareTargetHelpClass}>
-                  Selecting a VIA definition resolves the QMK keyboard path, layout macro, upstream
-                  repository, and pinned revision automatically.
+                  Pick a VIA keyboard. Klakson fills the QMK path, layout, repo, and revision.
                 </small>
               </div>
 
@@ -1683,7 +1682,7 @@
                   <Input
                     class={cn(firmwareTargetInputClass, "min-w-0 flex-1")}
                     bind:value={zmkTargetQuery}
-                    placeholder="corne, nice!nano, glove80…"
+                    placeholder="corne, nice!nano, glove80"
                     autocomplete="off"
                     spellcheck="false"
                     onkeydown={(event) => {
@@ -1766,15 +1765,14 @@
             {/if}
 
             <p class={firmwareTargetHelpClass}>
-              These values are stored with this keyboard profile and determine generated source,
-              branch contents, and build artifacts. The current editor key order is saved the first
-              time you set a target.
+              Saved on this profile. Builds and generated source use these fields. The editor key
+              order is stored the first time you save a target.
             </p>
 
             {#if blockingFirmwareDiagnostics.length > 0}
               <div class={firmwareTargetDiagnosticListClass} role="alert">
                 {#each blockingFirmwareDiagnostics as item (firmwareDiagnosticKey(item))}
-                  <span><strong>{item.path ?? item.code}</strong> — {item.message}</span>
+                  <span><strong>{item.path ?? item.code}</strong>. {item.message}</span>
                 {/each}
               </div>
             {/if}
@@ -1802,7 +1800,7 @@
               class={integrationPrimaryButtonClass}
               disabled={firmwareTargetSaving}
             >
-              {firmwareTargetSaving ? "Saving…" : "Save firmware target"}
+              {firmwareTargetSaving ? "Saving" : "Save firmware target"}
             </Button>
             <Button variant="ghost" size="sm" href="/versions" class={commandButtonClass}>
               Review build
@@ -1839,7 +1837,7 @@
             <Card.Title>Monkeytype</Card.Title>
           </div>
           <span class={integrationScopeClass} data-connected={shell.monkeytype.connected}>
-            {shell.monkeytype.connected ? "connected" : "data source"}
+            {shell.monkeytype.connected ? "connected" : "offline"}
           </span>
         </Card.Header>
         <Card.Content class={monkeytypeSettingsClass}>
@@ -1859,10 +1857,10 @@
                 spellcheck="false"
                 aria-invalid={monkeytypeNeedsApeKey}
                 aria-describedby="monkeytype-apekey-help"
-                placeholder={shell.monkeytype.connected ? "Stored key stays encrypted" : "Paste ApeKey"}
+                placeholder={shell.monkeytype.connected ? "Leave blank to keep the stored key" : "Paste ApeKey"}
               />
               <p id="monkeytype-apekey-help" class={monkeytypeHelpClass}>
-                Create an active ApeKey in Monkeytype. It is stored encrypted.
+                Create an ApeKey in Monkeytype. Klakson stores it encrypted.
               </p>
             </label>
 
@@ -1928,7 +1926,7 @@
               {monkeytypeError ?? shell.monkeytype.error}
             </p>
           {:else if shell.monkeytype.connected && shell.monkeytype.stale}
-            <p class={cn(noteMessageClass, "monkeytype-note")} role="status">Stale sync</p>
+            <p class={cn(noteMessageClass, "monkeytype-note")} role="status">Stats are stale. Refresh.</p>
           {/if}
         </Card.Content>
       </Card.Root>
@@ -1936,7 +1934,7 @@
       <Card.Root class={cn(settingsCardClass, "extension-card")}>
         <Card.Header class={settingsCardHeaderClass}>
           <div class={cardTitleStackClass}>
-            <Card.Title>Monkeytype run tagger</Card.Title>
+            <Card.Title>Monkeytype tagging</Card.Title>
           </div>
           <span class={extensionScopeClass} data-connected={activeExtensionDevices.length > 0}>
             {activeExtensionDevices.length} paired
@@ -1987,7 +1985,7 @@
                   </span>
                   <div class={extensionDeviceCopyClass}>
                     <strong class={extensionDeviceTitleClass}
-                      >{device.label ?? "Monkeytype tagger"}</strong
+                      >{device.label ?? "Monkeytype tagging"}</strong
                     >
                     <small class={extensionDeviceMetaClass}>
                       {device.extensionVersion ?? "unknown"} · last {shortDate(device.lastSeenAt)}
@@ -2199,7 +2197,7 @@
       <Card.Root class={cn(settingsCardClass, "app-card")}>
         <Card.Header class={settingsCardHeaderClass}>
           <div class={cardTitleStackClass}>
-            <Card.Title>App Preferences</Card.Title>
+            <Card.Title>App preferences</Card.Title>
           </div>
           <span class={appScopeClass}>local</span>
         </Card.Header>

@@ -406,7 +406,7 @@ function resolveApeKeyEffect(
     return Effect.fail(
       APIError.from("BAD_REQUEST", {
         code: "MONKEYTYPE_APE_KEY_REQUIRED",
-        message: "Enter a Monkeytype ApeKey to connect this data source.",
+        message: "Enter a Monkeytype ApeKey to connect.",
       }),
     );
   }
