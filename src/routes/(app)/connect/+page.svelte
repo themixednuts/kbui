@@ -52,11 +52,9 @@
   const webBluetoothSupported = $derived(!browser || Boolean(navigator.bluetooth));
   const webSerialSupported = $derived(!browser || Boolean(navigator.serial));
 
-  // ── v2 design: centered "Step 1 · Detect" column with a device card ──────────
   const pageClass =
     "connect-view flex min-h-full items-center justify-center p-kb-40 max-[640px]:p-kb-16";
   const colClass = "connect-onboarding w-[560px] max-w-full";
-  const kickerClass = "font-mono text-[10px] uppercase tracking-[0.18em] text-ink-3";
   const h1Class = "m-0 mb-kb-10 text-[34px] leading-[1.05] tracking-[-0.01em] text-ink";
   const proseClass = "m-0 mb-kb-24 max-w-[460px] text-[15px] leading-[1.55] text-ink-2";
   const cardClass =
@@ -145,10 +143,7 @@
         transport: createWebBluetoothZmkStudioTransport(),
         workbench,
       }).pipe(
-        Effect.map(
-          (result) =>
-            `${result.message}. Real BLE is hardware-unverified until tested with a ZMK Studio board.`,
-        ),
+        Effect.map((result) => `${result.message}. Treat Bluetooth as experimental.`),
       ),
     );
   }
@@ -168,10 +163,7 @@
         transport: createWebSerialZmkStudioTransport(),
         workbench,
       }).pipe(
-        Effect.map(
-          (result) =>
-            `${result.message}. Real USB serial is hardware-unverified until tested with a ZMK Studio board.`,
-        ),
+        Effect.map((result) => `${result.message}. Treat USB serial as experimental.`),
       ),
     );
   }
@@ -271,11 +263,10 @@
 
 <section class={pageClass}>
   <div class={colClass}>
-    <div class={kickerClass}>Step 1 · Detect</div>
     <h1 class={h1Class}>Connect a keyboard</h1>
     <p class={proseClass}>
-      Plug in over USB or pair over Bluetooth. Klakson reads your layout straight from the board's
-      VIA / ZMK metadata — no setup files. You can also import a VIA definition or start on a blank
+      Plug in over USB or pair over Bluetooth. Klakson reads the keymap from the board's VIA or ZMK
+      metadata. No extra files. Import a VIA JSON if you already have one, or start with a blank
       local profile.
     </p>
 
@@ -290,7 +281,7 @@
           {@render deviceRow({
             tag: "USB",
             title: busyAction === "disconnect" ? "Disconnecting device" : shell.device.board ?? "Connected device",
-            meta: "Keep the draft and stop live writes",
+            meta: "Keep the local draft. Stop writing to the board.",
             action: busyAction === "disconnect" ? "..." : "Disconnect",
             testid: "disconnect-device",
             onclick: disconnectDevice,
@@ -301,7 +292,7 @@
         {@render deviceRow({
           tag: "HID",
           title: busyAction === "real" ? "Opening browser prompt" : "Connect device (VIA)",
-          meta: "VIA over WebHID · imports a matched keymap",
+          meta: "VIA over WebHID. Imports the matched keymap.",
           action: busyAction === "real" ? "..." : "Connect",
           testid: "connect-device",
           onclick: connectDevice,
