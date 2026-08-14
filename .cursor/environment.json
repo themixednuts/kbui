@@ -1,0 +1,10 @@
+{
+  "install": "bash .cursor/cloud-install.sh",
+  "start": "export PATH=\"$HOME/.bun/bin:node_modules/.bin:$PATH\"; vp run dev:worker -- --local",
+  "ports": [
+    {
+      "name": "worker",
+      "port": 8787
+    }
+  ]
+}
