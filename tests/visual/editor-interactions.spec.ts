@@ -1,4 +1,24 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+function boxesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+  slack = 1,
+) {
+  return (
+    a.x < b.x + b.width - slack &&
+    a.x + a.width - slack > b.x &&
+    a.y < b.y + b.height - slack &&
+    a.y + a.height - slack > b.y
+  );
+}
+
+async function expectNoOverlap(left: Locator, right: Locator) {
+  const [leftBox, rightBox] = await Promise.all([left.boundingBox(), right.boundingBox()]);
+  expect(leftBox).not.toBeNull();
+  expect(rightBox).not.toBeNull();
+  expect(boxesOverlap(leftBox!, rightBox!)).toBe(false);
+}
 
 test("keeps the compact inspector coherent and resizable", async ({ page }) => {
   await page.setViewportSize({ width: 1269, height: 740 });
@@ -143,6 +163,52 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   expect(nodeBox).not.toBeNull();
   expect(Math.abs(keyBox!.width - nodeBox!.width)).toBeLessThan(1);
   expect(Math.abs(keyBox!.height - nodeBox!.height)).toBeLessThan(1);
+});
+
+test("keeps mid-width toolbar controls from overlapping", async ({ page }) => {
+  // 62px rail + 831px editor matches the pane where labeled firmware pills
+  // used to paint over Keys/Lighting. Lighting is active so the selection
+  // chip is in the same row, which is the tightest two-row case.
+  await page.setViewportSize({ width: 893, height: 800 });
+  await page.goto("/editor", { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+
+  const toolbar = page.locator(".editor-toolbar");
+  await toolbar.getByRole("navigation", { name: "Editor lens" }).getByRole("button", { name: "Lighting" }).click();
+
+  const lens = toolbar.getByRole("navigation", { name: "Editor lens" });
+  const firmware = toolbar.getByRole("navigation", { name: "Firmware edit target" });
+  const layout = toolbar.getByRole("navigation", { name: "Editor layout" });
+  const syncChip = toolbar.locator(".editor-sync-chip");
+  const selectedChip = toolbar.getByText("0 selected", { exact: true });
+  const primaryTools = toolbar.locator(".editor-primary-tools");
+  const layerRow = toolbar.locator(".editor-layer-row");
+
+  const [toolbarBox, primaryBox, layerBox] = await Promise.all([
+    toolbar.boundingBox(),
+    primaryTools.boundingBox(),
+    layerRow.boundingBox(),
+  ]);
+  expect(toolbarBox).not.toBeNull();
+  expect(primaryBox).not.toBeNull();
+  expect(layerBox).not.toBeNull();
+  expect(toolbarBox!.width).toBeGreaterThan(800);
+  expect(toolbarBox!.width).toBeLessThan(960);
+  expect(layerBox!.y).toBeGreaterThan(primaryBox!.y + 4);
+
+  await expect(firmware).toBeVisible();
+  await expect(layout).toBeVisible();
+  await expect(lens.getByText("Lighting", { exact: true })).toBeVisible();
+  await expect(firmware.getByText("VIA live", { exact: true })).toBeHidden();
+  await expect(firmware.getByText("QMK source", { exact: true })).toBeHidden();
+  await expect(selectedChip).toBeVisible();
+  await expect(syncChip).toBeVisible();
+
+  await expectNoOverlap(lens, firmware);
+  await expectNoOverlap(firmware, layout);
+  await expectNoOverlap(layout, syncChip);
+  await expectNoOverlap(syncChip, selectedChip);
+  expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
 });
 
 test("collapses the editor toolbar to one row in a narrow pane", async ({ page }) => {
