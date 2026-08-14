@@ -708,9 +708,9 @@
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <p class={sideCopyClass}>
-              Bundle these {workbench.changes.length} change{workbench.changes.length === 1
+              Save these {workbench.changes.length} edit{workbench.changes.length === 1
                 ? ""
-                : "s"} into a named point on <strong>{workbench.activeVariant.name}</strong>.
+                : "s"} as a named point on <strong>{workbench.activeVariant.name}</strong>.
             </p>
 
             <label class={fieldClass}>
@@ -738,40 +738,38 @@
           <Card.Content class={cleanBodyClass}>
             {#if workbench.changes.length === 0}
               <CheckCircle2 size={18} />
-              <span>Draft matches the current base.</span>
+              <span>No uncommitted edits.</span>
             {:else}
               <GitCommit size={18} />
-              <span>{workbench.changes.length} local change{workbench.changes.length === 1 ? "" : "s"} waiting.</span>
+              <span>{workbench.changes.length} local edit{workbench.changes.length === 1 ? "" : "s"} waiting.</span>
             {/if}
           </Card.Content>
         </Card.Root>
 
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Delivery</Card.Title>
+            <Card.Title class={versionsCardTitleClass}>Where edits go</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
-            <div class={deliveryGridClass} aria-label="Change delivery summary">
+            <div class={deliveryGridClass} aria-label="Where edits go">
               <div class={deliveryLaneClass}>
                 <div class={deliveryLaneTextClass}>
                   <span class={deliveryLaneLabelClass}>Live write</span>
-                  <small class={deliveryLaneCopyClass}>
-                    {profile.protocol === "zmk-studio" ? "ZMK Studio bindings" : "VIA dynamic keymap"}
-                  </small>
+                  <small class={deliveryLaneCopyClass}>Written to the board now</small>
                 </div>
                 <strong class={deliveryLaneValueClass}>{liveSummary.liveWritable}</strong>
               </div>
               <div class={deliveryLaneClass}>
                 <div class={deliveryLaneTextClass}>
                   <span class={deliveryLaneLabelClass}>Build required</span>
-                  <small class={deliveryLaneCopyClass}>Generated firmware source</small>
+                  <small class={deliveryLaneCopyClass}>Needs a firmware build</small>
                 </div>
                 <strong class={deliveryLaneValueClass}>{liveSummary.rebuildRequired}</strong>
               </div>
               <div class={deliveryLaneClass}>
                 <div class={deliveryLaneTextClass}>
                   <span class={deliveryLaneLabelClass}>Profile only</span>
-                  <small class={deliveryLaneCopyClass}>Saved in local metadata</small>
+                  <small class={deliveryLaneCopyClass}>Stays in this profile</small>
                 </div>
                 <strong class={deliveryLaneValueClass}>{liveSummary.localOnly}</strong>
               </div>
@@ -810,7 +808,7 @@
                 <dt class={branchKeyClass}>Updates</dt>
                 <dd class={branchValueClass}>
                   {firmwareBuildEvents.connected
-                    ? "live · self-healing"
+                    ? "live"
                     : "reconnecting"}
                 </dd>
               </div>
@@ -852,7 +850,7 @@
                     <strong>Complete the firmware target before building.</strong>
                     <ul class={firmwareDiagnosticListClass}>
                       {#each blockingFirmwareDiagnostics as item}
-                        <li><span class="font-mono">{item.path ?? item.code}</span> — {item.message}</li>
+                        <li><span class="font-mono">{item.path ?? item.code}</span>. {item.message}</li>
                       {/each}
                     </ul>
                     <Button
@@ -874,7 +872,7 @@
                   onclick={() => requestFirmwareGithubSync(true)}
                 >
                   <Workflow size={15} />
-                  {firmwareGithubAction === "build" ? "Dispatching…" : "Build firmware"}
+                  {firmwareGithubAction === "build" ? "Dispatching" : "Build firmware"}
                 </Button>
                 <Button
                   variant="outline"
@@ -885,7 +883,7 @@
                 >
                   <UploadCloud size={14} />
                   {firmwareGithubAction === "sync"
-                    ? "Syncing…"
+                    ? "Syncing"
                     : managedFirmwareRepository
                       ? "Sync branch"
                       : "Create repo & sync"}
@@ -930,7 +928,7 @@
           {#if workbench.savePoints.length === 0}
             <div class={timelineEmptyClass}>
               <History size={24} />
-              <span>No save points yet. Create one from the Changes tab.</span>
+              <span>No save points yet. Make one from Changes.</span>
             </div>
           {:else}
             <div class={timelineTracksClass}>
@@ -1065,7 +1063,7 @@
               </div>
 
             {:else}
-              <div class={sideEmptyClass}>Select a save point to inspect.</div>
+              <div class={sideEmptyClass}>Pick a save point.</div>
             {/if}
           </Card.Content>
         </Card.Root>
@@ -1080,7 +1078,7 @@
 
         <Card.Root>
           <Card.Header class={versionsCardHeaderClass}>
-            <Card.Title class={versionsCardTitleClass}>Branch off a variant</Card.Title>
+            <Card.Title class={versionsCardTitleClass}>New variant</Card.Title>
           </Card.Header>
           <Card.Content class={versionsCardBodyClass}>
             <label class={fieldClass}>
@@ -1089,7 +1087,7 @@
                 class={versionInputClass}
                 value={selectedSavePoint
                   ? `${selectedVariant?.name ?? selectedSavePoint.variantId} @ ${pointLabel(selectedSavePoint.id)}`
-                  : "Select a save point"}
+                  : "Pick a save point"}
                 readonly
               />
             </label>

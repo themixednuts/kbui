@@ -57,7 +57,7 @@
             {#if changes.length === 0}
               <div class="empty-state grid min-h-[96px] place-items-center gap-kb-8 font-mono text-kb-12 text-ink-3">
                 <Database size={18} />
-                <span>No local changes</span>
+                <span>No local edits</span>
               </div>
             {:else}
               {#each changes as change (change.id)}
@@ -68,9 +68,9 @@
                     <small class="{changeCopyClass} mt-kb-2 text-ink-3">{change.scope} · {change.kind}</small>
                     {#if change.before || change.after}
                       <div class="mt-kb-6 flex min-w-0 items-center gap-kb-6">
-                        <span class={diffBeforeClass} title={change.before || "—"}>{change.before || "—"}</span>
+                        <span class={diffBeforeClass} title={change.before || "--"}>{change.before || "--"}</span>
                         <ArrowRight size={13} class="shrink-0 text-ink-3" aria-hidden="true" />
-                        <span class={diffAfterClass} title={change.after || "—"}>{change.after || "—"}</span>
+                        <span class={diffAfterClass} title={change.after || "--"}>{change.after || "--"}</span>
                       </div>
                     {/if}
                   </div>

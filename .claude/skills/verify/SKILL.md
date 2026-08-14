@@ -11,7 +11,7 @@ description: Runtime verification recipe for the kbgui browser app and Wrangler 
    - `/editor`: click a `.board-keycap`; confirm `aside[aria-label="Key inspector"]`, 61 keycaps, and `crossOriginIsolated === true`.
    - `/connect`: follow the **Continue without a device** link and confirm navigation to `/editor`.
    - `/settings?section=keyboard`: save QMK keyboard/layout values, inspect `navigator.storage.getDirectory()/kbui.sqlite3`, reload, and confirm values persist.
-   - `/versions`: confirm the appbar heading and `Change delivery summary`; capture a full-page screenshot.
+   - `/versions`: confirm the appbar heading and `Where edits go`; capture a full-page screenshot.
    - Record browser `console` warnings/errors and `pageerror`; fail on Effect/Fiber/local-store/unhandled failures.
 4. Probe Worker APIs with real HTTP requests:
    - anonymous `GET /api/extension/session` → 200
