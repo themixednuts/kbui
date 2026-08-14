@@ -88,16 +88,24 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   await expect(page.locator('[data-key-id="k1-1"] .marker-slot.combo')).toHaveText("Esc");
   await expect(page.locator('[data-key-id="k1-2"] .marker-slot.combo')).toHaveText("Esc");
 
+  // The toolbar keeps a deliberate two-row shape: mode + firmware target/status
+  // on top, the layer strip full-width beneath. It must never wrap raggedly or
+  // overflow horizontally, at any pane width.
   const toolbar = page.locator(".editor-toolbar");
   const primaryTools = toolbar.locator(".editor-primary-tools");
-  const secondaryTools = toolbar.locator(".editor-secondary-tools");
-  const [primaryBox, secondaryBox] = await Promise.all([
+  const layerRow = toolbar.locator(".editor-layer-row");
+  const [primaryBox, layerBox] = await Promise.all([
     primaryTools.boundingBox(),
-    secondaryTools.boundingBox(),
+    layerRow.boundingBox(),
   ]);
   expect(primaryBox).not.toBeNull();
-  expect(secondaryBox).not.toBeNull();
-  expect(secondaryBox!.y).toBeGreaterThan(primaryBox!.y + 4);
+  expect(layerBox).not.toBeNull();
+  expect(layerBox!.y).toBeGreaterThan(primaryBox!.y + 4);
+  expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
+  // Layers scroll rather than wrapping onto extra rows.
+  expect(
+    await toolbar.locator(".layer-buttons").evaluate((strip) => getComputedStyle(strip).flexWrap),
+  ).toBe("nowrap");
   await expect(page.locator(".key-inspector .inspector-chrome")).toHaveCount(0);
   await expect(page.locator(".fallthrough-chip")).toHaveText("fall-through");
 

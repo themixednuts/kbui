@@ -2,12 +2,14 @@
   import {
     Eye,
     EyeOff,
+    FileCode2,
     Keyboard,
     Lightbulb,
     MousePointer2,
     PanelBottom,
     PanelRight,
     Sparkles,
+    Zap,
   } from "@lucide/svelte";
 
   import { EditorLayout } from "$lib/app";
@@ -30,7 +32,6 @@
   import KeyInspectorDock from "$lib/components/keymap/KeyInspectorDock.svelte";
   import KeyInspectorPanel from "$lib/components/keymap/KeyInspectorPanel.svelte";
   import { Button, Chip, SegmentedNav } from "$lib/components/ui";
-  import * as Tabs from "$lib/components/ui/tabs";
   import type { SegmentItem } from "$lib/components/ui/types";
   import type { LiveSyncLocalOnlyReasonSummary } from "$lib/keyboard/live-sync-classification";
   import type { FirmwareEditIntent } from "$lib/keyboard/schema";
@@ -51,12 +52,19 @@
     "editor-main grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 [container:editor-main/inline-size] max-[640px]:p-0";
   const editorMainSplitClass =
     "grid-rows-[auto_minmax(0,1fr)] gap-0 p-0";
+  // Two deliberate rows at every size: mode + targets/status on top, the layer
+  // strip full-width beneath. The toolbar lives inside a resizable pane, so pane
+  // width — not viewport width — is what actually constrains it; a fixed two-row
+  // shape stays correct at any pane size. Nothing wraps: the layer strip scrolls
+  // and labels collapse to icons rather than breaking to new lines.
   const editorToolbarClass =
-    "editor-toolbar grid min-h-[55px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-kb-12 border-b border-line bg-paper px-kb-20 py-kb-12 max-[640px]:px-kb-12";
+    "editor-toolbar grid min-h-[55px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-10 max-[640px]:px-kb-12";
   const primaryToolbarGroupClass =
-    "editor-primary-tools flex min-w-0 flex-wrap items-center gap-kb-12";
+    "editor-primary-tools col-start-1 row-start-1 flex min-w-0 flex-nowrap items-center gap-kb-10";
   const secondaryToolbarGroupClass =
-    "editor-secondary-tools flex min-w-0 flex-wrap items-center justify-end gap-kb-10";
+    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8";
+  const layerRowClass =
+    "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center";
   const syncNoticeClass =
     "sync-notice grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-kb-10 rounded-lg border border-line bg-surface px-kb-12 py-kb-10 text-kb-12";
   const syncNoticeRebuildClass =
@@ -139,6 +147,20 @@
   const sourceEditLabel = $derived(
     editor.profile.firmware === "zmk" ? "ZMK source" : "QMK source",
   );
+  const firmwareTargetItems: SegmentItem<FirmwareEditIntent>[] = $derived([
+    {
+      value: "live",
+      label: liveEditLabel,
+      icon: Zap,
+      title: `Write edits straight to the keyboard (${liveEditLabel})`,
+    },
+    {
+      value: "source",
+      label: sourceEditLabel,
+      icon: FileCode2,
+      title: `Collect edits into generated firmware source (${sourceEditLabel})`,
+    },
+  ]);
   const failedPreview = $derived(liveSync.failedLanes.slice(0, 3));
   const invalidPreview = $derived(liveSync.invalidChanges.slice(0, 3));
   const rebuildPreview = $derived(liveSync.rebuildRequiredChanges.slice(0, 4));
@@ -211,40 +233,40 @@
           value={editor.lens}
           onselect={(lens) => editor.setLens(lens)}
           ariaLabel="Editor lens"
+          class="@max-[560px]/editor-main:[&_[data-label]]:hidden"
         />
-
-        <EditorLayerStack {editor} />
       </div>
 
       <div class={secondaryToolbarGroupClass}>
-        <Tabs.Root
+        <SegmentedNav
+          items={firmwareTargetItems}
           value={firmwareEditIntent}
-          onValueChange={setFirmwareEditIntent}
-          class="firmware-edit-intent block"
-        >
-          <Tabs.List
-            aria-label="Firmware edit target"
-            class="h-kb-34 min-w-[190px] rounded-lg border border-line bg-surface p-kb-2"
-          >
-            <Tabs.Trigger value="live" class="px-kb-9 text-[11px]">{liveEditLabel}</Tabs.Trigger>
-            <Tabs.Trigger value="source" class="px-kb-9 text-[11px]">{sourceEditLabel}</Tabs.Trigger>
-          </Tabs.List>
-        </Tabs.Root>
+          onselect={setFirmwareEditIntent}
+          ariaLabel="Firmware edit target"
+          class="firmware-edit-intent @max-[820px]/editor-main:[&_[data-label]]:hidden"
+        />
 
+        <!-- Hidden only on phone-sized viewports, where a side inspector is
+             impossible either way. It stays available whenever the pane is merely
+             narrow — that is exactly when you need it to switch back to the dock. -->
         <SegmentedNav
           items={layoutItems}
           value={editor.editorLayout}
           onselect={(layout) => editor.setEditorLayout(layout)}
           iconOnlyAt="topbar"
           ariaLabel="Editor layout"
-          class="editor-layout-seg"
+          class="editor-layout-seg max-[720px]:hidden"
         />
 
         {#if editor.persistenceError}
           <Chip tone="error" title={editor.persistenceError}>Draft save issue</Chip>
         {/if}
 
-        <Chip dot={liveSync.dot} title={liveSync.title} class="editor-sync-chip max-w-[180px]">
+        <Chip
+          dot={liveSync.dot}
+          title={liveSync.title}
+          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px]"
+        >
           {liveSync.label}
         </Chip>
 
@@ -266,6 +288,10 @@
             {editor.lightingSelection.count} selected
           </Chip>
         {/if}
+      </div>
+
+      <div class={layerRowClass}>
+        <EditorLayerStack {editor} />
       </div>
     </header>
 
