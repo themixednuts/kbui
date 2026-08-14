@@ -52,10 +52,10 @@
     "browse-route min-h-full bg-paper";
   const browseShellClass = "browse-shell grid min-w-0 gap-0";
   const browseHeaderClass =
-    "browse-header flex min-h-[58px] items-center justify-end gap-kb-16 border-b border-line px-kb-24 py-kb-10 max-[640px]:px-kb-12";
+    "browse-header flex min-h-[58px] items-center justify-end gap-kb-16 border-b border-line-2 px-kb-24 py-kb-10 max-[640px]:px-kb-12";
   const eyebrowClass = "font-mono text-[10px] tracking-[0.12em] text-ink-3 uppercase";
   const searchBoxClass =
-    "search-box grid h-kb-34 w-[min(100%,420px)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-lg border border-line-2 bg-card px-kb-12 py-0 shadow-card";
+    "search-box grid h-kb-34 w-[min(100%,420px)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-kb-8 rounded-md border border-line-2 bg-card px-kb-12 py-0";
   const filterPanelClass =
     "filter-panel grid min-w-0 gap-kb-12 border-b border-line bg-paper px-kb-24 py-kb-12 max-[640px]:px-kb-12";
   const filterBandClass =

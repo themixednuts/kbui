@@ -58,7 +58,7 @@
   const h1Class = "m-0 mb-kb-10 text-[24px] leading-[1.05] text-ink";
   const proseClass = "m-0 mb-kb-24 max-w-[460px] text-[15px] leading-[1.55] text-ink-2";
   const cardClass =
-    "connect-card overflow-hidden rounded-lg border border-line bg-surface shadow-card";
+    "connect-card overflow-hidden rounded-lg border border-line-2 bg-surface shadow-card";
   const cardHeadClass =
     "flex items-center gap-kb-10 border-b border-line px-kb-16 py-kb-13";
   const cardHeadTitleClass = "m-0 text-kb-14 font-semibold leading-tight text-ink";

@@ -450,14 +450,14 @@
   const appShellClass =
     "new-app-shell grid h-dvh min-h-0 grid-cols-[62px_minmax(0,1fr)] overflow-hidden bg-paper text-ink max-[560px]:grid-cols-[54px_minmax(0,1fr)]";
   const leftRailClass =
-    "left-rail relative z-[2] flex min-h-0 min-w-0 flex-col items-center gap-kb-4 border-r border-line bg-surface px-0 pt-kb-14 pb-kb-12";
+    "left-rail relative z-[2] flex min-h-0 min-w-0 flex-col items-center gap-kb-4 border-r border-line-2 bg-surface px-0 pt-kb-14 pb-kb-12";
   const railBrandClass =
     "rail-brand flex items-center justify-center px-0 pb-kb-12";
   const railNavClass = "rail-nav grid gap-kb-4 px-0 py-0";
   const railNavItemClass =
-    "rail-nav-item relative grid size-[42px] place-items-center rounded-[11px] border border-transparent text-ink-3 no-underline transition-[border-color,background,color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:bg-surface-2 hover:text-ink max-[560px]:size-[40px]";
+    "rail-nav-item relative grid size-[42px] place-items-center rounded-md border border-transparent text-ink-3 no-underline transition-[border-color,background,color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:bg-surface-2 hover:text-ink max-[560px]:size-[40px]";
   const railNavItemActiveClass =
-    "active border-line bg-card text-ink shadow-card before:absolute before:top-1/2 before:left-[-10px] before:h-[18px] before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-coral before:content-[''] hover:border-line hover:bg-card hover:text-ink max-[560px]:before:left-[-7px]";
+    "active border-line-2 bg-card text-ink before:absolute before:top-1/2 before:left-[-10px] before:h-[18px] before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-coral before:content-[''] hover:border-line-2 hover:bg-card hover:text-ink max-[560px]:before:left-[-7px]";
   const railIconClass = "rail-icon size-[20px]";
   const railLabelClass = "rail-label sr-only";
   const railFooterClass =

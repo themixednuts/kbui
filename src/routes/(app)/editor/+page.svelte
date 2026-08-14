@@ -90,7 +90,7 @@
   const boardStageSplitClass =
     "rounded-none border-transparent bg-stage shadow-none";
   const fallthroughChipClass =
-    "fallthrough-chip absolute top-kb-12 right-kb-12 z-20 h-kb-28 min-h-kb-28 gap-kb-6 rounded-pill border-line-2 bg-[color-mix(in_oklch,var(--card-surface)_86%,transparent)] px-kb-10 py-0 font-mono text-[11px] text-ink-2 shadow-card backdrop-blur-[5px] hover:border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] hover:bg-card hover:text-ink data-[active=true]:border-[color-mix(in_oklch,var(--teal)_48%,var(--line-2))] data-[active=true]:bg-[color-mix(in_oklch,var(--teal)_12%,var(--card-surface))] data-[active=true]:text-teal-ink [&_svg]:size-[13px]";
+    "fallthrough-chip absolute top-kb-12 right-kb-12 z-20 h-kb-28 min-h-kb-28 gap-kb-6 rounded-md border-line-2 bg-[color-mix(in_oklch,var(--card-surface)_86%,transparent)] px-kb-10 py-0 font-mono text-[11px] text-ink-2 shadow-none backdrop-blur-[5px] hover:border-[color-mix(in_oklch,var(--coral)_45%,var(--line-2))] hover:bg-card hover:text-ink data-[active=true]:border-[color-mix(in_oklch,var(--teal)_48%,var(--line-2))] data-[active=true]:bg-[color-mix(in_oklch,var(--teal)_12%,var(--card-surface))] data-[active=true]:text-teal-ink [&_svg]:size-[13px]";
   let boardZoom = $state(1);
   let boardPan = $state({ x: 0, y: 0 });
   let flashOverlayOpen = $state(false);

@@ -30,7 +30,7 @@
   type CoachSuggestResultT = typeof CoachSuggestResult.Type;
   import { KeyboardBoard } from "$lib/components/board";
   import EditorLayerStack from "$lib/components/editor/EditorLayerStack.svelte";
-  import { Button, Checkbox, Chip, NativeSelect, Spinner } from "$lib/components/ui";
+  import { Button, Checkbox, Chip, NativeSelect, SegmentedNav, Spinner, type SegmentItem } from "$lib/components/ui";
   import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -125,6 +125,11 @@
       null,
   );
   const recentSessions = $derived(sessions.slice(0, 8));
+  const modeItems: SegmentItem<PracticeMode>[] = [
+    { value: "rust-text", label: "Rust" },
+    { value: "symbols", label: "Symbols" },
+    { value: "nav", label: "Nav" },
+  ];
 
   /** Live workbench profile, or preview-after bindings when coach preview is on. */
   const boardProfile = $derived.by(() => {
@@ -736,21 +741,12 @@
   <div class="grid gap-kb-16 lg:grid-cols-[minmax(0,1fr)_280px]">
     <Card.Root class="overflow-hidden">
       <Card.Header class="flex flex-wrap items-center gap-kb-8 border-b border-line-2 pb-kb-12">
-        <div class="flex flex-wrap gap-kb-6">
-          {#each [
-            { id: "rust-text", label: "Rust" },
-            { id: "symbols", label: "Symbols" },
-            { id: "nav", label: "Nav" },
-          ] as item (item.id)}
-            <Button
-              size="sm"
-              variant={mode === item.id ? "solid" : "ghost"}
-              onclick={() => selectMode(item.id as PracticeMode)}
-            >
-              {item.label}
-            </Button>
-          {/each}
-        </div>
+        <SegmentedNav
+          items={modeItems}
+          value={mode}
+          onselect={(next) => selectMode(next)}
+          ariaLabel="Practice mode"
+        />
         <label class="ml-auto flex items-center gap-kb-6 font-mono text-[11px] text-ink-3 max-[640px]:ml-0">
           <Checkbox
             checked={adaptive}
@@ -845,7 +841,7 @@
             {/if}
           </label>
           <div
-            class="relative flex min-h-[360px] min-w-0 overflow-hidden rounded-keycap border border-line-2 bg-stage [&_.keyboard-board-viewport]:min-h-[300px]"
+            class="relative flex min-h-[360px] min-w-0 overflow-hidden rounded-md border border-line-2 bg-stage [&_.keyboard-board-viewport]:min-h-[300px]"
           >
             <KeyboardBoard
               profile={boardProfile}
@@ -870,7 +866,7 @@
 
         <section class="grid gap-kb-8">
           <div
-            class="mt-buffer overflow-x-auto rounded-keycap border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
+            class="mt-buffer overflow-x-auto rounded-md border border-line-2 bg-paper-2 px-kb-16 py-kb-18 font-mono text-[18px] leading-[1.7] tracking-[0.02em]"
             aria-label="Practice buffer"
             aria-busy={preparing}
           >
@@ -902,7 +898,7 @@
           <section class="flex flex-wrap gap-kb-6">
             {#each upcoming as action, i (action.id)}
               <div
-                class="min-w-[64px] rounded-keycap border px-kb-10 py-kb-8 font-mono text-[12px] {i === 0
+                class="min-w-[64px] rounded-md border px-kb-10 py-kb-8 font-mono text-[12px] {i === 0
                   ? 'border-coral bg-[color-mix(in_oklch,var(--coral)_12%,transparent)]'
                   : 'border-line-2 bg-surface'}"
               >
@@ -985,7 +981,7 @@
             <ul class="grid gap-kb-6">
               {#each suggestion.diffs as diff (diff.keyId + diff.layerId)}
                 <li
-                  class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px]"
+                  class="rounded-md border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px]"
                   class:ring-2={coachMarked.includes(diff.keyId)}
                 >
                   <div>
@@ -1019,7 +1015,7 @@
             <h2 class="text-kb-14 font-semibold leading-tight">Sessions</h2>
             <ul class="grid gap-kb-6">
               {#each recentSessions as item (item.id)}
-                <li class="rounded-keycap border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
+                <li class="rounded-md border border-line-2 bg-surface px-kb-10 py-kb-8 font-mono text-[11px] text-ink-2">
                   {item.wpm ?? "--"} wpm · {item.accuracy}% · {item.mode}
                 </li>
               {/each}

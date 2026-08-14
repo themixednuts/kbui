@@ -5,7 +5,7 @@
 		base: "group/alert relative grid w-full gap-0.5 rounded-lg border px-kb-12 py-kb-10 text-left text-kb-12 has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-kb-10 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",
 		variants: {
 			variant: {
-				default: "border-line bg-surface text-ink",
+				default: "border-line-2 bg-surface text-ink",
 				destructive:
 					"border-[var(--danger-border)] bg-danger-surface text-danger-ink *:data-[slot=alert-description]:text-danger-ink *:[svg]:text-current",
 				success:

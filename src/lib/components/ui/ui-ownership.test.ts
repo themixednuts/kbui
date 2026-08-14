@@ -35,5 +35,8 @@ describe("shadcn component ownership", () => {
     expect(switchPrimitive).not.toMatch(/(?:^|\s)![\w[]/m);
     expect(segmentedNav).toContain('from "./button/index.js"');
     expect(segmentedNav).not.toMatch(/<(?:button|a)\b/);
+    expect(segmentedNav).toContain("rounded-md");
+    expect(segmentedNav).toContain("border-line-2");
+    expect(segmentedNav).not.toContain("rounded-pill");
   });
 });

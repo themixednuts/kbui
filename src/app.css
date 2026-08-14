@@ -336,7 +336,9 @@
   --space-420: 420px;
   --space-560: 560px;
 
-  /* Shape taxonomy: token, control, panel, status. */
+  /* Chrome: 1px --line-2 on controls and surfaces. Radius: --r-1 checkboxes,
+   * --r-2 buttons/fields/segs, --r-3 cards/panels, --r-pill badges/avatars/switches,
+   * --r-keycap physical keys only. */
   --r-1: 5px;
   --r-2: 8px;
   --r-3: 12px;

@@ -32,7 +32,7 @@
 		data-slot="native-select"
 		data-size={size}
 		class={cn(
-			"h-[var(--control-height)] w-full min-w-0 appearance-none rounded-md border border-line-2 bg-surface py-0 pr-kb-28 pl-kb-10 font-mono text-[12px] text-ink shadow-xs outline-none transition-[color,box-shadow,border-color] select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=sm]:h-[var(--control-height-sm)] disabled:pointer-events-none disabled:cursor-not-allowed",
+			"h-[var(--control-height)] w-full min-w-0 appearance-none rounded-md border border-line-2 bg-surface py-0 pr-kb-28 pl-kb-10 font-mono text-[12px] text-ink shadow-none outline-none transition-[color,box-shadow,border-color] select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=sm]:h-[var(--control-height-sm)] disabled:pointer-events-none disabled:cursor-not-allowed",
 			className,
 		)}
 		{...restProps}
