@@ -1,8 +1,4 @@
-export {
-  adaptScript,
-  confidenceChips,
-  type ConfidenceChip,
-} from "./adaptive";
+export { adaptScript, confidenceChips, type ConfidenceChip } from "./adaptive";
 export {
   focusCharsFromScript,
   rankWeakTargets,
@@ -63,6 +59,13 @@ export {
   type BufferDocument,
   type IndentDetectState,
 } from "./buffer";
+export {
+  applyScrollDelta,
+  PRACTICE_CARET_PAD_PX,
+  scrollDeltaToKeepInView,
+  type BoxEdges,
+  type ScrollableBox,
+} from "./caret-in-view";
 export type {
   BufferAtom,
   BufferCursor,
@@ -96,7 +99,11 @@ export {
   withSessionGoal,
   UnknownKeyStrokeError,
 } from "./contracts";
-export { loadPracticeSessionsEffect, savePracticeSessionEffect, PracticePersistError } from "./persist";
+export {
+  loadPracticeSessionsEffect,
+  savePracticeSessionEffect,
+  PracticePersistError,
+} from "./persist";
 export {
   formatPracticeScript,
   formatRustLines,
