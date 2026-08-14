@@ -174,7 +174,10 @@ test("keeps mid-width toolbar controls from overlapping", async ({ page }) => {
   await page.evaluate(() => document.fonts.ready);
 
   const toolbar = page.locator(".editor-toolbar");
-  await toolbar.getByRole("navigation", { name: "Editor lens" }).getByRole("button", { name: "Lighting" }).click();
+  await toolbar
+    .getByRole("navigation", { name: "Editor lens" })
+    .getByRole("button", { name: "Lighting" })
+    .click();
 
   const lens = toolbar.getByRole("navigation", { name: "Editor lens" });
   const firmware = toolbar.getByRole("navigation", { name: "Firmware edit target" });
@@ -268,5 +271,3 @@ test("collapses the editor toolbar to one row in a narrow pane", async ({ page }
   expect(Math.abs(noteBox!.y - bodyBox!.y)).toBeLessThan(8);
   await expect(inheritNote).toContainText("Hatched keys inherit from below");
 });
-
-
