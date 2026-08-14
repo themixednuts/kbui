@@ -17,7 +17,6 @@ export const POST: RequestHandler = (event) =>
     "api.extension.pair",
     Effect.match(
       Effect.gen(function* () {
-        // TODO(rate-limit): throttle by pairing-code hash and install id once the worker has a shared limiter.
         const result = yield* pairExtensionDeviceEffect(event);
         return extensionJson(event.request, result);
       }),

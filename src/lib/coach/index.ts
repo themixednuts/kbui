@@ -30,17 +30,14 @@ export {
   recordAcceptEffect,
 } from "./churn";
 export { suggestCoach, PERSONAL_SAMPLE_THRESHOLD } from "./engine";
-export {
-  CHARYBDIS_COACH_FIXTURE,
-  CODING_NGRAMS_V1,
-  IMPROVABLE_NAV_FIXTURE,
-} from "./fixtures";
+export { CHARYBDIS_COACH_FIXTURE, CODING_NGRAMS_V1, IMPROVABLE_NAV_FIXTURE } from "./fixtures";
 export { layoutFixtureFromProfile } from "./from-profile";
 export { effortForGeometry, geometryForKey } from "./geometry";
 export {
   inferLayerRoles,
   layerIdsWithRole,
   loadLayerRolesEffect,
+  LAYER_ROLE_OPTIONS,
   LayerRole,
   LayerRoleMap,
   mergeLayerRoles,

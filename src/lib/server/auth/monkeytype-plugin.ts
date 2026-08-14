@@ -1,6 +1,6 @@
 import { createAuthEndpoint, sessionMiddleware, APIError } from "better-auth/api";
 import type { BetterAuthPlugin } from "better-auth";
-import { Effect, Schema } from "effect";
+import { Effect, Schedule, Schema } from "effect";
 import * as z from "zod";
 
 import {
@@ -22,7 +22,7 @@ import {
 } from "$lib/server/monkeytype/crypto";
 import { MonkeytypeApiClient, MonkeytypeApiError } from "$lib/server/monkeytype/client";
 import { deriveMonkeytypeSummary } from "$lib/server/monkeytype/summary";
-import { BoundaryDecodeError, platformError } from "$lib/effect/errors";
+import { BoundaryDecodeError, PlatformError, platformError } from "$lib/effect/errors";
 import { runWorkerEffect } from "$lib/effect/worker-runtime";
 
 interface AuthEndpointContext {
@@ -66,6 +66,10 @@ export interface MonkeytypePluginOptions {
   secretKey?: string;
   apiClient?: MonkeytypeApiClient;
   nowMs?: () => number;
+  onResultsSynced?: (input: {
+    userId: string;
+    results: unknown;
+  }) => Effect.Effect<number, PlatformError | BoundaryDecodeError>;
 }
 
 const connectBodySchema = z.object({
@@ -192,6 +196,7 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
                 lastSyncedAt: fetched.lastSyncedAt,
                 rateLimitResetAt: fetched.rateLimitResetAt,
               });
+              yield* syncResultsEffect(options.onResultsSynced, session.user.id, fetched.results);
 
               return ctx.json(yield* connectionToDtoEffect(updated, nowMs()));
             }),
@@ -290,6 +295,7 @@ export function monkeytypePlugin(options: MonkeytypePluginOptions = {}): BetterA
                 lastSyncedAt: fetched.lastSyncedAt,
                 rateLimitResetAt: fetched.rateLimitResetAt,
               });
+              yield* syncResultsEffect(options.onResultsSynced, session.user.id, fetched.results);
               return ctx.json(yield* connectionToDtoEffect(updated, current));
             }),
           ),
@@ -418,6 +424,32 @@ function validateUsernameEffect(apiClient: MonkeytypeApiClient, username: string
   return apiClient.publicProfileEffect(username).pipe(Effect.mapError(apiErrorFrom), Effect.asVoid);
 }
 
+function syncResultsEffect(
+  onResultsSynced: MonkeytypePluginOptions["onResultsSynced"],
+  userId: string,
+  results: unknown,
+) {
+  if (!onResultsSynced) return Effect.void;
+
+  const schedule = Schedule.exponential("250 millis").pipe(
+    Schedule.jittered,
+    Schedule.upTo({ times: 3 }),
+  );
+  return onResultsSynced({ userId, results }).pipe(
+    Effect.retry({
+      schedule,
+      while: (error) => error._tag === "PlatformError",
+    }),
+    Effect.mapError(() =>
+      APIError.from("BAD_GATEWAY", {
+        code: "MONKEYTYPE_RESULTS_SYNC_FAILED",
+        message: "Monkeytype results could not be stored for correlation.",
+      }),
+    ),
+    Effect.asVoid,
+  );
+}
+
 function fetchSummaryEffect({
   apiClient,
   apeKey,
@@ -462,6 +494,7 @@ function fetchSummaryEffect({
     );
     return {
       summary,
+      results: results.data,
       rateLimitResetAt: latestRateLimitReset([
         stats.rateLimit,
         personalBests.rateLimit,

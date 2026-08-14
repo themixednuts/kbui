@@ -76,10 +76,7 @@ export const createSessionState = Effect.fn("Practice.createSessionState")(funct
   return state;
 });
 
-const interKeyLatencyMs = Effect.fnUntraced(function* (
-  state: SessionState,
-  atMs: number,
-) {
+const interKeyLatencyMs = Effect.fnUntraced(function* (state: SessionState, atMs: number) {
   if (state.lastStrokeAtMs === null) return 0;
   return Math.max(0, atMs - state.lastStrokeAtMs);
 });
@@ -168,6 +165,10 @@ export const applyPracticeInput = Effect.fn("Practice.applyPracticeInput")(funct
       return { ...state, motionAttempts: state.motionAttempts + 1 };
     }
     return yield* advanceNavAction(script, state, input.atMs, true);
+  }
+
+  if (input.stroke._tag === "Backspace") {
+    return yield* rewindTextStroke(script, state, input.atMs);
   }
 
   if (state.atomIndex >= state.document.atoms.length) {
@@ -262,9 +263,41 @@ export const applyPracticeInput = Effect.fn("Practice.applyPracticeInput")(funct
     textCharsTyped: state.textCharsTyped + 1,
     textCharsCorrect: state.textCharsCorrect + 1,
     events: finished
-      ? [...state.events, event, PracticeEvent.cases.SessionEnded.make({ atMs: input.atMs, reason: "completed" })]
+      ? [
+          ...state.events,
+          event,
+          PracticeEvent.cases.SessionEnded.make({ atMs: input.atMs, reason: "completed" }),
+        ]
       : [...state.events, event],
     finished,
+  } satisfies SessionState;
+});
+
+const rewindTextStroke = Effect.fn("Practice.rewindTextStroke")(function* (
+  script: PracticeScript,
+  state: SessionState,
+  atMs: number,
+) {
+  if (state.indent.pendingSpaces > 0) {
+    return {
+      ...state,
+      indent: { ...state.indent, pendingSpaces: state.indent.pendingSpaces - 1 },
+      lastStrokeAtMs: atMs,
+    } satisfies SessionState;
+  }
+  if (state.atomIndex <= 0) return state;
+  const nextIndex = state.atomIndex - 1;
+  const cursor = yield* cursorAfterAtoms(
+    state.document.atoms,
+    nextIndex,
+    state.indent.locked,
+    script.indentUnitWidth,
+  );
+  return {
+    ...state,
+    atomIndex: nextIndex,
+    cursor,
+    lastStrokeAtMs: atMs,
   } satisfies SessionState;
 });
 

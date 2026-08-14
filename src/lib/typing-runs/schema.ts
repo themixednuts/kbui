@@ -1,4 +1,12 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 import type {
   KeyboardChoice,
@@ -110,6 +118,34 @@ export const typingRunChoiceSync = sqliteTable("typing_run_choice_sync", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export const monkeytypeResult = sqliteTable(
+  "monkeytype_result",
+  {
+    id: text("id").notNull(),
+    userId: text("user_id").notNull(),
+    timestampMs: integer("timestamp_ms").notNull(),
+    wpm: real("wpm").notNull(),
+    rawWpm: real("raw_wpm"),
+    acc: real("acc").notNull(),
+    consistency: real("consistency"),
+    testDuration: real("test_duration"),
+    mode: text("mode"),
+    mode2: text("mode2"),
+    payloadJson: text("payload_json", { mode: "json" }).notNull(),
+    syncedAt: integer("synced_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    index("monkeytype_result_user_timestamp_idx").on(table.userId, table.timestampMs),
+  ],
+);
+
+export const extensionRateBucket = sqliteTable("extension_rate_bucket", {
+  bucketKey: text("bucket_key").primaryKey(),
+  windowStartedAt: integer("window_started_at").notNull(),
+  count: integer("count").notNull(),
+});
+
 export type ExtensionDevice = typeof extensionDevice.$inferSelect;
 export type NewExtensionDevice = typeof extensionDevice.$inferInsert;
 export type ExtensionPairingToken = typeof extensionPairingToken.$inferSelect;
@@ -118,3 +154,7 @@ export type TypingRunTag = typeof typingRunTag.$inferSelect;
 export type NewTypingRunTag = typeof typingRunTag.$inferInsert;
 export type TypingRunChoiceSync = typeof typingRunChoiceSync.$inferSelect;
 export type NewTypingRunChoiceSync = typeof typingRunChoiceSync.$inferInsert;
+export type MonkeytypeResultRow = typeof monkeytypeResult.$inferSelect;
+export type NewMonkeytypeResultRow = typeof monkeytypeResult.$inferInsert;
+export type ExtensionRateBucket = typeof extensionRateBucket.$inferSelect;
+export type NewExtensionRateBucket = typeof extensionRateBucket.$inferInsert;

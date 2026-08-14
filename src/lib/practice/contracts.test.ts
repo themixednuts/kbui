@@ -5,6 +5,7 @@ import { adaptScript, confidenceChips } from "./adaptive";
 import { compileBufferDocument } from "./buffer";
 import {
   SESSION_GOAL_TIMED_60,
+  KeyStroke,
   strokeChar,
   withSessionGoal,
   type KeyboardLayoutRef,
@@ -261,6 +262,26 @@ describe("practice buffer primitives (Effect)", () => {
       expect(adapted.id).toContain("adaptive");
       const chips = yield* confidenceChips(script, [weakSummary]);
       expect(chips.length).toBeGreaterThan(0);
+    }),
+  );
+
+  it.effect("backspace rewinds the last advanced atom without arming a miss", () =>
+    Effect.gen(function* () {
+      const script = yield* formattedRustV1();
+      let state: SessionState = yield* createSessionState(script, 0);
+      const first = script.lines[0]?.[0];
+      expect(first).toBeTruthy();
+      state = yield* applyPracticeInput(script, state, {
+        atMs: 10,
+        stroke: yield* strokeChar(first!),
+      });
+      expect(state.atomIndex).toBe(1);
+      state = yield* applyPracticeInput(script, state, {
+        atMs: 20,
+        stroke: KeyStroke.cases.Backspace.make({}),
+      });
+      expect(state.atomIndex).toBe(0);
+      expect(state.finished).toBe(false);
     }),
   );
 });

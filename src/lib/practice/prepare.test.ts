@@ -22,10 +22,51 @@ describe("prepareDrill + auto-arm keys", () => {
 
   it.effect("arms on printable / Tab / Enter / Space", () =>
     Effect.gen(function* () {
-      expect(yield* isPracticeArmKey({ key: "a", metaKey: false, altKey: false, ctrlKey: false, target: null } as KeyboardEvent)).toBe(true);
-      expect(yield* isPracticeArmKey({ key: "Tab", metaKey: false, altKey: false, ctrlKey: false, target: null } as KeyboardEvent)).toBe(true);
-      expect(yield* isPracticeArmKey({ key: "Escape", metaKey: false, altKey: false, ctrlKey: false, target: null } as KeyboardEvent)).toBe(false);
-      expect(yield* isPracticeArmKey({ key: "a", metaKey: true, altKey: false, ctrlKey: false, target: null } as KeyboardEvent)).toBe(false);
+      expect(
+        yield* isPracticeArmKey({
+          key: "a",
+          metaKey: false,
+          altKey: false,
+          ctrlKey: false,
+          target: null,
+        } as KeyboardEvent),
+      ).toBe(true);
+      expect(
+        yield* isPracticeArmKey({
+          key: "Tab",
+          metaKey: false,
+          altKey: false,
+          ctrlKey: false,
+          target: null,
+        } as KeyboardEvent),
+      ).toBe(true);
+      expect(
+        yield* isPracticeArmKey({
+          key: "Escape",
+          metaKey: false,
+          altKey: false,
+          ctrlKey: false,
+          target: null,
+        } as KeyboardEvent),
+      ).toBe(false);
+      expect(
+        yield* isPracticeArmKey({
+          key: "Backspace",
+          metaKey: false,
+          altKey: false,
+          ctrlKey: false,
+          target: null,
+        } as KeyboardEvent),
+      ).toBe(false);
+      expect(
+        yield* isPracticeArmKey({
+          key: "a",
+          metaKey: true,
+          altKey: false,
+          ctrlKey: false,
+          target: null,
+        } as KeyboardEvent),
+      ).toBe(false);
     }),
   );
 });

@@ -7,6 +7,8 @@ import {
 
 export interface ParsedMonkeytypeResult {
   capturedAt: string;
+  monkeytypeResultId?: string;
+  monkeytypeTimestamp?: number;
   wpm: number;
   rawWpm?: number;
   acc: number;
@@ -97,6 +99,8 @@ export function monkeytypeResultToCapture(
   return {
     source: "monkeytype-extension-dom-v1",
     capturedAt: result.capturedAt,
+    monkeytypeResultId: result.monkeytypeResultId,
+    monkeytypeTimestamp: result.monkeytypeTimestamp,
     wpm: result.wpm,
     rawWpm: result.rawWpm,
     acc: result.acc,

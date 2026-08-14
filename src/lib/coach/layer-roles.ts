@@ -18,6 +18,16 @@ export const LayerRole = Schema.Literals([
 ]);
 export type LayerRole = typeof LayerRole.Type;
 
+export const LAYER_ROLE_OPTIONS: readonly LayerRole[] = [
+  "base",
+  "numpad",
+  "nav",
+  "symbols",
+  "adjust",
+  "mixed",
+  "unknown",
+];
+
 export const LayerRoleAssignment = Schema.Struct({
   layerId: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   role: LayerRole,
@@ -195,13 +205,13 @@ export const setLayerRoleEffect = Effect.fn("Coach.setLayerRole")(function* (
   role: LayerRole,
 ) {
   const current = yield* loadLayerRolesEffect(profile);
+  const locked = LayerRoleAssignment.make({ layerId, role, locked: true });
+  const found = current.assignments.some((a) => a.layerId === layerId);
   const next = LayerRoleMap.make({
     profileId: profile.id,
-    assignments: current.assignments.map((a) =>
-      a.layerId === layerId
-        ? LayerRoleAssignment.make({ layerId, role, locked: true })
-        : a,
-    ),
+    assignments: found
+      ? current.assignments.map((a) => (a.layerId === layerId ? locked : a))
+      : [...current.assignments, locked],
   });
   const key = yield* layerRolesStorageKey(profile.id);
   yield* Preferences.setJson(key, LayerRoleMap, next).pipe(

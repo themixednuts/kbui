@@ -56,6 +56,25 @@ describe("Monkeytype result capture", () => {
     expect(idempotencyKeyForCapture(capture)).toContain("dom:monkeytype-extension-dom-v1");
   });
 
+  it("forwards a captured Monkeytype result id into the ingest payload", () => {
+    const capture = monkeytypeResultToCapture(
+      {
+        capturedAt: "2026-07-04T18:30:00.000Z",
+        monkeytypeResultId: "res_direct",
+        monkeytypeTimestamp: 1_720_000_000_000,
+        wpm: 100,
+        acc: 99,
+        mode: "time",
+        mode2: "60"
+      },
+      { keyboardId: "kb-1", displayName: "One" },
+      { layoutId: "main", displayName: "main" },
+      { installId: "install-test", version: "0.1.0", parserVersion: "test-parser" },
+    );
+    expect(capture.monkeytypeResultId).toBe("res_direct");
+    expect(idempotencyKeyForCapture(capture)).toBe("monkeytype-result:res_direct");
+  });
+
   it("centralizes Monkeytype selectors and text reads", () => {
     document.body.innerHTML = fixture.default;
 

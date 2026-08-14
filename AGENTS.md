@@ -48,3 +48,17 @@ Anonymous flows work fully in `--local` mode: `/editor` renders (61 keycaps,
 (gitignored; copy from `.dev.vars.example`); `better-auth` falls back to a
 local secret when `BETTER_AUTH_SECRET` is unset, so no real credentials are
 needed for anonymous verification.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as markdown under `.scratch/<feature>/` (GitHub Issues is readable but not writable from Cloud Agents). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical role strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root and `docs/adr/` when ADRs exist. See `docs/agents/domain.md`.

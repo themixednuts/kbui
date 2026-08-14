@@ -10,6 +10,10 @@ import {
   type ParsedMonkeytypeResult
 } from "../src/monkeytype/capture";
 import {
+  readMonkeytypeIdentityMessage,
+  type MonkeytypeResultIdentity
+} from "../src/monkeytype/result-id";
+import {
   sendBackgroundMessage,
   type ContentRunState,
   type RunCapturePostResult
@@ -35,13 +39,28 @@ export default defineContentScript({
 
     ui.mount();
 
+    let latestIdentity: MonkeytypeResultIdentity | null = null;
+    const onIdentity = (event: MessageEvent) => {
+      if (event.source !== window) return;
+      const identity = readMonkeytypeIdentityMessage(event.data);
+      if (identity) latestIdentity = identity;
+    };
+    ctx.addEventListener(window, "message", onIdentity);
+
     const observer = createMonkeytypeCaptureObserver({
       onStableResult: async (result) => {
-        runState.set({ status: "capturing", result });
+        const merged: ParsedMonkeytypeResult = latestIdentity
+          ? {
+              ...result,
+              monkeytypeResultId: latestIdentity.monkeytypeResultId,
+              monkeytypeTimestamp: latestIdentity.monkeytypeTimestamp ?? result.monkeytypeTimestamp
+            }
+          : result;
+        runState.set({ status: "capturing", result: merged });
         try {
           const post = await sendBackgroundMessage<RunCapturePostResult>({
             type: "RUN_CAPTURED",
-            result
+            result: merged
           });
           runState.set({ status: post.status, post });
         } catch (error) {

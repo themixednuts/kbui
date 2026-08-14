@@ -7,6 +7,7 @@ import {
   listExtensionDevicesFromEnvironment,
   listTaggedRunsFromEnvironment,
   revokeExtensionDeviceFromEnvironment,
+  retryPendingCorrelationFromEnvironment,
   setKeyboardChoicesFromEnvironment,
   TYPING_RUNS_REQUIRES_WORKER,
 } from "$lib/typing-runs/service";
@@ -55,6 +56,14 @@ export const getTypingRunStats = query(typingRunStatsGroupInput, (rawGroupBy) =>
   assertTypingRunsBinding(event.platform?.env);
 
   return getTypingRunStatsFromEnvironment(event.platform?.env, userId, rawGroupBy);
+});
+
+export const retryRunCorrelation = command(() => {
+  const event = getRequestEvent();
+  const userId = requireExtensionSession(event.locals.user);
+  assertTypingRunsBinding(event.platform?.env);
+
+  return retryPendingCorrelationFromEnvironment(event.platform?.env, userId);
 });
 
 export const syncExtensionKeyboardChoices = command(extensionKeyboardChoicesInput, (rawChoices) => {
