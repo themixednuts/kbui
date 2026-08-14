@@ -23,8 +23,7 @@ function retryAppUpdate<A>(effect: Effect.Effect<A, PlatformError>) {
   );
 }
 
-export const STALE_BUILD_DESCRIPTION =
-  "This tab is on an old build. Reload.";
+export const STALE_BUILD_DESCRIPTION = "This tab is on an old build. Reload.";
 
 type UpdateNotificationOptions = {
   checkForUpdate: () => Promise<unknown>;

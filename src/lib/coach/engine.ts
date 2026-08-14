@@ -175,11 +175,7 @@ export const suggestCoach = Effect.fn("Coach.suggestCoach")(function* (input: Su
   const b = start[chosen.j]!;
   const basedOnPersonal = personalSamples >= PERSONAL_SAMPLE_THRESHOLD;
   const confidence =
-    chosen.delta > 1.5 && basedOnPersonal
-      ? "high"
-      : chosen.delta > 0.4
-        ? "medium"
-        : "low";
+    chosen.delta > 1.5 && basedOnPersonal ? "high" : chosen.delta > 0.4 ? "medium" : "low";
 
   return CoachSuggestResult.cases.Suggestion.make({
     suggestion: {
