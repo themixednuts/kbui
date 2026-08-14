@@ -28,8 +28,8 @@
 
 {#if items.length === 0}
   <p class="logic-empty m-0 px-[2px] py-kb-8 text-[12px] leading-[1.45] text-ink-3">
-    Nothing in the Logic builder yet.
-    <a class="text-ink underline underline-offset-2" href="/library" data-sveltekit-preload-data="hover">Create macros &amp; tap dances</a>
+    No macros or tap dances yet.
+    <a class="text-ink underline underline-offset-2" href="/library" data-sveltekit-preload-data="hover">Make one in Library</a>
     first.
   </p>
 {:else}

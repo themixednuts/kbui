@@ -5,13 +5,11 @@ import * as Preferences from "./preferences.ts";
 /**
  * Editor layout preference.
  *
- * The redesign (Klakson v2) ships two spatial arrangements of the same editor:
- *   - "inspector" (Layout A): board hero with a calm right-hand inspector rail.
- *   - "dock"      (Layout B): board centered with a full-width bottom inspector dock.
+ * Two arrangements of the same editor:
+ *   - "inspector": board on the left, inspector on the right.
+ *   - "dock": board in the middle, inspector along the bottom.
  *
- * "auto" preserves the historical behaviour — split boards get the dock, single
- * blocks get the right inspector — so users who never open the setting keep the
- * layout tuned to their board.
+ * "auto" picks dock for split boards and the side inspector for everything else.
  */
 export type EditorLayoutId = "auto" | "inspector" | "dock";
 
@@ -31,19 +29,19 @@ export const editorLayoutOptions: readonly EditorLayoutOption[] = [
     id: "auto",
     label: "Auto",
     icon: "auto_awesome",
-    hint: "Match the board — dock for splits, panel otherwise",
+    hint: "Splits use the dock. Other boards use the side panel.",
   },
   {
     id: "inspector",
     label: "Panel",
     icon: "splitscreen_right",
-    hint: "Board hero with a right-hand inspector",
+    hint: "Board on the left, inspector on the right.",
   },
   {
     id: "dock",
     label: "Dock",
     icon: "bottom_panel_open",
-    hint: "Board centered with a bottom inspector dock",
+    hint: "Board in the middle, inspector along the bottom.",
   },
 ];
 

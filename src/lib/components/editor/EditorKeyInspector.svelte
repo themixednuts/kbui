@@ -401,7 +401,7 @@
             compact && "mt-[10px] pt-[10px]",
           )}
         >
-          <span class={fieldLabelClass}>Workspace logic</span>
+          <span class={fieldLabelClass}>Library bindings</span>
           <KeyBindingLogicPicker
             items={editor.logicBindings}
             activeCode={selectedCodeSummary.mixed ? "" : selectedBinding.code}

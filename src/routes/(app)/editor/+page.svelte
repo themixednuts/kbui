@@ -103,9 +103,9 @@
   ];
 
   const layoutItems: SegmentItem<EditorLayoutId>[] = [
-    { value: "auto", label: "Auto", icon: Sparkles, title: "Match the board — dock for splits, panel otherwise" },
-    { value: "inspector", label: "Panel", icon: PanelRight, title: "Board hero with a right-hand inspector" },
-    { value: "dock", label: "Dock", icon: PanelBottom, title: "Board centered with a bottom inspector dock" },
+    { value: "auto", label: "Auto", icon: Sparkles, title: "Splits use the dock. Other boards use the side panel." },
+    { value: "inspector", label: "Panel", icon: PanelRight, title: "Board on the left, inspector on the right." },
+    { value: "dock", label: "Dock", icon: PanelBottom, title: "Board in the middle, inspector along the bottom." },
   ];
 
   const boardModel = $derived(
@@ -152,13 +152,13 @@
       value: "live",
       label: liveEditLabel,
       icon: Zap,
-      title: `Write edits straight to the keyboard (${liveEditLabel})`,
+      title: `Writes each edit to the keyboard (${liveEditLabel})`,
     },
     {
       value: "source",
       label: sourceEditLabel,
       icon: FileCode2,
-      title: `Collect edits into generated firmware source (${sourceEditLabel})`,
+      title: `Saves edits for a firmware build (${sourceEditLabel})`,
     },
   ]);
   const failedPreview = $derived(liveSync.failedLanes.slice(0, 3));
@@ -259,7 +259,7 @@
         />
 
         {#if editor.persistenceError}
-          <Chip tone="error" title={editor.persistenceError}>Draft save issue</Chip>
+          <Chip tone="error" title={editor.persistenceError}>Could not save draft</Chip>
         {/if}
 
         <Chip
@@ -340,7 +340,7 @@
               <strong class={syncNoticeTitleClass}>
                 {connectedLocalOnlyChanges.length}
                 {connectedLocalOnlyChanges.length === 1 ? "change applied" : "changes applied"}
-                locally - not written to device{localOnlyCategorySummary ? `: ${localOnlyCategorySummary}` : ""}
+                locally, not written to the board{localOnlyCategorySummary ? `. ${localOnlyCategorySummary}` : ""}
               </strong>
               <ul class={syncNoticeLocalListClass}>
                 {#each localOnlyReasonPreview as reason (`${reason.category}:${reason.reason}`)}
