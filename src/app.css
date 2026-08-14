@@ -672,19 +672,6 @@ html,
   background: var(--surface) !important;
 }
 
-/* The editor toolbar responds to its pane, not the viewport. This keeps the
- * primary editing tools and secondary view/status tools in coherent rows when
- * the resizable inspector narrows the board. */
-@container editor-main (max-width: 850px) {
-  .editor-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .editor-secondary-tools {
-    justify-content: flex-start;
-  }
-}
-
 .keycap {
   position: relative;
   z-index: 1;

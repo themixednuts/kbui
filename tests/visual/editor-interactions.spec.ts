@@ -88,9 +88,8 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   await expect(page.locator('[data-key-id="k1-1"] .marker-slot.combo')).toHaveText("Esc");
   await expect(page.locator('[data-key-id="k1-2"] .marker-slot.combo')).toHaveText("Esc");
 
-  // The toolbar keeps a deliberate two-row shape: mode + firmware target/status
-  // on top, the layer strip full-width beneath. It must never wrap raggedly or
-  // overflow horizontally, at any pane width.
+  // Wide panes keep two rows: mode + firmware/status on top, layers beneath.
+  // The strip scrolls rather than wrapping, and the bar never overflows.
   const toolbar = page.locator(".editor-toolbar");
   const primaryTools = toolbar.locator(".editor-primary-tools");
   const layerRow = toolbar.locator(".editor-layer-row");
@@ -102,7 +101,6 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   expect(layerBox).not.toBeNull();
   expect(layerBox!.y).toBeGreaterThan(primaryBox!.y + 4);
   expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
-  // Layers scroll rather than wrapping onto extra rows.
   expect(
     await toolbar.locator(".layer-buttons").evaluate((strip) => getComputedStyle(strip).flexWrap),
   ).toBe("nowrap");
@@ -146,3 +144,34 @@ test("keeps layer selection stable and renders the board as a flow graph", async
   expect(Math.abs(keyBox!.width - nodeBox!.width)).toBeLessThan(1);
   expect(Math.abs(keyBox!.height - nodeBox!.height)).toBeLessThan(1);
 });
+
+test("collapses the editor toolbar to one row in a narrow pane", async ({ page }) => {
+  // 62px rail + ~495px editor matches the squeezed editor pane; below 640px
+  // the toolbar must sit in one row instead of leaving a two-row empty gap.
+  await page.setViewportSize({ width: 557, height: 740 });
+  await page.goto("/editor", { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+
+  const toolbar = page.locator(".editor-toolbar");
+  const primaryTools = toolbar.locator(".editor-primary-tools");
+  const layerRow = toolbar.locator(".editor-layer-row");
+  const [toolbarBox, primaryBox, layerBox] = await Promise.all([
+    toolbar.boundingBox(),
+    primaryTools.boundingBox(),
+    layerRow.boundingBox(),
+  ]);
+  expect(toolbarBox).not.toBeNull();
+  expect(primaryBox).not.toBeNull();
+  expect(layerBox).not.toBeNull();
+  expect(toolbarBox!.width).toBeLessThan(640);
+  expect(Math.abs(layerBox!.y - primaryBox!.y)).toBeLessThan(4);
+  expect(layerBox!.x).toBeGreaterThan(primaryBox!.x + primaryBox!.width - 1);
+  expect(toolbarBox!.height).toBeLessThan(64);
+  expect(await toolbar.evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
+  expect(
+    await toolbar.locator(".layer-buttons").evaluate((strip) => getComputedStyle(strip).flexWrap),
+  ).toBe("nowrap");
+  await expect(toolbar.locator(".add-layer")).toBeVisible();
+  await expect(toolbar.locator(".add-layer")).not.toContainText("Layer");
+});
+

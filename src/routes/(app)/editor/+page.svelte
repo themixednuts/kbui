@@ -51,19 +51,20 @@
     "editor-main grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0 [container:editor-main/inline-size] max-[640px]:p-0";
   const editorMainSplitClass =
     "grid-rows-[auto_minmax(0,1fr)] gap-0 p-0";
-  // Two deliberate rows at every size: mode + targets/status on top, the layer
-  // strip full-width beneath. The toolbar lives inside a resizable pane, so pane
-  // width — not viewport width — is what actually constrains it; a fixed two-row
-  // shape stays correct at any pane size. Nothing wraps: the layer strip scrolls
-  // and labels collapse to icons rather than breaking to new lines.
+  // Wide panes keep two rows: lens + firmware/status on top, layers full-width
+  // beneath. When the pane (not the window) drops below 640px, collapse to one
+  // row — lens | scrolling layers | status — so the top row does not leave a
+  // large empty gap. The layout switcher stays visible whenever the viewport
+  // can still host a side inspector. Nothing wraps: the layer strip scrolls and
+  // labels collapse to icons rather than breaking to new lines.
   const editorToolbarClass =
-    "editor-toolbar grid min-h-[55px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-10 max-[640px]:px-kb-12";
+    "editor-toolbar grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-kb-10 gap-y-kb-6 border-b border-line bg-paper px-kb-20 py-kb-8 max-[640px]:px-kb-12 @max-[640px]/editor-main:grid-cols-[auto_minmax(0,1fr)_auto] @max-[640px]/editor-main:gap-x-kb-6 @max-[640px]/editor-main:px-kb-10 @max-[640px]/editor-main:py-kb-6";
   const primaryToolbarGroupClass =
     "editor-primary-tools col-start-1 row-start-1 flex min-w-0 flex-nowrap items-center gap-kb-10";
   const secondaryToolbarGroupClass =
-    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8";
+    "editor-secondary-tools col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center justify-end gap-kb-8 @max-[640px]/editor-main:col-start-3";
   const layerRowClass =
-    "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center";
+    "editor-layer-row col-span-2 row-start-2 flex min-w-0 items-center @max-[640px]/editor-main:col-span-1 @max-[640px]/editor-main:col-start-2 @max-[640px]/editor-main:row-start-1";
   const syncNoticeClass =
     "sync-notice grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-kb-10 rounded-lg border border-line bg-surface px-kb-12 py-kb-10 text-kb-12";
   const syncNoticeRebuildClass =
@@ -224,7 +225,7 @@
           value={editor.lens}
           onselect={(lens) => editor.setLens(lens)}
           ariaLabel="Editor lens"
-          class="@max-[560px]/editor-main:[&_[data-label]]:hidden"
+          class="@max-[560px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8"
         />
       </div>
 
@@ -234,7 +235,7 @@
           value={firmwareEditIntent}
           onselect={setFirmwareEditIntent}
           ariaLabel="Firmware edit target"
-          class="firmware-edit-intent @max-[820px]/editor-main:[&_[data-label]]:hidden"
+          class="firmware-edit-intent @max-[820px]/editor-main:[&_[data-label]]:hidden @max-[640px]/editor-main:[&_button]:px-kb-8"
         />
 
         <!-- Hidden only on phone-sized viewports, where a side inspector is
@@ -256,7 +257,7 @@
         <Chip
           dot={liveSync.dot}
           title={liveSync.title}
-          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px]"
+          class="editor-sync-chip min-w-0 max-w-[180px] flex-none truncate max-[900px]:max-w-[104px] @max-[640px]/editor-main:max-w-[88px]"
         >
           {liveSync.label}
         </Chip>
